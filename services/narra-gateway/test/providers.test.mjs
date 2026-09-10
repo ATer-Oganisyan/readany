@@ -7,6 +7,7 @@ import {
   maxTokensFor,
   mediaImageQualityForDimensions,
   normalizeImageTransportError,
+  omitsJsonResponseFormat,
   omitsTemperature,
   requestChat,
   requestCoverImage,
@@ -780,3 +781,48 @@ for (const [name, response, expected] of [
     )
   })
 }
+
+test('a structured task asks the model for a JSON object, and other purposes do not', async () => {
+  // Разбор ответа структурной задачи — `JSON.parse`, поэтому формат тут часть
+  // контракта. Без него reasoning-модель тратит весь `max_tokens` на
+  // рассуждение и отдаёт пустой content: замер на deepseek-v4-flash дал 6367
+  // reasoning-токенов и 58 секунд против нуля и двух секунд с форматом.
+  const bodies = {}
+  const env = {
+    LLM_ROUTE_STRUCTURED_TASK: 'litellm',
+    LLM_ROUTE_CHARACTER_CHAT: 'litellm',
+    LITELLM_BASE_URL: 'https://litellm.test/v1',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_MODEL: 'deepseek/deepseek-v4-flash'
+  }
+  const call = async (purpose, extraEnv = {}) => {
+    const result = await requestChat({
+      messages: [{ role: 'user', content: 'hello' }],
+      purpose,
+      stream: false,
+      fetchImpl: async (_url, init) => {
+        bodies[purpose] = JSON.parse(init.body)
+        return new Response('{"choices":[{"message":{"content":"{}"}}]}', { status: 200 })
+      },
+      env: { ...env, ...extraEnv }
+    })
+    await result.finalizeAttempt()
+    return bodies[purpose]
+  }
+
+  assert.deepEqual((await call('structured_task')).response_format, { type: 'json_object' })
+  assert.equal(Object.hasOwn(await call('character_chat'), 'response_format'), false)
+
+  // Провайдер, который формат не принимает, отключается настройкой, а не
+  // молчаливым отказом от формата.
+  const opted = await call('structured_task', { LITELLM_OMIT_JSON_RESPONSE_FORMAT: 'true' })
+  assert.equal(Object.hasOwn(opted, 'response_format'), false)
+})
+
+test('the JSON response format opt-out is per provider, like the temperature one', () => {
+  assert.equal(omitsJsonResponseFormat('giga', {}), false)
+  assert.equal(omitsJsonResponseFormat('giga', { LLM_OMIT_JSON_RESPONSE_FORMAT: 'true' }), true)
+  assert.equal(omitsJsonResponseFormat('giga', { LLM_OMIT_JSON_RESPONSE_FORMAT: 'yes' }), false)
+  assert.equal(omitsJsonResponseFormat('litellm', { LLM_OMIT_JSON_RESPONSE_FORMAT: 'true' }), false)
+  assert.equal(omitsJsonResponseFormat('litellm', { LITELLM_OMIT_JSON_RESPONSE_FORMAT: 'TRUE' }), true)
+})

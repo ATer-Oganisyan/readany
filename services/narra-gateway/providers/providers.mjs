@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { withTimeout } from '../platform/concurrency.mjs'
 import { imageUpstreamError, shouldFallbackAfterImageError } from './image-policy.mjs'
 import { requestOptionsForModel } from './model-request-config.mjs'
+export { omitsJsonResponseFormat } from './model-request-config.mjs'
 import { serviceUrl } from '../platform/service-url.mjs'
 
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
@@ -168,7 +169,8 @@ export async function requestChat({
       const modelRequestOptions = requestOptionsForModel({
         provider: providerName,
         model: config.model,
-        purpose
+        purpose,
+        env
       })
       const response = await fetchImpl(`${config.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -240,6 +242,15 @@ export async function requestChat({
         console.error(
           `[llm] ${providerName}/${config.model} не принимает temperature; ` +
           `выставьте ${providerName === 'litellm' ? 'LITELLM_OMIT_TEMPERATURE' : 'LLM_OMIT_TEMPERATURE'}=true`
+        )
+      }
+      // То же для JSON-формата: структурные задачи просят его по умолчанию, и
+      // отказ провайдера должен читаться как настройка, а не как поломка всех
+      // запросов анализа разом.
+      if (response.status === 400 && /response_format|json_object/i.test(detail)) {
+        console.error(
+          `[llm] ${providerName}/${config.model} не принимает response_format; ` +
+          `выставьте ${providerName === 'litellm' ? 'LITELLM_OMIT_JSON_RESPONSE_FORMAT' : 'LLM_OMIT_JSON_RESPONSE_FORMAT'}=true`
         )
       }
       const failedAttempt = {

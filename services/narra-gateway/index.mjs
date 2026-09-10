@@ -24,6 +24,7 @@ import {
   requestCoverImageWithFallback
 } from './providers/providers.mjs'
 import {
+  completionText,
   settleProviderResponse,
   validateChatCompletionPayload
 } from './providers/provider-response.mjs'
@@ -258,7 +259,7 @@ async function completeInternalChat({ messages, signal, costContext }) {
       responseCost: providerResult.responseCost
     })
     recorded = true
-    return payload?.choices?.[0]?.message?.content || ''
+    return completionText(payload)
   } catch (error) {
     const attempts = providerResult?.attempts || error?.attempts
     if (!recorded && Array.isArray(attempts) && attempts.length) {

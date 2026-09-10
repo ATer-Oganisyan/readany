@@ -56,4 +56,35 @@ export function validateChatCompletionPayload(payload) {
   return payload
 }
 
+/**
+ * Текст ответа модели — и отказ, когда текста нет или он оборван.
+ *
+ * `choices[0].message.content || ''` выглядел безобидно, но превращал две
+ * разные аварии в одну и ту же немую строку. Reasoning-модель, потратившая
+ * весь `max_tokens` на рассуждение, возвращает пустой `content` с
+ * `finish_reason: "length"`; вызов при этом «успешен», стоит денег и минуту
+ * времени. Дальше пустая строка доезжала до разбора JSON и падала на «LLM did
+ * not return a JSON object» — сообщение, по которому причину не найти.
+ *
+ * Обрыв по лимиту повторять можно и нужно: следующая попытка попадает в лимит
+ * или нет. Поэтому это ошибка с кодом, а не молчаливый пустой ответ.
+ */
+export function completionText(payload) {
+  const choice = payload?.choices?.[0]
+  const content = typeof choice?.message?.content === 'string' ? choice.message.content : ''
+  if (choice?.finish_reason === 'length') {
+    throw Object.assign(
+      new Error('LLM completion hit the token limit before finishing'),
+      { code: 'LLM_OUTPUT_TRUNCATED', status: 502 }
+    )
+  }
+  if (!content.trim()) {
+    throw Object.assign(
+      new Error('LLM completion contained no text'),
+      { code: 'LLM_EMPTY_COMPLETION', status: 502 }
+    )
+  }
+  return content
+}
+
 export { terminalErrorCode }
