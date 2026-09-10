@@ -84,17 +84,31 @@ export function bookAnalysisCardsEditionsFromEnv(env = process.env) {
 }
 
 /**
+ * Конвейер, назначенный изданию поимённо, или null, если издания в списке нет.
+ *
+ * Отдельная функция от `bookAnalysisPipelineForEdition` нужна репозиторию:
+ * при перезапуске прогона он наследует конвейер предыдущего, и «карточки
+ * назначены этой книге» обязано быть сильнее наследования, иначе канареечная
+ * книга, уже разобранная старым конвейером, останется на нём навсегда.
+ * Настройка по умолчанию, наоборот, слабее наследования — поэтому её тут нет.
+ */
+export function bookAnalysisAssignedPipelineForEdition(bookEditionId, env = process.env) {
+  const editions = bookAnalysisCardsEditionsFromEnv(env)
+  if (bookEditionId && editions.has(String(bookEditionId).toLowerCase())) {
+    return BOOK_ANALYSIS_PIPELINE_CARDS
+  }
+  return null
+}
+
+/**
  * Конвейер конкретного издания: поимённый список сильнее настройки по
  * умолчанию, но только в одну сторону — назначить карточки. Снять конвейер,
  * заданный глобально, список не может: это делается той же настройкой, которой
  * он задан.
  */
 export function bookAnalysisPipelineForEdition(bookEditionId, env = process.env) {
-  const editions = bookAnalysisCardsEditionsFromEnv(env)
-  if (bookEditionId && editions.has(String(bookEditionId).toLowerCase())) {
-    return BOOK_ANALYSIS_PIPELINE_CARDS
-  }
-  return bookAnalysisPipelineFromEnv(env)
+  return bookAnalysisAssignedPipelineForEdition(bookEditionId, env)
+    ?? bookAnalysisPipelineFromEnv(env)
 }
 
 function narraScanJobs(chunks) {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { BOOK_MARKUP_WORKER_JOB_TYPES } from '../generation/generation-worker.mjs'
 
 const compose = await readFile(new URL('../compose.i167.yml', import.meta.url), 'utf8')
 const localCompose = await readFile(
@@ -284,4 +285,30 @@ test('deploy declares every profile the compose file uses, so orphan removal is 
 
 test('deploy removes orphaned containers when it recreates services', () => {
   assert.match(deploySource, /up_args=\(up[^)]*--remove-orphans/)
+})
+
+test('every job type the queue produces has a worker that claims it', () => {
+  // Задания карточек и подтверждения состава ставятся конвейером карточек, но
+  // book-markup-worker по умолчанию берёт только book_markup и catalog_cover.
+  // Без своего воркера они копились бы в очереди молча: включённая канарейка
+  // не выдала бы ни одной карточки, и понять это можно было бы только по
+  // растущей очереди.
+  const cards = compose.split('book-card-worker:')[1] ?? ''
+  assert.match(cards, /profiles: \["cards"\]/)
+  assert.match(cards, /BOOK_MARKUP_WORKER_JOB_TYPES: character_card,roster_confirm/)
+
+  const claimed = new Set(
+    [...compose.matchAll(/BOOK_MARKUP_WORKER_JOB_TYPES:\s*(?:\$\{BOOK_MARKUP_WORKER_JOB_TYPES:-)?([\w,]+)/g)]
+      .flatMap(([, list]) => list.split(','))
+      .filter(Boolean)
+  )
+  for (const jobType of BOOK_MARKUP_WORKER_JOB_TYPES) {
+    assert.ok(claimed.has(jobType), `ни один воркер не берёт задания ${jobType}`)
+  }
+})
+
+test('deploy can select the card worker and keeps it out of the markup worker', () => {
+  assert.match(deploySource, /card_services=\(book-card-worker\)/)
+  assert.match(deploySource, /card-workers\) add_many "\$\{card_services\[@\]\}"/)
+  assert.match(deploySource, /worker_services=\([^)]*card_services/)
 })

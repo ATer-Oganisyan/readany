@@ -99,7 +99,7 @@ import { withChatCompliance, withImageCompliance } from './providers/rf-complian
 
 // ================= Конфигурация =================
 const {
-  PORT, BOOK_ANALYSIS_PIPELINE, BOOK_ANALYSIS_SCAN_POLICY, INSECURE,
+  PORT, BOOK_ANALYSIS_PIPELINE, BOOK_ANALYSIS_PIPELINE_FOR_EDITION, BOOK_ANALYSIS_SCAN_POLICY, INSECURE,
   PRODUCTION, BUILD_VERSION, ANALYTICS_ENV, VIDEO_REQUIRED,
   BOOK_BACKEND_REQUIRED, BOOK_SEARCH_ENABLED, BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED, BOOK_SHADOW_PREVIEW_ENABLED,
   ALLOW_INSECURE_VIDEO_HTTP, INSECURE_VIDEO_ENV_ALLOWED, VIDEO_INSECURE_HTTP_HOSTS, ALLOW_INSECURE_LLM_HTTP,
@@ -793,6 +793,7 @@ if (process.env.DATABASE_URL) {
   })
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool, {
     defaultPipelineId: BOOK_ANALYSIS_PIPELINE,
+    pipelineForEdition: BOOK_ANALYSIS_PIPELINE_FOR_EDITION,
     mediaGenerationEnabled: BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED
   })
   bookTtsMarkupRepository = createPostgresBookTtsMarkupRepository(bookMarkupPool)
