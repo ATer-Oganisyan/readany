@@ -77,6 +77,7 @@ import { createCatalogIngestService } from './catalog/catalog-ingest-service.mjs
 import { createPostgresBookAnalysisRepository } from './analysis/book-analysis-repository.mjs'
 import { createBookOperatorRouter } from './books/book-operator-api.mjs'
 import { createPostgresBookOperatorRepository } from './books/book-operator-repository.mjs'
+import { createBookProgressRepository } from './books/book-progress-repository.mjs'
 import { createPostgresBookCharacterCorrectionRepository } from './books/book-character-correction-repository.mjs'
 import { createPostgresBookMarkupRepository } from './books/postgres-book-markup-repository.mjs'
 import { createPostgresBookTtsMarkupRepository } from './tts/book-tts-markup-repository.mjs'
@@ -758,6 +759,7 @@ let bookTtsMarkupRepository = null
 let bookOperatorRepository = null
 let bookCharacterCorrectionRepository = null
 let operationalMetricsRepository = null
+let bookProgressRepository = null
 let generationCostLedger = null
 let bookSearchRepository = null
 let bookSearchService = null
@@ -798,6 +800,7 @@ if (process.env.DATABASE_URL) {
   })
   bookTtsMarkupRepository = createPostgresBookTtsMarkupRepository(bookMarkupPool)
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
+  bookProgressRepository = createBookProgressRepository(bookMarkupPool)
   bookCharacterCorrectionRepository = createPostgresBookCharacterCorrectionRepository(bookMarkupPool)
   operationalMetricsRepository = createOperationalMetricsRepository(bookMarkupPool)
   if (BOOK_SEARCH_ENABLED) {
@@ -1255,6 +1258,7 @@ if (bookMarkupRepository && bookObjectStorage) {
       dashboardRepository: bookOperatorRepository,
       analysisRepository: bookAnalysisRepository,
       correctionRepository: bookCharacterCorrectionRepository,
+      progressRepository: bookProgressRepository,
       catalogService: catalogIngestService,
       uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
     }))

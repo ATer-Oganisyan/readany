@@ -1,137 +1,147 @@
-# Раскатка конвейера карточек на три канареечные книги
+# Конвейер карточек: раскатка на канареечные книги и наблюдение
 
-Дата подготовки: 2026-09-10. Хост: `andrew@10.10.5.34` (fun1, через `i167`).
-Проект: `narra-production-v2`, каталог `/opt/narra-production-v2`.
+Записано 2026-09-10 по итогам раскатки на три книги. Хост `fun1`
+(`andrew@10.10.5.34` через `i167`), проект `narra-production-v2`, каталог
+`/opt/narra-production-v2`.
 
-## Что уже сделано
+## Дашборд
 
-- Образ `narra-gateway:1d9c37026860ebe0a859ba597ec5cd3b532e113f` **собран на fun1**
-  (amd64, 426 МБ) и проверен: резолвер конвейера на месте, воркер берёт
-  `character_card,roster_confirm`, миграции 027–032 в образе (всего 35).
-- `/opt/narra-production-v2/compose.env` скопирован в
-  `compose.env.bak-20260910-180936`.
-- Исходники сборки с сервера удалены; в образе они уже есть.
-
-## Почему образа нет в registry
-
-GitHub Actions не запускается: *«The job was not started because recent account
-payments have failed or your spending limit needs to be increased»*. Последние
-шесть прогонов `narra-gateway.yml` падают за 2 секунды без раннера, в том числе
-на merge-коммите `2751c137`. Пока биллинг не починен, CI не публикует образ ни в
-`ghcr.io/mishanaer/narra-gateway`, ни куда-либо ещё, а локальных учётных данных
-для `docker push` в Docker Hub (`readany/…`, `arsenteroganisyan/…`) нет.
-
-Поэтому образ собран на самом сервере и разворачивается с `--pull never`.
-Файлы деплоя используются штатные: `deploy-remote.sh` кладёт на сервер только
-`deploy.sh`, `migrate.sh` и `compose.i167.yml`.
-
-## Шаги
-
-Все команды — с рабочей машины, из `services/narra-gateway`.
+`https://…/operator/status` — воркеры и прогресс книг. Доступ только через
+SSH-туннель: gateway слушает `127.0.0.1:8788` и наружу не смотрит.
 
 ```bash
-SHA=1d9c37026860ebe0a859ba597ec5cd3b532e113f
-COMMON="--environment prod --host andrew@10.10.5.34 \
+ssh -N -L 8788:127.0.0.1:8788 fun1
+# затем открыть http://127.0.0.1:8788/operator/status
+```
+
+Логин и пароль — `BOOK_OPERATOR_USERNAME` / `BOOK_OPERATOR_PASSWORD` из
+`/opt/narra-production-v2/compose.env`.
+
+Страница показывает три вещи и ничего не меняет:
+
+- **Воркеры** — по типам: сколько живо из поднятых, сборка, состояние. Живым
+  считается отметившийся меньше минуты назад. Разные сборки у живых воркеров
+  выносятся в подзаголовок: это первый признак недокатанного деплоя.
+- **Сейчас в работе** — задания, держащие аренду: книга, стадия или тип,
+  сколько держат. Аренда дольше 90 секунд подсвечивается.
+- **Книги** — последний прогон каждой книги: конвейер, стадия, счётчики
+  стадийных заданий, заданий прогона и медиа. Для карточек дополнительно —
+  подтверждённый состав, опубликованные карточки и последнее окно.
+
+Воркеры и занятые задания берутся из разных таблиц и не связаны между собой:
+`worker_heartbeats.worker_id` — имя контейнера, а `locked_by` задания —
+идентификатор процесса. Это два ответа на два разных вопроса: «кто поднят» и
+«что сейчас в работе».
+
+## Как здесь собирают образ
+
+GitHub Actions не запускается: *«The job was not started because recent account
+payments have failed or your spending limit needs to be increased»*. Пока
+биллинг не починен, образ собирается прямо на сервере, а деплой идёт штатными
+файлами с `--pull never`:
+
+```bash
+SHA=$(git rev-parse HEAD)
+git archive --format=tar "HEAD:services/narra-gateway" | gzip -9 > "/tmp/narra-$SHA.tar.gz"
+ssh fun1 "mkdir -p ~/narra-image-build/$SHA"
+scp "/tmp/narra-$SHA.tar.gz" "fun1:narra-image-build/$SHA/src.tar.gz"
+ssh fun1 "cd ~/narra-image-build/$SHA && tar xzf src.tar.gz \
+  && sudo docker build --build-arg GATEWAY_BUILD_VERSION=$SHA -t narra-gateway:$SHA . \
+  && rm -rf ~/narra-image-build"
+```
+
+`deploy-remote.sh` возит на сервер только `deploy.sh`, `migrate.sh` и
+`compose.i167.yml`; исходников и секретов на сервере не остаётся.
+ProxyJump он не умеет, поэтому `fun1` должен быть хостом в `~/.ssh/config`.
+
+## Деплой
+
+```bash
+cd services/narra-gateway
+SHA=<40-символьный git sha>
+COMMON="--environment prod --host fun1 \
   --remote-root /opt/narra-production-v2 \
-  --identity-file $HOME/.ssh/i196_andrew \
   --bundle-version $SHA \
   --image narra-gateway:$SHA \
   --env-file /opt/narra-production-v2/compose.env \
   --project narra-production-v2 --pull never"
-```
 
-### 1. Дописать настройки в `/opt/narra-production-v2/compose.env`
+ssh fun1 "sudo sed -i 's|^NARRA_GATEWAY_IMAGE=.*|NARRA_GATEWAY_IMAGE=narra-gateway:$SHA|' \
+  /opt/narra-production-v2/compose.env"
 
-На сервере, под `sudo`:
-
-```
-NARRA_GATEWAY_IMAGE=narra-gateway:1d9c37026860ebe0a859ba597ec5cd3b532e113f
-BOOK_ANALYSIS_CARDS_EDITIONS=15b99e46-cfe1-467b-99eb-927cd43e83c6,57546569-e108-4213-83cb-fc1450fb55e8,e0f9d716-6e12-4e7c-b301-23592976d464
-BOOK_ANALYSIS_WORKER_REPLICAS=6
-BOOK_CARD_WORKER_REPLICAS=2
-```
-
-`BOOK_ANALYSIS_SCAN_REPLICAS` и `BOOK_ANALYSIS_SYNTHESIZE_REPLICAS` больше не
-читаются: шесть прежних раннеров заменены одним `book-analysis-worker`.
-Опечатка в идентификаторе издания уронит gateway на старте — это намеренно.
-
-### 2. Резервная копия базы
-
-```bash
-ssh -J i167 andrew@10.10.5.34 \
-  'sudo -n docker exec narra-production-v2-postgres-1 \
-     pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc \
-   > /opt/narra-production-v2/backups/pre-cards-$(date +%Y%m%d-%H%M).dump'
-```
-
-Постраничные бэкапы трёх книг уже лежат в
-`~/narra-cards-canary/backups/pre-cards-20260910-1741/`.
-
-### 3. Миграции 027–032
-
-```bash
 ./deploy-remote.sh $COMMON --operation migrate-check
 ./deploy-remote.sh $COMMON --operation migrate-apply --confirm
-```
-
-`migrate-check` обязателен: `runBookMarkupMigrations` сверяет контрольные суммы
-уже применённых миграций до выполнения SQL.
-
-### 4. Деплой
-
-```bash
 ./deploy-remote.sh $COMMON --operation deploy --mode selected --component runtime
 ```
 
 `--component runtime` — gateway и все воркеры, без PostgreSQL и MinIO.
-`--remove-orphans` снимет шесть прежних раннеров анализа
-(`book-analysis-scan-1..6`, `prepare`, `resolve`, `synthesize`, `validate`,
-`publish`) — они заменены на `book-analysis-worker`.
+`--remove-orphans` снимает контейнеры сервисов, которых в compose уже нет.
 
-Проверка после деплоя:
+`NARRA_GATEWAY_IMAGE` правится именно в `compose.env`. Передать образ
+одноразовому контейнеру через `docker compose run -e` **нельзя**: `-e` задаёт
+переменную внутри контейнера, а compose берёт образ из `--env-file` и запустит
+старый. Так уже случилось: неадресный повтор заданий выгреб сотню чужих
+провалов.
 
-```bash
-ssh -J i167 andrew@10.10.5.34 \
-  'sudo -n docker ps --filter label=com.docker.compose.project=narra-production-v2 \
-     --format "{{.Names}}\t{{.Image}}\t{{.Status}}"'
-```
-
-Ожидается `book-card-worker-1..2` и `book-analysis-worker-1..6` на новом образе.
-
-### 5. Запуск трёх книг
+Резервная копия базы перед миграциями:
 
 ```bash
-for EDITION in 15b99e46-cfe1-467b-99eb-927cd43e83c6 \
-               57546569-e108-4213-83cb-fc1450fb55e8 \
-               e0f9d716-6e12-4e7c-b301-23592976d464; do
-  ssh -J i167 andrew@10.10.5.34 "sudo -n docker compose \
-    --project-name narra-production-v2 \
-    --env-file /opt/narra-production-v2/compose.env \
-    --file /opt/narra-production-v2/releases/$SHA/compose.i167.yml \
-    --profile operations run --rm --no-deps migrate \
-    node analysis/book-analysis-operator.mjs restart \
-      --book-edition-id $EDITION --pipeline cards"
-done
+ssh fun1 'sudo docker exec narra-production-v2-postgres-1 sh -c \
+  '"'"'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc'"'"' \
+  | sudo tee /opt/narra-production-v2/backups/pre-<дата>.dump > /dev/null'
 ```
 
-`--pipeline cards` задан явно, чтобы одноразовый контейнер не зависел от того,
-дошёл ли до него `BOOK_ANALYSIS_CARDS_EDITIONS`. Список всё равно нужен: он
-решает конвейер для прогонов, которые создаёт gateway сам.
+## Включение книги в канарейку
 
-### 6. Наблюдение
+Список изданий в `compose.env` — он решает конвейер для прогонов, которые
+gateway создаёт сам:
 
-По замерам на «Отцах и детях» (8 воркеров): первые персонажи — около 8 минут,
-вся книга — около 14 минут. 92 % времени уходит на карточки, 8 % — на
-подтверждение состава.
-
-```sql
-SELECT stage, status, count(*) FROM book_analysis_jobs
- WHERE run_id IN (SELECT id FROM book_analysis_runs WHERE pipeline_id = 'cards')
- GROUP BY 1, 2;
-
-SELECT job_type, status, count(*) FROM generation_jobs
- WHERE job_type IN ('character_card', 'roster_confirm') GROUP BY 1, 2;
 ```
+BOOK_ANALYSIS_CARDS_EDITIONS=<uuid>,<uuid>,<uuid>
+```
+
+Опечатка в идентификаторе роняет gateway на старте — это намеренно.
+
+Запуск конкретной книги (`--pipeline cards` задан явно, чтобы одноразовый
+контейнер не зависел от того, дошёл ли до него список):
+
+```bash
+ssh fun1 "sudo docker compose --project-name narra-production-v2 \
+  --env-file /opt/narra-production-v2/compose.env \
+  --file /opt/narra-production-v2/releases/\$SHA/compose.i167.yml \
+  --profile operations run --rm --no-deps migrate \
+  node analysis/book-analysis-operator.mjs restart \
+    --book-edition-id <uuid> --pipeline cards"
+```
+
+Назначение поимённо сильнее наследования конвейера от предыдущего прогона:
+книга, уже разобранная старым конвейером, перейдёт на карточки.
+
+## Повтор провалившихся заданий
+
+Только адресно — на установке 28 тысяч старых провалов, и повтор без фильтров
+возьмёт чужие:
+
+```bash
+node books/retry-failed-book-generation.mjs \
+  --job-type roster_confirm --edition <uuid> --limit 10
+```
+
+## Что уже наступало
+
+- **Стадии.** Триггер из миграции 005 требовал шага ровно на одну стадию, а
+  карточки идут `prepare → synthesize`. Лечится миграцией 033; симптом —
+  `prepare.failed` с `error_code="UNKNOWN"` до исчерпания попыток.
+- **Хранилище воркеру карточек.** Без него `ROSTER_STORAGE_UNAVAILABLE` и
+  `CARD_STORAGE_UNAVAILABLE`: и состав, и карточка читают нормализованный текст
+  ради цитаты по смещению. В логе старта воркера видно `object_storage=true`.
+- **Аллоўлист без подключения.** `BOOK_ANALYSIS_CARDS_EDITIONS` разбирался, но
+  до создания прогона не доходил, и список не давал карточек никому.
+- **Модель structured-task.** `deepseek/deepseek-v4-flash` отвечает по 100–124 с
+  и иногда возвращает текст вместо JSON — gateway пишет
+  `error_detail="LLM did not return a JSON object"`. Тем же затронут обычный
+  конвейер: scan-задания копятся с `TIMEOUT`. Проверять на дашборде по
+  «Сейчас в работе»: длинные аренды у `character_card` и `scan` — это оно.
 
 ## Откат
 
@@ -140,11 +150,5 @@ SELECT job_type, status, count(*) FROM generation_jobs
   --image readany/narra-gateway:d283d7d2 --pull always
 ```
 
-и вернуть `compose.env` из `compose.env.bak-20260910-180936`. Миграции 027–032
-только добавляют таблицы и ограничения; прежний образ с ними работает.
-
-## Долг
-
-- Починить биллинг GitHub Actions — без него нет ни CI, ни публикации образов.
-- После merge PR #93 пересобрать образ с sha главной ветки: тег `1d9c3702`
-  указывает на ветку, а не на main.
+и вернуть `compose.env` из копии рядом с ним. Миграции 027–033 только добавляют
+таблицы, ограничения и одно послабление триггера; прежний образ с ними работает.

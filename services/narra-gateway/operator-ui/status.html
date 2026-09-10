@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Narra — воркеры и книги</title>
+  <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="stylesheet" href="./assets/status.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Narra operator</p>
+      <h1>Воркеры и книги</h1>
+    </div>
+    <div class="topbar-side">
+      <a class="button secondary" href="./">Разметка книг</a>
+      <label class="refresh-toggle">
+        <input id="auto-refresh" type="checkbox" checked>
+        <span>Обновлять</span>
+      </label>
+      <div class="live-state" title="Данные обновляются каждые 5 секунд">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="live-label">Подключение…</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="status-page">
+    <section class="status-section">
+      <div class="status-head">
+        <h2>Воркеры</h2>
+        <p class="muted" id="workers-note">Живым считается воркер, отметившийся меньше минуты назад.</p>
+      </div>
+      <div class="worker-grid" id="worker-grid"></div>
+    </section>
+
+    <section class="status-section">
+      <div class="status-head">
+        <h2>Сейчас в работе</h2>
+        <p class="muted" id="running-note"></p>
+      </div>
+      <div class="running-list" id="running-list"></div>
+    </section>
+
+    <section class="status-section">
+      <div class="status-head">
+        <h2>Книги</h2>
+        <p class="muted" id="books-note"></p>
+      </div>
+      <div class="book-grid" id="book-grid"></div>
+    </section>
+  </main>
+
+  <script type="module" src="./assets/status.js"></script>
+</body>
+</html>
