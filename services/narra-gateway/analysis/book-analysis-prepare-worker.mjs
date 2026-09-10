@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { buildBookNameInventory } from './book-name-inventory.mjs'
 import { buildBookCardWindows } from './book-card-windows.mjs'
+import { collectBookCharacterFragments } from './book-character-fragments.mjs'
+import { inventoryRoster } from './book-name-inventory.mjs'
 import { createStableBookChunks } from './book-analysis-chunking.mjs'
 import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
 import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from './book-analysis-pipeline.mjs'
@@ -30,6 +32,7 @@ export function createBookAnalysisPrepareWorker({
   extractStructuredText = extractStructuredBookText,
   buildNameInventory = buildBookNameInventory,
   buildCardWindows = buildBookCardWindows,
+  collectFragments = collectBookCharacterFragments,
   logger = console
 }) {
   if (!repository || !storage) throw new TypeError('repository and storage are required')
@@ -83,6 +86,7 @@ export function createBookAnalysisPrepareWorker({
     // совместимость важнее полноты нового артефакта.
     let nameInventory = null
     let cardWindows = null
+    let characterFragments = null
     try {
       nameInventory = buildNameInventory({
         text: structured.text,
@@ -92,6 +96,23 @@ export function createBookAnalysisPrepareWorker({
       cardWindows = buildCardWindows({
         text: structured.text,
         navigation: structured.navigation
+      })
+      // Фрагменты собираются здесь по той же причине, что инвентарь: полный
+      // текст уже на руках, вызовов модели ни одного, а позже пришлось бы
+      // читать книгу из хранилища второй раз. Они и есть evidence карточки —
+      // точная цитата с глобальными смещениями, — поэтому считать их надо тем
+      // же проходом, что и окна, иначе окна и цитаты разъедутся.
+      characterFragments = collectFragments({
+        text: structured.text,
+        navigation: structured.navigation,
+        characters: inventoryRoster(nameInventory).map((candidate) => ({
+          characterKey: candidate.candidateKey,
+          names: [
+            candidate.displayName,
+            ...candidate.aliases,
+            ...(candidate.fullName ? [candidate.fullName] : [])
+          ]
+        }))
       })
     } catch (error) {
       log.error('prepare.name_inventory_failed', 'Инвентарь имён не построен', {
@@ -107,7 +128,8 @@ export function createBookAnalysisPrepareWorker({
       contentNavigation: structured.navigation,
       chunks,
       nameInventory,
-      cardWindows
+      cardWindows,
+      characterFragments
     })
     log.info('prepare.completed', 'Книга подготовлена для параллельного анализа', {
       run: input.runId,
@@ -118,7 +140,10 @@ export function createBookAnalysisPrepareWorker({
       inventory_version: nameInventory?.inventoryVersion ?? 'none',
       inventory_roster_count: nameInventory?.thresholds.rosterCount ?? 0,
       inventory_significant_count: nameInventory?.thresholds.significantCount ?? 0,
-      card_window_count: cardWindows?.windows.length ?? 0
+      card_window_count: cardWindows?.windows.length ?? 0,
+      fragment_character_count: characterFragments?.characters.length ?? 0,
+      fragment_count: (characterFragments?.characters ?? [])
+        .reduce((sum, entry) => sum + (entry.fragments?.length ?? 0), 0)
     })
     return result
   }

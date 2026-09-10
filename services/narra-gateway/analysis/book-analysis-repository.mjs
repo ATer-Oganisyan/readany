@@ -1396,6 +1396,7 @@ export function createPostgresBookAnalysisRepository(pool, {
       chunks,
       nameInventory = null,
       cardWindows = null,
+      characterFragments = null,
       scanPriority = 50
     }) {
       validateIdentifier(normalizedTextObjectKey, 'normalizedTextObjectKey', 900)
@@ -1503,7 +1504,33 @@ export function createPostgresBookAnalysisRepository(pool, {
             ]
           )
         }
-        for (const scanJob of strategy.createScanJobs(chunks)) {
+        // Фрагменты пишутся здесь же и по тому же тексту, что инвентарь и
+        // окна: они и есть evidence карточки, и разъехаться с окнами им нельзя.
+        for (const entry of characterFragments?.characters ?? []) {
+          for (const fragment of entry.fragments ?? []) {
+            await client.query(
+              `INSERT INTO book_character_fragments (
+                 run_id, character_key, fragment_id, paragraph_index, chapter_index,
+                 start_offset, end_offset, mention_count
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT (run_id, fragment_id) DO NOTHING`,
+              [
+                job.runId, entry.characterKey, fragment.fragmentId,
+                fragment.paragraphIndex, fragment.chapterIndex,
+                fragment.startOffset, fragment.endOffset,
+                fragment.mentionOffsets?.length ?? fragment.mentionCount ?? 1
+              ]
+            )
+          }
+        }
+        // У конвейера карточек сканирующей стадии нет: персонажей нашёл
+        // детерминированный инвентарь, а дальше работа идёт заданиями
+        // `generation_jobs`. Прогон при этом остаётся на `synthesize` — это
+        // честное «персонажей делают», — а различает его от обычного
+        // синтеза `pipeline_id` в соседней колонке.
+        const usesScanJobs = strategy.scanScope !== 'none'
+        const nextStage = usesScanJobs ? 'scan' : 'synthesize'
+        for (const scanJob of usesScanJobs ? strategy.createScanJobs(chunks) : []) {
           await client.query(
             `INSERT INTO book_analysis_jobs (
                id, run_id, stage, shard_key, chunk_id, required, priority,
@@ -1555,10 +1582,10 @@ export function createPostgresBookAnalysisRepository(pool, {
           [job.id, job.leaseToken, JSON.stringify({ textLength, chunkCount: chunks.length })]
         )
         await client.query(
-          `UPDATE book_analysis_runs SET stage = 'scan' WHERE id = $1`,
-          [job.runId]
+          `UPDATE book_analysis_runs SET stage = $2 WHERE id = $1`,
+          [job.runId, nextStage]
         )
-        return { textLength, chunkCount: chunks.length, stage: 'scan' }
+        return { textLength, chunkCount: chunks.length, stage: nextStage }
       })
     },
 
