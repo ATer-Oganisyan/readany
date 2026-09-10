@@ -31,7 +31,11 @@ import {
   bookChapters,
   bookParagraphs
 } from '../analysis/book-text-index.mjs'
-import { cardWindowForOffset } from '../analysis/book-card-windows.mjs'
+import {
+  buildBookCardWindows,
+  cardWindowForOffset,
+  cardWindowIndexForOffset
+} from '../analysis/book-card-windows.mjs'
 import {
   applyRosterConfirmation,
   buildRosterConfirmationRequest,
@@ -317,6 +321,58 @@ export function createModelClient(env = process.env, { postJsonImpl = postJson }
   }
 }
 
+/**
+ * Секундомер по стадиям.
+ *
+ * Мерить конвейер нужно по двум разным вопросам, и оба про время: сколько ждёт
+ * читатель, открывший книгу, прежде чем увидит героев первых глав, и сколько
+ * идёт подготовка всей книги. Первый ответ складывается не из всего прогона, а
+ * из инвентаря, фрагментов, подтверждения roster и карточек одного окна;
+ * второй — из всего. Без длительностей по стадиям ни то, ни другое из отчёта не
+ * достать, поэтому они пишутся в отчёт, а не в лог.
+ */
+function createStopwatch(now = () => Date.now()) {
+  const stages = []
+  return {
+    async measure(stage, operation, extra = {}) {
+      const startedAt = now()
+      try {
+        return await operation()
+      } finally {
+        stages.push({ stage, durationMs: now() - startedAt, ...extra })
+      }
+    },
+    stages
+  }
+}
+
+/**
+ * Навигация из оглавления каталога.
+ *
+ * Оглавление отдаёт границы в **байтах** utf-8, а весь позиционный индекс книги
+ * живёт в code units utf-16 — тех же, что у evidence-смещений. Перепутать эти
+ * единицы значит сдвинуть все главы на длину кириллицы, поэтому пересчёт явный:
+ * длина префикса в utf-16 по его длине в байтах.
+ */
+export function navigationFromToc(toc, text) {
+  const items = (toc?.items ?? [])
+    .filter((item) => Number.isSafeInteger(item?.start_byte))
+    .sort((left, right) => left.start_byte - right.start_byte)
+  if (items.length < 2) return null
+  const bytes = Buffer.from(text, 'utf8')
+  const utf16At = (byteOffset) =>
+    bytes.subarray(0, Math.min(byteOffset, bytes.length)).toString('utf8').length
+  const segments = items.map((item, index) => ({
+    key: String(item.key ?? `segment:${index + 1}`),
+    title: String(item.title ?? ''),
+    startOffset: utf16At(item.start_byte),
+    endOffset: Number.isSafeInteger(item.end_byte_exclusive)
+      ? utf16At(item.end_byte_exclusive)
+      : text.length
+  })).filter((segment) => segment.endOffset > segment.startOffset)
+  return segments.length >= 2 ? { segments } : null
+}
+
 export async function runCardPipeline({
   text,
   title,
@@ -324,20 +380,35 @@ export async function runCardPipeline({
   runId = randomUUID(),
   bookEditionId = randomUUID(),
   maxCards = 0,
+  navigation = null,
   complete,
-  onProgress = () => {}
+  onProgress = () => {},
+  now = () => Date.now()
 }) {
   if (!text) throw inputError('text is required')
+  const stopwatch = createStopwatch(now)
+  const startedAt = now()
   const normalizedTextHash = sha256(Buffer.from(text, 'utf8'))
-  const paragraphs = bookParagraphs(text)
-  const chapters = bookChapters(text, { paragraphs })
+  // Навигация меняет не удобство, а сам предмет измерения: без неё главы
+  // становятся синтетическими окнами по 30 000 символов, и «первые две главы»
+  // превращаются в кусок, которого в книге нет. В продакшене навигация есть
+  // всегда, поэтому и здесь она подаётся, когда доступна.
+  const { paragraphs, chapters } = await stopwatch.measure('index', async () => {
+    const indexed = bookParagraphs(text)
+    return {
+      paragraphs: indexed,
+      chapters: bookChapters(text, { navigation, paragraphs: indexed })
+    }
+  })
 
   onProgress({ stage: 'inventory' })
-  const inventory = buildBookNameInventory({ text, normalizedTextHash })
-  const candidates = inventoryRoster(inventory)
+  const { inventory, candidates } = await stopwatch.measure('inventory', async () => {
+    const built = buildBookNameInventory({ text, normalizedTextHash })
+    return { inventory: built, candidates: inventoryRoster(built) }
+  })
 
   onProgress({ stage: 'fragments', count: candidates.length })
-  const fragments = collectBookCharacterFragments({
+  const fragments = await stopwatch.measure('fragments', async () => collectBookCharacterFragments({
     text,
     characters: candidates.map((candidate) => ({
       characterKey: candidate.candidateKey,
@@ -352,7 +423,7 @@ export async function runCardPipeline({
     // фактически по одной цитате. В продакшене этой проблемы нет: там
     // фрагменты лежат в базе целиком, а окно отбирает их запросом.
     maxFragmentsPerCharacter: 4_000
-  })
+  }))
 
   onProgress({ stage: 'roster_confirm' })
   const request = buildRosterConfirmationRequest({
@@ -371,12 +442,22 @@ export async function runCardPipeline({
       `${runId}:roster-confirm:${request.inventoryVersion}:${request.promptVersion}`,
     ...request
   })
-  const rosterRaw = await complete(rosterConfirmationMessages(normalizedRequest))
-  const rosterShape = normalizeRosterConfirmationResult(parseJson(rosterRaw), normalizedRequest)
-  const confirmation = validateRosterConfirmation({ request, response: rosterShape })
-  const roster = applyRosterConfirmation({ request, candidates, confirmation })
+  const { confirmation, roster } = await stopwatch.measure(
+    'roster_confirm',
+    async () => {
+      const rosterRaw = await complete(rosterConfirmationMessages(normalizedRequest))
+      const rosterShape = normalizeRosterConfirmationResult(parseJson(rosterRaw), normalizedRequest)
+      const validated = validateRosterConfirmation({ request, response: rosterShape })
+      return {
+        confirmation: validated,
+        roster: applyRosterConfirmation({ request, candidates, confirmation: validated })
+      }
+    },
+    { candidateCount: request.roster.length, pairCount: request.candidatePairs.length }
+  )
 
   onProgress({ stage: 'cards', count: roster.length })
+  const cardWindows = buildBookCardWindows({ chapters })
   const byKey = new Map(fragments.characters.map((entry) => [entry.characterKey, entry]))
   const ordered = [...roster].sort((left, right) => right.mentionCount - left.mentionCount)
   const selected = maxCards > 0 ? ordered.slice(0, maxCards) : ordered
@@ -396,6 +477,7 @@ export async function runCardPipeline({
       cardFailures.push({ characterKey: character.characterKey, reason: 'no_fragments_in_window' })
       continue
     }
+    const cardStartedAt = now()
     try {
       const cardRequest = buildCharacterCardRequest({
         runId,
@@ -429,6 +511,14 @@ export async function runCardPipeline({
       cards.push({
         card: finalized.card,
         audit: finalized.audit,
+        // Длительность и окно на каждую карточку: из них считается и время до
+        // первых героев, и время всей книги.
+        durationMs: now() - cardStartedAt,
+        windowIndex: cardWindowIndexForOffset(
+          cardWindows.windows,
+          chapters,
+          character.firstMentionTextOffset
+        ),
         projection: characterCardProjection(finalized.card),
         // Координаты фрагментов нужны канарейке: она собирает из карточек
         // v3 и прогоняет настоящий Validate, а тот сверяет каждую цитату с
@@ -440,7 +530,8 @@ export async function runCardPipeline({
       cardFailures.push({
         characterKey: character.characterKey,
         reason: typeof error?.code === 'string' ? error.code : 'UNKNOWN',
-        message: String(error?.message ?? '').slice(0, 300)
+        message: String(error?.message ?? '').slice(0, 300),
+        durationMs: now() - cardStartedAt
       })
     }
   }
@@ -479,6 +570,11 @@ export async function runCardPipeline({
       aliases: character.names,
       observationCount: character.mentionCount
     })),
+    cardWindowCount: cardWindows.windows.length,
+    timings: {
+      totalMs: now() - startedAt,
+      stages: stopwatch.stages
+    },
     cards,
     cardFailures
   }
@@ -489,6 +585,7 @@ function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]
     if (value === '--text') result.textPath = argv[++index]
+    else if (value === '--toc') result.tocPath = argv[++index]
     else if (value === '--title') result.title = argv[++index]
     else if (value === '--author') result.author = argv[++index]
     else if (value === '--out') result.outPath = argv[++index]
@@ -507,6 +604,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const complete = createModelClient()
   if (!complete) throw inputError('JUDGE_BASE_URL, JUDGE_API_KEY and JUDGE_MODEL are required')
   const text = await readFile(options.textPath, 'utf8')
+  const navigation = options.tocPath
+    ? navigationFromToc(JSON.parse(await readFile(options.tocPath, 'utf8')), text)
+    : null
   const started = Date.now()
   const report = await runCardPipeline({
     text,
@@ -514,6 +614,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     author: options.author ?? '',
     runId: options.runId,
     maxCards: options.maxCards,
+    navigation,
     complete,
     onProgress: (event) => process.stderr.write(`  ${JSON.stringify(event)}\n`)
   })
