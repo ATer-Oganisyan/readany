@@ -53,6 +53,50 @@ export function bookAnalysisPipelineFromEnv(env = process.env) {
   )
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/**
+ * Издания, которым назначен конвейер карточек поимённо.
+ *
+ * Раскатка идёт канарейкой на нескольких каталожных книгах, а не флагом «всем
+ * новым импортам»: конвейер меняет то, что видит читатель, и откат стоит
+ * восстановления данных. Список поимённый именно поэтому — включить книгу можно
+ * только назвав её, а не задев целый класс книг настройкой по умолчанию.
+ *
+ * Мусор в списке — ошибка конфигурации, а не повод молча взять меньше книг:
+ * оператор, опечатавшийся в идентификаторе, должен узнать об этом при старте, а
+ * не по отсутствию эффекта.
+ */
+export function bookAnalysisCardsEditionsFromEnv(env = process.env) {
+  const raw = String(env.BOOK_ANALYSIS_CARDS_EDITIONS || '').trim()
+  if (!raw) return new Set()
+  const values = raw.split(/[,\s]+/).filter(Boolean)
+  const invalid = values.filter((value) => !UUID.test(value))
+  if (invalid.length) {
+    throw Object.assign(
+      new TypeError(
+        `BOOK_ANALYSIS_CARDS_EDITIONS contains values that are not book edition ids: ${invalid.join(', ')}`
+      ),
+      { code: 'BOOK_ANALYSIS_CARDS_EDITIONS_INVALID' }
+    )
+  }
+  return new Set(values.map((value) => value.toLowerCase()))
+}
+
+/**
+ * Конвейер конкретного издания: поимённый список сильнее настройки по
+ * умолчанию, но только в одну сторону — назначить карточки. Снять конвейер,
+ * заданный глобально, список не может: это делается той же настройкой, которой
+ * он задан.
+ */
+export function bookAnalysisPipelineForEdition(bookEditionId, env = process.env) {
+  const editions = bookAnalysisCardsEditionsFromEnv(env)
+  if (bookEditionId && editions.has(String(bookEditionId).toLowerCase())) {
+    return BOOK_ANALYSIS_PIPELINE_CARDS
+  }
+  return bookAnalysisPipelineFromEnv(env)
+}
+
 function narraScanJobs(chunks) {
   return chunks.map((chunk) => ({
     shardKey: `chunk:${chunk.ordinal}`,
