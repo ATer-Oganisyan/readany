@@ -39,6 +39,7 @@ import {
 import {
   applyRosterConfirmation,
   buildRosterConfirmationRequest,
+  rosterConfirmationIdempotencyKey,
   validateRosterConfirmation
 } from '../analysis/book-roster-confirmation.mjs'
 import {
@@ -438,8 +439,12 @@ export async function runCardPipeline({
   })
   if (!request) throw inputError('inventory produced nothing to confirm')
   const normalizedRequest = normalizeRosterConfirmationRequest({
-    idempotencyKey:
-      `${runId}:roster-confirm:${request.inventoryVersion}:${request.promptVersion}`,
+    idempotencyKey: rosterConfirmationIdempotencyKey({
+      runId,
+      windowIndex: request.windowIndex,
+      inventoryVersion: request.inventoryVersion,
+      promptVersion: request.promptVersion
+    }),
     ...request
   })
   const { confirmation, roster } = await stopwatch.measure(

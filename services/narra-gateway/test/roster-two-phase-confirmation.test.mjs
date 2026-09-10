@@ -19,9 +19,12 @@ import {
   applyRosterConfirmation,
   buildRosterConfirmationRequest,
   rosterCandidatesForWindow,
+  rosterConfirmationIdempotencyKey,
+  rosterConfirmationScope,
   rosterRevisionsAfterConfirmation,
   validateRosterConfirmation
 } from '../analysis/book-roster-confirmation.mjs'
+import { normalizeRosterConfirmationRequest } from '../generation/internal-generation-contracts.mjs'
 import { buildBookCardWindows } from '../analysis/book-card-windows.mjs'
 
 function candidate(overrides) {
@@ -177,4 +180,44 @@ test('a character whose candidates scatter is reported, not silently re-issued',
   assert.equal(revisions.length, 1)
   assert.equal(revisions[0].reason, 'split_across_characters')
   assert.equal(revisions[0].nextCharacterKeys.length, 2)
+})
+
+test('the two passes do not share an idempotency key', () => {
+  // Иначе второй заход молча получил бы из кэша ответ первого, и полный roster
+  // подменился бы roster'ом одного окна. Ошибка была бы тихой: ответ валиден,
+  // просто не тот.
+  const common = { runId: 'run-1', inventoryVersion: 'name-inventory-v1', promptVersion: 'p-v1' }
+  const first = rosterConfirmationIdempotencyKey({ ...common, windowIndex: 0 })
+  const whole = rosterConfirmationIdempotencyKey({ ...common, windowIndex: null })
+  assert.notEqual(first, whole)
+  assert.match(first, /:window-0:/)
+  assert.match(whole, /:book:/)
+  // Повтор того же захода ключ не меняет: кэш обязан срабатывать внутри области.
+  assert.equal(first, rosterConfirmationIdempotencyKey({ ...common, windowIndex: 0 }))
+  assert.equal(rosterConfirmationScope(3), 'window-3')
+  assert.equal(rosterConfirmationScope(null), 'book')
+  assert.equal(rosterConfirmationScope(-1), 'book')
+})
+
+test('the normalizer refuses a key that does not name its own scope', () => {
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Отцы и дети',
+    inventoryVersion: 'name-inventory-v1',
+    normalizedTextHash: 'a'.repeat(64),
+    windowIndex: 0,
+    candidates: [
+      candidate({ candidateKey: 'name:arkadiy', displayName: 'Аркадий', count: 200 }),
+      candidate({ candidateKey: 'name:kirsanov', displayName: 'Кирсанов', count: 90 })
+    ]
+  })
+  assert.equal(request.windowIndex, 0)
+  assert.throws(
+    () => normalizeRosterConfirmationRequest({
+      idempotencyKey: `run-1:roster-confirm:book:${request.inventoryVersion}:${request.promptVersion}`,
+      ...request
+    }),
+    /idempotencyKey/
+  )
 })

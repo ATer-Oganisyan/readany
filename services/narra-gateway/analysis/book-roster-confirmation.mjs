@@ -292,6 +292,35 @@ function confirmationRoster(candidates, fragments, fragmentLimit) {
  *   работает и в запрос это записано явно.
  * @returns {object|null} null, когда подтверждать нечего
  */
+/**
+ * Область подтверждения: окно или вся книга.
+ *
+ * Подтверждений на прогон теперь больше одного — сперва окно первых глав, потом
+ * вся книга, — и различать их обязано всё, что кэшируется по ключу. Без области
+ * оба захода имели бы один ключ идемпотентности, и второй молча получил бы
+ * ответ первого: полный roster подменился бы roster'ом одного окна.
+ */
+export function rosterConfirmationScope(windowIndex) {
+  return Number.isSafeInteger(windowIndex) && windowIndex >= 0
+    ? `window-${windowIndex}`
+    : 'book'
+}
+
+export function rosterConfirmationIdempotencyKey({
+  runId,
+  windowIndex = null,
+  inventoryVersion,
+  promptVersion
+}) {
+  return [
+    runId,
+    'roster-confirm',
+    rosterConfirmationScope(windowIndex),
+    inventoryVersion,
+    promptVersion
+  ].join(':')
+}
+
 export function buildRosterConfirmationRequest({
   runId,
   bookEditionId,
@@ -302,6 +331,7 @@ export function buildRosterConfirmationRequest({
   normalizedTextHash,
   candidates,
   fragments = null,
+  windowIndex = null,
   maxCandidates = MAX_CONFIRMATION_CANDIDATES
 }) {
   const ordered = (Array.isArray(candidates) ? candidates : [])
@@ -325,6 +355,9 @@ export function buildRosterConfirmationRequest({
     bookAuthor: author,
     language,
     coMentionGuardApplied: Boolean(fragments),
+    // Область живёт в самом запросе, а не только в ключе: по ответу должно быть
+    // видно, за что он отвечает — за окно или за всю книгу.
+    windowIndex: Number.isSafeInteger(windowIndex) && windowIndex >= 0 ? windowIndex : null,
     forbiddenPairs: forbiddenPairs.filter(({ leftKey, rightKey }) =>
       included.has(leftKey) && included.has(rightKey)),
     candidatePairs

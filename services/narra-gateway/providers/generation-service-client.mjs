@@ -107,6 +107,9 @@ export function createGenerationServiceClient({
         idempotencyKey: [
           input.runId,
           'roster-confirm',
+          Number.isSafeInteger(input.windowIndex) && input.windowIndex >= 0
+            ? `window-${input.windowIndex}`
+            : 'book',
           input.inventoryVersion,
           input.promptVersion
         ].join(':'),

@@ -2089,11 +2089,19 @@ export function normalizeRosterConfirmationRequest(input) {
   const body = exactKeys(input, new Set([
     'idempotencyKey', 'runId', 'bookEditionId', 'confirmationVersion', 'promptVersion',
     'inventoryVersion', 'normalizedTextHash', 'bookTitle', 'bookAuthor', 'language',
-    'coMentionGuardApplied', 'forbiddenPairs', 'candidatePairs', 'roster'
+    'coMentionGuardApplied', 'windowIndex', 'forbiddenPairs', 'candidatePairs', 'roster'
   ]))
   const runId = identifier(body.runId, 'runId')
   const promptVersion = identifier(body.promptVersion, 'promptVersion')
-  const expectedKey = `${runId}:roster-confirm:${body.inventoryVersion}:${promptVersion}`
+  // Область — часть ключа. Подтверждений на прогон больше одного (окно первых
+  // глав, затем вся книга), и без области оба захода имели бы один ключ: второй
+  // молча получил бы из кэша ответ первого, то есть полный roster подменился бы
+  // roster'ом одного окна.
+  const scope = Number.isSafeInteger(body.windowIndex) && body.windowIndex >= 0
+    ? `window-${body.windowIndex}`
+    : 'book'
+  const expectedKey =
+    `${runId}:roster-confirm:${scope}:${body.inventoryVersion}:${promptVersion}`
   if (body.idempotencyKey !== expectedKey) {
     invalid('idempotencyKey does not match roster confirmation request')
   }
