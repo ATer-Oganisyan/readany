@@ -561,6 +561,41 @@ test('failed generation retry preserves the idempotent job and resets its bundle
   assert.equal(jobs[0].status, 'queued')
 })
 
+test('a scoped retry names its job types and editions instead of taking the oldest failures', async () => {
+  // На установке с десятками тысяч старых провалов повтор без сужения берёт
+  // чужие задания. Вернуть в работу три подтверждения состава конкретной книги
+  // было нечем — оставался ручной UPDATE по продовой базе.
+  const EDITION = '11111111-1111-4111-8111-111111111111'
+  let captured = null
+  const record = (sql, params) => {
+    captured = { sql, params }
+    return { rows: [] }
+  }
+  const pool = scriptedPool([record, record])
+  const repository = createPostgresBookMarkupRepository(pool)
+  await repository.retryFailedGenerationJobs({
+    limit: 10,
+    jobTypes: ['roster_confirm'],
+    bookEditionIds: [EDITION]
+  })
+  assert.match(captured.sql, /job_type = ANY/)
+  assert.match(captured.sql, /book_edition_id = ANY/)
+  assert.deepEqual(captured.params, [10, ['roster_confirm'], [EDITION]])
+
+  // Без сужения запрос обязан остаться прежним: NULL отключает оба фильтра.
+  await repository.retryFailedGenerationJobs({ limit: 10 })
+  assert.deepEqual(captured.params, [10, null, null])
+
+  await assert.rejects(
+    () => repository.retryFailedGenerationJobs({ limit: 10, bookEditionIds: ['not-a-uuid'] }),
+    /bookEditionId must be a UUID/
+  )
+  await assert.rejects(
+    () => repository.retryFailedGenerationJobs({ limit: 10, jobTypes: [] }),
+    RangeError
+  )
+})
+
 test('migration enforces durable idempotency and bundle uniqueness', async () => {
   const migration = await readFile(
     new URL('../migrations/001_book_markup.sql', import.meta.url),
