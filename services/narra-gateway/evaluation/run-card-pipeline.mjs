@@ -256,7 +256,12 @@ export async function runCardPipeline({
       cards.push({
         card: finalized.card,
         audit: finalized.audit,
-        projection: characterCardProjection(finalized.card)
+        projection: characterCardProjection(finalized.card),
+        // Координаты фрагментов нужны канарейке: она собирает из карточек
+        // v3 и прогоняет настоящий Validate, а тот сверяет каждую цитату с
+        // текстом по смещениям. Сами цитаты не дублируются — они и есть текст.
+        fragments: windowFragments.map(({ fragmentId, startOffset, endOffset, chapterIndex }) =>
+          ({ fragmentId, characterKey: character.characterKey, startOffset, endOffset, chapterIndex }))
       })
     } catch (error) {
       cardFailures.push({

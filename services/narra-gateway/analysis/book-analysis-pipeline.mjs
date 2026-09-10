@@ -14,9 +14,11 @@ import { selectCharacterSynthesisEvidence } from './book-analysis-synthesis.mjs'
 
 export const BOOK_ANALYSIS_PIPELINE_NARRA = 'narra'
 export const BOOK_ANALYSIS_PIPELINE_EXTERNAL = 'external'
+export const BOOK_ANALYSIS_PIPELINE_CARDS = 'cards'
 export const BOOK_ANALYSIS_PIPELINE_IDS = Object.freeze([
   BOOK_ANALYSIS_PIPELINE_NARRA,
-  BOOK_ANALYSIS_PIPELINE_EXTERNAL
+  BOOK_ANALYSIS_PIPELINE_EXTERNAL,
+  BOOK_ANALYSIS_PIPELINE_CARDS
 ])
 
 export const BOOK_ANALYSIS_NORMALIZATION_VERSION = 'normalized-text-v2'
@@ -25,6 +27,10 @@ export const EXTERNAL_UPSTREAM_REVISION = 'd532bdd0a15f2948fd0c99f5e11b92677cb5c
 export const EXTERNAL_PIPELINE_IMPLEMENTATION_VERSION =
   'external-autiobook-v1.d532bdd0'
 export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v1'
+export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
+export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
+export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'
 
 const PIPELINE_IDS = new Set(BOOK_ANALYSIS_PIPELINE_IDS)
 
@@ -245,6 +251,44 @@ const STRATEGIES = new Map([
     reconcileIdentities: reconcileExternalIdentities,
     synthesizeCharacter: synthesizeExternalCharacter,
     quality: Object.freeze({ requireTextCoverage: false })
+  })]
+  ,[BOOK_ANALYSIS_PIPELINE_CARDS, Object.freeze({
+    id: BOOK_ANALYSIS_PIPELINE_CARDS,
+    implementationVersion: CARDS_PIPELINE_IMPLEMENTATION_VERSION,
+    orchestrationVersion: BOOK_ANALYSIS_PIPELINE_VERSION,
+    extractorVersion: CARDS_PIPELINE_INVENTORY_VERSION,
+    synthesisVersion: CARDS_PIPELINE_CARD_VERSION,
+    reconciliationVersion: CARDS_PIPELINE_CONFIRMATION_VERSION,
+    normalizationVersion: BOOK_ANALYSIS_NORMALIZATION_VERSION,
+    outputSchemaVersion: BOOK_ANALYSIS_SCHEMA_VERSION,
+    analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION,
+    scanScope: 'none',
+    /**
+     * Сканирующей стадии у этого конвейера нет: персонажей находит
+     * детерминированный инвентарь в Prepare, а работа идёт заданиями
+     * `generation_jobs`. Пока переход стадий прогона под это не подведён,
+     * попытка создать scan-задания отказывает громко. Тихо вернуть пустой
+     * список было бы хуже: прогон встал бы навсегда без единой строки в логе.
+     */
+    createScanJobs() {
+      throw Object.assign(
+        new Error('cards pipeline does not use scan jobs; stage flow is not wired yet'),
+        { code: 'PIPELINE_STAGE_FLOW_UNWIRED' }
+      )
+    },
+    reconcileIdentities() {
+      throw Object.assign(
+        new Error('cards pipeline reconciles identities in roster confirmation'),
+        { code: 'PIPELINE_STAGE_FLOW_UNWIRED' }
+      )
+    },
+    synthesizeCharacter() {
+      throw Object.assign(
+        new Error('cards pipeline synthesizes characters as character_card jobs'),
+        { code: 'PIPELINE_STAGE_FLOW_UNWIRED' }
+      )
+    },
+    quality: Object.freeze({ requireTextCoverage: true })
   })]
 ])
 
