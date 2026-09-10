@@ -2925,6 +2925,29 @@ export function createPostgresBookMarkupRepository(pool, {
         // другой исполнитель; без проверки прежний записал бы свой результат
         // поверх чужой работы и сбросил бы новую аренду.
         await requireLeasedJob(client, job)
+        // Кандидат принадлежит ровно одному персонажу прогона — это держит
+        // `book_character_roster_candidate_unique`. Но подтверждение как раз и
+        // перегруппировывает кандидатов: полный заход по книге собирает
+        // «Дубровского» из тех же имён, из которых окно собрало «Дубровском», и
+        // под другим ключом. Upsert идёт по (run_id, character_key) и такую
+        // строку не видит — заход падал на нарушении уникальности и не мог
+        // завершиться никогда.
+        //
+        // Снимаются только строки, чьих кандидатов забрал другой персонаж
+        // нового состава. Всё остальное остаётся: подтверждение уточняет
+        // состав, а не переписывает историю прогона.
+        const claimedCandidates = roster
+          .map((character) => (character.candidateKeys ?? [])[0])
+          .filter(Boolean)
+        if (claimedCandidates.length) {
+          await client.query(
+            `DELETE FROM book_character_roster
+              WHERE run_id = $1
+                AND candidate_keys[1] = ANY($2::text[])
+                AND character_key <> ALL($3::text[])`,
+            [runId, claimedCandidates, roster.map((character) => character.characterKey)]
+          )
+        }
         for (const character of roster) {
           await client.query(
             `INSERT INTO book_character_roster (

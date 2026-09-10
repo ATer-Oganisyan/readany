@@ -395,3 +395,74 @@ test('a lone candidate is classified by the model and gets a card', {
     await isolated.release()
   }
 })
+
+test('the book pass regroups candidates the window pass had grouped differently', {
+  skip: !connectionString
+}, async () => {
+  // Уникальный индекс держит «кандидат принадлежит одному персонажу прогона».
+  // Но подтверждение как раз перегруппировывает: полный заход собирает
+  // «Дубровского» из тех же имён, из которых окно собрало «Дубровском», и под
+  // другим ключом. Upsert идёт по (run_id, character_key) и такую строку не
+  // видит — заход падал на нарушении уникальности и не завершался никогда.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const { bookEditionId, runId } = await seed(pool)
+
+    // Окно собрало персонажа под одним ключом.
+    await runner(repository).run(
+      await claimRosterJob(pool, { bookEditionId, runId, windowIndex: 0 })
+    )
+    const before = await pool.query(
+      'SELECT character_key, candidate_keys FROM book_character_roster WHERE run_id = $1',
+      [runId]
+    )
+    assert.equal(before.rows.length, 1)
+    const movedCandidate = before.rows[0].candidate_keys[0]
+
+    // Полный заход отдаёт тех же кандидатов другому персонажу.
+    const queued = await pool.query(
+      `SELECT id FROM generation_jobs
+        WHERE analysis_run_id = $1 AND job_type = 'roster_confirm'
+          AND card_window_index IS NULL AND status = 'queued'`,
+      [runId]
+    )
+    const leaseToken = randomUUID()
+    await pool.query(
+      `UPDATE generation_jobs
+          SET status = 'running', locked_at = now(), locked_by = 'test', lease_token = $2
+        WHERE id = $1`,
+      [queued.rows[0].id, leaseToken]
+    )
+    const result = await repository.completeRosterConfirmation(
+      { id: queued.rows[0].id, bookEditionId, leaseToken },
+      {
+        runId,
+        bookEditionId,
+        windowIndex: null,
+        roster: [{
+          characterKey: 'char:renamed',
+          canonicalName: 'Другое имя',
+          names: ['Другое имя'],
+          candidateKeys: before.rows[0].candidate_keys,
+          mentionCount: 5,
+          firstMentionTextOffset: 0,
+          tier: 'significant'
+        }],
+        revisions: [],
+        skipped: false
+      }
+    )
+    assert.equal(result.characterCount, 1)
+
+    const after = await pool.query(
+      'SELECT character_key, candidate_keys FROM book_character_roster WHERE run_id = $1',
+      [runId]
+    )
+    assert.deepEqual(after.rows.map(({ character_key: key }) => key), ['char:renamed'])
+    assert.equal(after.rows[0].candidate_keys[0], movedCandidate)
+  } finally {
+    await isolated.release()
+  }
+})
