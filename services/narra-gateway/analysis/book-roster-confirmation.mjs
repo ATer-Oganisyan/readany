@@ -573,3 +573,81 @@ export function applyRosterConfirmation({ request, candidates, confirmation }) {
     right.mentionCount - left.mentionCount ||
     compareText(left.characterKey, right.characterKey))
 }
+
+/**
+ * Кандидаты, за которых отвечает окно.
+ *
+ * Подтверждение по всей книге — самый долгий шаг быстрого пути: у «Отцов и
+ * детей» это ~40 000 токенов запроса и 36 пар, у «Преступления и наказания» тот
+ * же вызов шёл около пяти минут. Всё это время читатель, открывший книгу, не
+ * видит ни одного героя, хотя окну первых глав из 112 кандидатов нужны 13 —
+ * пятая часть запроса и три пары вместо тридцати шести.
+ *
+ * Поэтому подтверждение идёт в два захода: сначала кандидаты окна, потом вся
+ * книга в фоне. Состав окна берётся из `assignStartOffset`/`assignEndOffset` —
+ * тех же границ, по которым окну назначаются карточки, — а не из барьера
+ * окна: барьер у всех окон начинается с нуля и состава не задаёт.
+ */
+export function rosterCandidatesForWindow(candidates, window) {
+  if (!Array.isArray(candidates)) return []
+  const start = Number.isSafeInteger(window?.assignStartOffset) ? window.assignStartOffset : 0
+  const end = Number.isSafeInteger(window?.assignEndOffset) ? window.assignEndOffset : 0
+  if (end <= start) return []
+  return candidates.filter((candidate) => {
+    const offset = candidate?.firstMentionTextOffset
+    return Number.isSafeInteger(offset) && offset >= start && offset < end
+  })
+}
+
+/**
+ * Персонажи, чья личность изменилась после более полного подтверждения.
+ *
+ * Ранний заход видит только кандидатов своего окна, поэтому герой, впервые
+ * названный в первой главе, может слиться с кандидатом из десятой только на
+ * втором заходе. Карточка неизменяема, значит такое слияние — не правка строки,
+ * а повод для новой ревизии: возвращаются ключи уже выпущенных персонажей,
+ * состав кандидатов у которых вырос или которые ушли под другой ключ.
+ *
+ * Возвращается именно «что переиздать», а не «что изменилось вообще»: персонаж,
+ * которого второй заход не тронул, переиздания не требует, и лишняя ревизия
+ * стоила бы вызова модели и нового портрета.
+ */
+export function rosterRevisionsAfterConfirmation(previousRoster, nextRoster) {
+  const nextByCandidate = new Map()
+  for (const character of nextRoster ?? []) {
+    for (const candidateKey of character.candidateKeys ?? []) {
+      nextByCandidate.set(candidateKey, character)
+    }
+  }
+  const revisions = []
+  for (const previous of previousRoster ?? []) {
+    const owners = new Set()
+    for (const candidateKey of previous.candidateKeys ?? []) {
+      const owner = nextByCandidate.get(candidateKey)
+      if (owner) owners.add(owner)
+    }
+    if (owners.size !== 1) {
+      // Ноль владельцев — персонаж исчез из roster; больше одного — его
+      // кандидаты разъехались. И то и другое требует решения человека, а не
+      // молчаливой новой ревизии.
+      revisions.push({
+        characterKey: previous.characterKey,
+        reason: owners.size === 0 ? 'dropped_from_roster' : 'split_across_characters',
+        nextCharacterKeys: [...owners].map(({ characterKey }) => characterKey)
+      })
+      continue
+    }
+    const [owner] = owners
+    const grew = (owner.candidateKeys ?? []).length > (previous.candidateKeys ?? []).length
+    if (!grew && owner.characterKey === previous.characterKey) continue
+    revisions.push({
+      characterKey: previous.characterKey,
+      reason: owner.characterKey === previous.characterKey ? 'absorbed_more_candidates' : 'merged_into',
+      nextCharacterKeys: [owner.characterKey],
+      canonicalName: owner.canonicalName,
+      addedCandidateKeys: (owner.candidateKeys ?? [])
+        .filter((key) => !(previous.candidateKeys ?? []).includes(key))
+    })
+  }
+  return revisions.sort((left, right) => compareText(left.characterKey, right.characterKey))
+}
