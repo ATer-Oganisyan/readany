@@ -34,10 +34,10 @@ test('an empty book list skips the per-run queries entirely', async () => {
   const database = pool([[/FROM worker_heartbeats/, [
     {
       worker_type: 'book-card',
-      build_version: 'abc123',
-      state: 'ready',
-      total: 2,
       alive: 2,
+      stale: 8,
+      builds: ['abc123'],
+      states: ['ready'],
       last_seen_at: '2026-09-10T18:00:00.000Z'
     }
   ]]])
@@ -45,6 +45,7 @@ test('an empty book list skips the per-run queries entirely', async () => {
   assert.equal(snapshot.books.length, 0)
   assert.equal(snapshot.workers[0].workerType, 'book-card')
   assert.equal(snapshot.workers[0].alive, 2)
+  assert.equal(snapshot.workers[0].stale, 8)
   assert.equal(database.queries.length, 3)
   assert.ok(!database.queries.some(({ sql }) => /book_character_roster/.test(sql)))
 })
@@ -96,8 +97,8 @@ test('running jobs are read from job leases, not from worker heartbeats', async 
   // занято» это два ответа, а не один join.
   const database = pool([
     [/FROM worker_heartbeats/, [{
-      worker_type: 'book-card', build_version: 'abc', state: 'ready',
-      total: 2, alive: 1, last_seen_at: '2026-09-10T18:00:00.000Z'
+      worker_type: 'book-card', alive: 1, stale: 1,
+      builds: ['abc'], states: ['ready'], last_seen_at: '2026-09-10T18:00:00.000Z'
     }]],
     [/AS busy/, [{
       kind: 'generation',
@@ -119,7 +120,26 @@ test('running jobs are read from job leases, not from worker heartbeats', async 
     bookTitle: 'Обломов',
     leaseAgeMs: 42_000
   }])
-  assert.notEqual(snapshot.workers[0].alive, snapshot.workers[0].total)
+  assert.equal(snapshot.workers[0].alive, 1)
+  assert.equal(snapshot.workers[0].stale, 1)
+})
+
+test('heartbeats are grouped by worker type and old containers age out', async () => {
+  // Строка heartbeat живёт по имени контейнера, а контейнер после каждого
+  // деплоя новый. Разбивка по сборкам давала 136 групп, из которых 130 —
+  // вчерашние контейнеры; список воркеров переставал читаться.
+  let captured = null
+  const database = {
+    async query(sql, params) {
+      if (/FROM worker_heartbeats/.test(sql)) captured = { sql, params }
+      return { rows: [] }
+    }
+  }
+  await createBookProgressRepository(database).snapshot({ workerRetentionHours: 6 })
+  assert.match(captured.sql, /GROUP BY worker_type\b/)
+  assert.doesNotMatch(captured.sql, /GROUP BY worker_type, build_version/)
+  assert.match(captured.sql, /HAVING count\(\*\) FILTER \(WHERE kept\) > 0/)
+  assert.deepEqual(captured.params, [60, 6])
 })
 
 test('the snapshot refuses selectors that would scan the whole installation', async () => {
@@ -128,6 +148,7 @@ test('the snapshot refuses selectors that would scan the whole installation', as
   await assert.rejects(() => repository.snapshot({ bookLimit: 500 }), RangeError)
   await assert.rejects(() => repository.snapshot({ recentHours: 0 }), RangeError)
   await assert.rejects(() => repository.snapshot({ runningLimit: 5_000 }), RangeError)
+  await assert.rejects(() => repository.snapshot({ workerRetentionHours: 0 }), RangeError)
   assert.throws(() => createBookProgressRepository(pool([]), { staleWorkerSeconds: 5 }), RangeError)
   assert.throws(() => createBookProgressRepository(null), TypeError)
 })

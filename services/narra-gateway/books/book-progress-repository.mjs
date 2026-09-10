@@ -11,6 +11,13 @@
  * `worker_heartbeats.worker_id` — имя контейнера (HOSTNAME), а `locked_by`
  * задания — идентификатор процесса, и связать их join'ом нельзя. Поэтому здесь
  * два ответа на два разных вопроса: «кто поднят» и «что сейчас в работе».
+ *
+ * Воркеры сводятся по типу, а не по типу и сборке. Строка heartbeat живёт по
+ * имени контейнера, а контейнер после каждого деплоя новый: пять выкаток за
+ * день дают пять мёртвых строк на каждый живой воркер. Разбивка по сборкам
+ * превращала список в 136 групп, из которых 130 — вчерашние контейнеры.
+ * Сборки живых воркеров остаются: расхождение в них и есть тот единственный
+ * случай, ради которого разбивка была нужна.
  */
 
 const ACTIVE_RUN_STATUSES = ['queued', 'running']
@@ -53,9 +60,18 @@ export function createBookProgressRepository(pool, { staleWorkerSeconds = 60 } =
   }
 
   return {
-    async snapshot({ bookLimit = 25, recentHours = 24, runningLimit = 60 } = {}) {
+    async snapshot({
+      bookLimit = 25,
+      recentHours = 24,
+      runningLimit = 60,
+      workerRetentionHours = 24
+    } = {}) {
       if (!Number.isSafeInteger(bookLimit) || bookLimit < 1 || bookLimit > 200) {
         throw new RangeError('bookLimit must be between 1 and 200')
+      }
+      if (!Number.isSafeInteger(workerRetentionHours)
+        || workerRetentionHours < 1 || workerRetentionHours > 720) {
+        throw new RangeError('workerRetentionHours must be between 1 and 720')
       }
       if (!Number.isSafeInteger(recentHours) || recentHours < 1 || recentHours > 720) {
         throw new RangeError('recentHours must be between 1 and 720')
@@ -66,16 +82,22 @@ export function createBookProgressRepository(pool, { staleWorkerSeconds = 60 } =
 
       const [workers, running, runs] = await Promise.all([
         pool.query(
-          `SELECT worker_type, build_version, state,
-                  count(*)::integer AS total,
-                  count(*) FILTER (
-                    WHERE last_seen_at >= now() - make_interval(secs => $1::double precision)
-                  )::integer AS alive,
-                  max(last_seen_at) AS last_seen_at
-             FROM worker_heartbeats
-            GROUP BY worker_type, build_version, state
-            ORDER BY worker_type, build_version, state`,
-          [staleWorkerSeconds]
+          `SELECT worker_type,
+                  count(*) FILTER (WHERE fresh)::integer AS alive,
+                  count(*) FILTER (WHERE NOT fresh AND kept)::integer AS stale,
+                  coalesce(array_agg(DISTINCT build_version) FILTER (WHERE fresh), '{}') AS builds,
+                  coalesce(array_agg(DISTINCT state) FILTER (WHERE fresh), '{}') AS states,
+                  max(last_seen_at) FILTER (WHERE kept) AS last_seen_at
+             FROM (
+               SELECT worker_type, build_version, state, last_seen_at,
+                      last_seen_at >= now() - make_interval(secs => $1::double precision) AS fresh,
+                      last_seen_at >= now() - make_interval(hours => $2::integer) AS kept
+                 FROM worker_heartbeats
+             ) AS beats
+            GROUP BY worker_type
+           HAVING count(*) FILTER (WHERE kept) > 0
+            ORDER BY count(*) FILTER (WHERE fresh) DESC, worker_type`,
+          [staleWorkerSeconds, workerRetentionHours]
         ),
         pool.query(
           `SELECT kind, job_id, worker_id, label, character_key, book_title, lease_age_ms
@@ -179,12 +201,13 @@ export function createBookProgressRepository(pool, { staleWorkerSeconds = 60 } =
       return {
         generatedAt: new Date().toISOString(),
         staleWorkerSeconds,
+        workerRetentionHours,
         workers: workers.rows.map((row) => ({
           workerType: row.worker_type,
-          buildVersion: row.build_version,
-          state: row.state,
-          total: count(row.total),
           alive: count(row.alive),
+          stale: count(row.stale),
+          builds: row.builds ?? [],
+          states: row.states ?? [],
           lastSeenAt: row.last_seen_at
         })),
         running: running.rows.map((row) => ({

@@ -87,9 +87,22 @@ test('PostgreSQL reports workers, leases and per-book progress in one snapshot',
     const snapshot = await createBookProgressRepository(pool).snapshot()
     assert.match(snapshot.generatedAt, /^\d{4}-\d{2}-\d{2}T/)
 
-    const worker = snapshot.workers.find((entry) => entry.buildVersion === 'test-build')
-    assert.equal(worker.workerType, 'book-card')
-    assert.equal(worker.alive, 1)
+    const worker = snapshot.workers.find((entry) => entry.workerType === 'book-card')
+    assert.ok(worker.alive >= 1)
+    assert.ok(worker.builds.includes('test-build'))
+    assert.ok(worker.states.includes('ready'))
+
+    // Погасший контейнер попадает в `stale`, а не в «живых»: после деплоя его
+    // строка остаётся, и без этого разделения дашборд показывал бы призраков.
+    await pool.query(
+      `INSERT INTO worker_heartbeats (worker_id, worker_type, build_version, state, last_seen_at)
+       VALUES ($1, 'book-card', 'test-build', 'ready', now() - interval '10 minutes')`,
+      [`${workerId}-gone`]
+    )
+    const afterRedeploy = await createBookProgressRepository(pool).snapshot()
+    const regrouped = afterRedeploy.workers.find((entry) => entry.workerType === 'book-card')
+    assert.equal(regrouped.alive, worker.alive)
+    assert.ok(regrouped.stale >= 1)
 
     const lease = snapshot.running.find((entry) => entry.workerId === 'cover-worker-1')
     assert.equal(lease.kind, 'generation')
@@ -107,7 +120,10 @@ test('PostgreSQL reports workers, leases and per-book progress in one snapshot',
     assert.deepEqual(book.roster, [{ tier: 'significant', count: 1 }])
     assert.deepEqual(book.cards, { published: 1, lastWindowIndex: 0 })
   } finally {
-    await pool.query('DELETE FROM worker_heartbeats WHERE worker_id = $1', [workerId]).catch(() => {})
+    await pool.query(
+      'DELETE FROM worker_heartbeats WHERE worker_id = ANY($1::text[])',
+      [[workerId, `${workerId}-gone`]]
+    ).catch(() => {})
     await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
     await pool.end()
   }

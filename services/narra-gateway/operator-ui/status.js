@@ -80,19 +80,21 @@ function renderWorkers(snapshot) {
     elements['worker-grid'].innerHTML = '<p class="empty-note">Ни один воркер не отметился.</p>'
     return
   }
-  const builds = new Set(groups.filter((group) => group.alive > 0).map((group) => group.buildVersion))
+  const builds = new Set(groups.flatMap((group) => group.builds ?? []))
   elements['workers-note'].textContent = builds.size > 1
     ? `Живые воркеры на разных сборках: ${[...builds].map((build) => build.slice(0, 8)).join(', ')}`
-    : `Живым считается воркер, отметившийся меньше ${snapshot.staleWorkerSeconds} с назад.`
+    : `Живой — отметился меньше ${snapshot.staleWorkerSeconds} с назад. Погасшие строки`
+      + ` хранятся ${snapshot.workerRetentionHours} ч: после деплоя старый контейнер оставляет свою.`
   elements['worker-grid'].innerHTML = groups.map((group) => {
-    const tone = group.alive === 0 ? 'down' : group.alive < group.total ? 'degraded' : ''
+    const tone = group.alive === 0 ? 'down' : ''
     return `<article class="worker-card ${tone}">
       <div class="worker-name">${escapeHtml(group.workerType)}</div>
-      <div class="worker-count">${group.alive}<span class="of"> / ${group.total}</span></div>
+      <div class="worker-count">${group.alive}<span class="of"> живых</span></div>
       <div class="worker-meta">
-        <span>состояние: ${escapeHtml(group.state)}</span>
+        <span>${group.states.length ? `состояние: ${escapeHtml(group.states.join(', '))}` : 'не отвечает'}</span>
         <span>отметка: ${escapeHtml(since(group.lastSeenAt))} назад</span>
-        <code>${escapeHtml(String(group.buildVersion).slice(0, 12))}</code>
+        ${group.stale ? `<span>погасших контейнеров: ${group.stale}</span>` : ''}
+        <code>${escapeHtml((group.builds ?? []).map((build) => build.slice(0, 12)).join(' '))}</code>
       </div>
     </article>`
   }).join('')
