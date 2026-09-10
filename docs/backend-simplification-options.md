@@ -23,8 +23,9 @@ current architecture docs. The complexity is structural: boilerplate that was
 copied instead of parameterized, and a deployment topology finer-grained than
 the schema requires.
 
-> **Status (2026-09-10):** A and B are implemented on
-> `refactor/backend-simplification-a-b`. C, D and E remain open.
+> **Status (2026-09-10):** all five options are implemented — A and B on
+> `refactor/backend-simplification-a-b`, C, D and E on
+> `refactor/backend-simplification-c-e`, which is stacked on top of it.
 
 ## Option A — collapse 6 analysis worker processes into 1 — DONE
 
@@ -104,7 +105,7 @@ keeps the deadlock retry with backoff that only the markup repository had.
 `validateLeaseSeconds` stays local to the analysis repository — its 30-second
 floor is a domain rule, not shared mechanics.
 
-## Option C — split the two god-files by responsibility
+## Option C — split the two god-files by responsibility — DONE
 
 - `index.mjs` (2,516 LOC) is configuration plus a Kandinsky image client, a
   Kandinsky video client, a token cache, 23 routes and all DI wiring. Lines
@@ -119,7 +120,21 @@ floor is a domain rule, not shared mechanics.
 Effort ~2 days. Risk low (pure moves). Payoff: the two files people avoid
 touching become readable.
 
-## Option D — give the flat directory a shape
+**As implemented.** The Kandinsky image and video clients became
+`provider-kandinsky-image.mjs` and `provider-kandinsky-video.mjs`, factories
+over config rather than closures over module-level globals. Their identical
+serialising queue became `createSerialQueue`, and `abortableDelay` moved next
+to `withTimeout` in `concurrency.mjs`. `httpErr`/`statusFor` moved to
+`gateway-errors.mjs` — without that the extracted clients would have dragged
+the whole of `index.mjs` behind them. The generation normalisers moved to
+`internal-generation-contracts.mjs`; the service imports the 36 declarations it
+actually uses and re-exports `filterStableTraits` and
+`fallbackProfileDescription` so existing importers keep working.
+
+`index.mjs` 2,516 → 2,068 lines; `internal-generation-service.mjs` 2,810 →
+1,089.
+
+## Option D — give the flat directory a shape — DONE
 
 154 files in one folder with names as the only grouping (`book-analysis-*` alone
 is 30 files / 10,452 LOC). Move to bounded contexts: `analysis/`, `catalog/`,
@@ -130,7 +145,26 @@ commit with zero behaviour change, otherwise the diff hides everything else.
 
 Effort ~1 day. Risk low, but a large diff.
 
-## Option E — shrink the config surface
+**As implemented.** 126 modules moved into `analysis/`, `books/`, `catalog/`,
+`search/`, `generation/`, `providers/`, `tts/`, `db/` and `platform/`;
+`index.mjs` stays at the root because it is the image entrypoint. No renames,
+so git records all 126 as renames and the commit is +402/−391 across 240 files.
+
+Three things did not move mechanically:
+
+- six modules read sibling assets through `import.meta.url` (`operator-ui`,
+  `migrations`, `data`, `cover-generation-config.json`, the Sber certificates);
+  those URLs moved up one level.
+- `seed-book-catalog.mjs` resolved `CATALOG_MANIFEST` against its own
+  directory, so an operator's relative path would have silently changed
+  meaning. It now resolves against the service root explicitly.
+- the Dockerfile copied `*.mjs`, which after the move meant `index.mjs` alone —
+  the image would have shipped with no application code. All nine directories
+  are now copied.
+
+A static check confirms all 513 relative specifiers in the service resolve.
+
+## Option E — shrink the config surface — DONE
 
 ~400 env names is the single biggest obstacle to running the backend. Option A
 removes 20 of them. Beyond that: one startup configuration module that parses
@@ -138,6 +172,13 @@ and validates everything once and fails fast, replacing the scattered
 `parseEnvInt`/`parseEnvBool` calls executed at import time in every runner.
 
 Effort ~2 days. Risk low. The payoff is operational rather than code size.
+
+**As implemented.** `gateway-config.mjs` exposes `loadGatewayConfig(env)`: the
+environment arrives as a parameter, every check runs once at startup, and the
+result is frozen. `index.mjs` destructures it, so none of the identifiers used
+across its routes changed and the move carries no behaviour diff. Fourteen
+imports became dead and were removed, including `coverRouteReadiness`, which
+`index.mjs` had already stopped using before this work.
 
 ## Option F — the generation HTTP hop: keep it
 
@@ -159,6 +200,13 @@ and rejected.
 - 1,582 LOC of overlapping deploy bash (`deploy.sh` 447, `deploy-remote.sh` 363,
   two `prepare-*` scripts at ~250 each) could collapse into one parameterized
   script. Low priority.
+
+## What is left
+
+Nothing from this document. The remaining items are the two minor ones below,
+plus the throughput question that Option A deliberately left open: whether a
+single analysis worker keeps up in production, or whether the
+`book-analysis-pool` profile needs to be switched on.
 
 ## Recommended sequence
 
