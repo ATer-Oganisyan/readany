@@ -26,6 +26,12 @@ import {
   normalizeBookScenePolicy
 } from '../generation/book-scenes.mjs'
 import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from '../analysis/book-analysis-pipeline.mjs'
+import { BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION } from '../analysis/book-analysis-contracts.mjs'
+import { CARD_MEDIA_PRIORITY } from '../analysis/book-character-card.mjs'
+import {
+  characterCardProjection,
+  validateCharacterCard
+} from '../analysis/book-character-card-contract.mjs'
 
 const BOOK_MIME_TYPES = Object.freeze({
   epub: 'application/epub+zip',
@@ -485,17 +491,68 @@ export function createPostgresBookMarkupRepository(pool, {
     return { ...jobRow(existing.rows[0]), created: false, ...spec }
   }
 
+  /**
+   * Источник медиа персонажа: опубликованная разметка или включённая карточка.
+   *
+   * Различается только этот запрос — постановка bundle, пересчёт ревизии и
+   * вставка заданий у обоих путей общие. У карточки роль `source_markup_hash`
+   * играет хэш её документа, поэтому ревизия медиа меняется ровно тогда, когда
+   * включается новая `card_revision`, и ни секундой раньше: карточка
+   * неизменяема, значит и портрет по ней переспрашивать незачем.
+   */
+  async function characterCardMediaSource(client, { bookEditionId, characterKey, bundleVersion }) {
+    const result = await client.query(
+      `SELECT card.document_hash AS source_markup_hash,
+              card.card_revision, card.run_id, card.window_index,
+              bundle.id AS bundle_id, bundle.status AS bundle_status,
+              bundle.source_markup_hash AS previous_source_markup_hash,
+              bundle.media_revision
+       FROM book_character_cards AS card
+       LEFT JOIN character_media_bundles AS bundle
+         ON bundle.book_edition_id = card.book_edition_id
+        AND bundle.character_key = card.character_key
+        AND bundle.bundle_version = $3
+       WHERE card.book_edition_id = $1 AND card.character_key = $2 AND card.enabled
+       LIMIT 1
+       FOR UPDATE OF card`,
+      [bookEditionId, characterKey, bundleVersion]
+    )
+    const row = result.rows[0]
+    if (!row) return null
+    return {
+      row,
+      payload: {
+        card_revision: Number(row.card_revision),
+        analysis_run_id: row.run_id,
+        card_window_index: Number(row.window_index)
+      }
+    }
+  }
+
   async function ensureCharacterMediaJobs({
     bookEditionId,
     characterKey,
     bundleVersion,
-    priority
+    priority,
+    sourceKind = 'markup',
+    client: outerClient = null
   }) {
-    return transaction(pool, async (client) => {
+    const body = async (client) => {
       await client.query(
         `SELECT pg_advisory_xact_lock(hashtext($1 || ':' || $2 || ':' || $3))`,
         [bookEditionId, characterKey, bundleVersion]
       )
+      if (sourceKind === 'card') {
+        const resolved = await characterCardMediaSource(client, {
+          bookEditionId, characterKey, bundleVersion
+        })
+        if (!resolved) {
+          const error = new Error('no enabled character card is available for media generation')
+          error.code = 'CARD_MEDIA_SOURCE_MISSING'
+          throw error
+        }
+        return ensureFromSource(client, resolved.row, resolved.payload)
+      }
       const source = await client.query(
         `SELECT markup.id AS markup_version_id,
                 COALESCE(publication.content_hash,
@@ -524,6 +581,10 @@ export function createPostgresBookMarkupRepository(pool, {
       )
       const row = source.rows[0]
       if (!row) throw new Error('published character is unavailable for media generation')
+      return ensureFromSource(client, row, { markup_version_id: row.markup_version_id })
+    }
+
+    async function ensureFromSource(client, row, payloadExtras) {
       let bundleId = row.bundle_id
       let mediaRevision = Number(row.media_revision ?? 1)
       const sourceMarkupHash = row.source_markup_hash
@@ -607,7 +668,7 @@ export function createPostgresBookMarkupRepository(pool, {
               bundle_version: bundleVersion,
               source_markup_hash: sourceMarkupHash,
               media_revision: mediaRevision,
-              markup_version_id: row.markup_version_id
+              ...payloadExtras
             })
           ]
         )
@@ -637,7 +698,12 @@ export function createPostgresBookMarkupRepository(pool, {
         bundleId,
         mediaRevision
       }
-    })
+    }
+
+    // Постановка медиа от карточки идёт в транзакции самой карточки: карточка
+    // без поставленного портрета — молчаливая дыра, которую потом никто не
+    // заметит. Путь от разметки открывает транзакцию сам, как и раньше.
+    return outerClient ? body(outerClient) : transaction(pool, body)
   }
 
   return {
@@ -2319,6 +2385,17 @@ export function createPostgresBookMarkupRepository(pool, {
                  AND portrait.job_type = 'character_portrait'
                  AND portrait.status = 'ready'
              ))`,
+            // Медиа от карточки ждёт включённую карточку той же ревизии.
+            // Карточка неизменяема, но её ревизию могут выключить, и рисовать
+            // портрет по выключенной карточке — то же, что рисовать по
+            // устаревшему тексту.
+            `(NOT (job.payload ? 'card_revision') OR EXISTS (
+               SELECT 1 FROM book_character_cards AS card
+               WHERE card.book_edition_id = job.book_edition_id
+                 AND card.character_key = job.character_key
+                 AND card.card_revision = (job.payload->>'card_revision')::integer
+                 AND card.enabled
+             ))`,
             // Обложка не рисуется, пока identity книги ещё в очереди.
             `(job.job_type <> 'catalog_cover' OR NOT EXISTS (
                SELECT 1 FROM generation_jobs AS identity
@@ -2412,7 +2489,55 @@ export function createPostgresBookMarkupRepository(pool, {
       if (!result.rows[0]) throw leaseLost(job.id)
     },
 
+    /**
+     * Вход медиа-задания, поставленного от карточки.
+     *
+     * Проекция карточки отдаёт ровно те поля, которые читает построитель
+     * промпта портрета (`appearancePrompt`, `description`, `role`, `age`), и
+     * приветствие для audio. Поэтому портрет по карточке рисуется тем же
+     * промптом, что и по профилю, — без второй ветки в генераторе.
+     */
+    async getCharacterCardBundleInput(job) {
+      const result = await pool.query(
+        `SELECT card.document, card.first_mention_text_offset,
+                edition.scope, edition.title, edition.author
+         FROM generation_jobs AS job
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_character_cards AS card
+           ON card.book_edition_id = job.book_edition_id
+          AND card.character_key = job.character_key
+          AND card.card_revision = (job.payload->>'card_revision')::integer
+          AND card.enabled
+         WHERE job.id = $1 AND job.status = 'running' AND job.lease_token = $2::uuid`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      // Хранимый документ перепроверяется контрактом до проекции: строка
+      // карточки неизменяема, но правленная руками строка не должна доехать до
+      // промпта портрета как валидная.
+      const projection = characterCardProjection(validateCharacterCard(row.document))
+      return {
+        bookEditionId: job.bookEditionId,
+        characterKey: projection.characterKey,
+        name: projection.name,
+        fullName: projection.fullName || projection.name,
+        firstAppearanceTextOffset: Number(row.first_mention_text_offset),
+        warmupTextOffset: Number(row.first_mention_text_offset),
+        character: projection,
+        scope: row.scope,
+        bookTitle: row.title,
+        bookAuthor: row.author,
+        bundleVersion: job.targetVersion
+      }
+    },
+
     async getCharacterBundleInput(job) {
+      // Задание, несущее `card_revision`, читает карточку, а не разметку: на
+      // момент постановки опубликованной разметки может ещё не быть вовсе.
+      if (job.payload?.card_revision != null) {
+        return this.getCharacterCardBundleInput(job)
+      }
       const result = await pool.query(
         `SELECT character.character_key, character.name, character.full_name,
                 character.first_appearance_text_offset, character.warmup_text_offset,
@@ -2513,6 +2638,7 @@ export function createPostgresBookMarkupRepository(pool, {
                 run.normalized_text_object_key, run.normalized_text_hash,
                 run.text_length,
                 card_window.start_offset, card_window.end_offset, card_window.chapter_indexes,
+                card_window.priority_class,
                 inventory.inventory_version,
                 job.payload->>'character_name' AS character_name,
                 job.payload->'character_names' AS character_names,
@@ -2559,6 +2685,7 @@ export function createPostgresBookMarkupRepository(pool, {
         normalizedTextHash: row.normalized_text_hash,
         inventoryVersion: row.inventory_version ?? '',
         cardRevision: Number(row.card_revision ?? 1),
+        priorityClass: row.priority_class,
         window: {
           startOffset: Number(row.start_offset),
           endOffset: Number(row.end_offset),
@@ -2598,6 +2725,7 @@ export function createPostgresBookMarkupRepository(pool, {
       fragmentSetHash,
       normalizedTextHash,
       promptVersion,
+      mediaPriority = CARD_MEDIA_PRIORITY.background,
       card
     }) {
       return transaction(pool, async (client) => {
@@ -2625,6 +2753,17 @@ export function createPostgresBookMarkupRepository(pool, {
             fragmentSetHash, normalizedTextHash, promptVersion
           ]
         )
+        // Портрет ставится здесь же и по хэшу этой карточки: `appearancePrompt`
+        // берётся из неё, поэтому revision медиа меняется только вместе с
+        // новой `card_revision`.
+        const media = await ensureCharacterMediaJobs({
+          bookEditionId,
+          characterKey,
+          bundleVersion: BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
+          priority: mediaPriority,
+          sourceKind: 'card',
+          client
+        })
         await client.query(
           `UPDATE generation_jobs
            SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
@@ -2634,12 +2773,15 @@ export function createPostgresBookMarkupRepository(pool, {
             character_key: characterKey,
             card_revision: cardRevision,
             trait_count: card.traits.length,
-            inserted: Boolean(inserted.rows[0])
+            inserted: Boolean(inserted.rows[0]),
+            media_status: media.status,
+            media_revision: media.mediaRevision
           })]
         )
         return {
           status: inserted.rows[0] ? 'published' : 'existing',
-          cardId: inserted.rows[0]?.id ?? null
+          cardId: inserted.rows[0]?.id ?? null,
+          media
         }
       })
     },

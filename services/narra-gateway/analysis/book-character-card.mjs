@@ -30,6 +30,20 @@ import {
 
 export const CHARACTER_CARD_JOB_TYPE = 'character_card'
 
+/**
+ * Приоритеты медиа персонажа, поставленного от карточки (P4 work order'а).
+ *
+ * Окно 1 — это то, что читатель откроет через минуту после импорта, поэтому его
+ * портреты обгоняют всё фоновое. Разрыв между 65 и 45 не косметический: у
+ * очереди генерации приоритет — первый ключ сортировки при выборе задания, и
+ * фоновое окно большой книги иначе заняло бы воркеры на часы вперёд.
+ */
+export const CARD_MEDIA_PRIORITY = Object.freeze({ foreground: 65, background: 45 })
+
+export function characterCardMediaPriority(priorityClass) {
+  return CARD_MEDIA_PRIORITY[priorityClass] ?? CARD_MEDIA_PRIORITY.background
+}
+
 /** Предел входа одного вызова карточки — как в D3 work order'а. */
 export const MAX_CARD_REQUEST_BYTES = 48 * 1024
 export const MAX_CARD_REQUEST_FRAGMENTS = 240

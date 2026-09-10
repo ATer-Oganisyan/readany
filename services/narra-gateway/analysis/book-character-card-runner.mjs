@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto'
 import {
   CHARACTER_CARD_JOB_TYPE,
   buildCharacterCardRequest,
+  characterCardMediaPriority,
   finalizeCharacterCard
 } from './book-character-card.mjs'
 import { createOperationalLogger } from '../platform/operational-log.mjs'
@@ -97,7 +98,11 @@ export function createCharacterCardRunner({
         cardRevision: input.cardRevision ?? 1,
         createdAt: now()
       })
-      await repository.publishCharacterCard(job, {
+      // Приоритет медиа задаёт класс окна, а не порядок постановки: портреты
+      // первых двух глав должны обгонять фоновые окна той же книги и всех
+      // остальных книг в очереди.
+      const mediaPriority = characterCardMediaPriority(input.priorityClass)
+      const published = await repository.publishCharacterCard(job, {
         runId: input.runId,
         bookEditionId: input.bookEditionId,
         characterKey: input.characterKey,
@@ -106,6 +111,7 @@ export function createCharacterCardRunner({
         fragmentSetHash: finalized.fragmentSetHash,
         normalizedTextHash: input.normalizedTextHash,
         promptVersion: request.promptVersion,
+        mediaPriority,
         card: finalized.card
       })
       log.info('card.published', 'Карточка персонажа записана', {
@@ -118,13 +124,16 @@ export function createCharacterCardRunner({
         bio_source: finalized.audit.bioSource,
         cited_fragment_count: finalized.audit.citedFragmentCount,
         dropped_trait_count: finalized.audit.droppedTraitCount,
+        media_priority: mediaPriority,
+        media_status: published?.media?.status ?? 'unknown',
         duration_ms: Date.now() - startedAt
       })
       return {
         characterKey: input.characterKey,
         cardRevision: finalized.cardRevision,
         traitCount: finalized.card.traits.length,
-        bioSource: finalized.audit.bioSource
+        bioSource: finalized.audit.bioSource,
+        mediaPriority
       }
     }
   }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { createCharacterCardRunner } from '../analysis/book-character-card-runner.mjs'
+import { CARD_MEDIA_PRIORITY } from '../analysis/book-character-card.mjs'
 
 const silentLogger = { info() {}, warn() {}, error() {} }
 
@@ -171,4 +172,22 @@ test('the runner declares the job type it serves', () => {
 test('the runner refuses to be built without its dependencies', () => {
   assert.throws(() => createCharacterCardRunner({ repository: {}, storage: {} }), TypeError)
   assert.throws(() => createCharacterCardRunner({ repository: {}, generator: {} }), TypeError)
+})
+
+test('the runner takes the media priority from the window class, not the queue order', async () => {
+  const foreground = harness({ input: { priorityClass: 'foreground' } })
+  const first = await foreground.runner.run(JOB)
+  assert.equal(first.mediaPriority, CARD_MEDIA_PRIORITY.foreground)
+  assert.equal(foreground.calls.published[0].mediaPriority, CARD_MEDIA_PRIORITY.foreground)
+
+  const background = harness({ input: { priorityClass: 'background' } })
+  const second = await background.runner.run(JOB)
+  assert.equal(second.mediaPriority, CARD_MEDIA_PRIORITY.background)
+  assert.ok(first.mediaPriority > second.mediaPriority)
+})
+
+test('a window with no priority class does not get the foreground priority', async () => {
+  const { runner, calls } = harness({ input: { priorityClass: undefined } })
+  await runner.run(JOB)
+  assert.equal(calls.published[0].mediaPriority, CARD_MEDIA_PRIORITY.background)
 })

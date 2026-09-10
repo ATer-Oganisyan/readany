@@ -167,6 +167,7 @@ external результат закономерно беднее по событ�
 | карточка | `analysis/book-character-card-contract.mjs` | контракт `character-card-v1` |
 | задание карточки | `analysis/book-character-card.mjs`, `analysis/book-character-card-runner.mjs` | `generation_jobs.job_type = character_card`, 1 LLM-вызов на персонажа |
 | промпт карточки | `generation/internal-generation-contracts.mjs` | `character-card-prompt-v1`, маршрут `/v1/book-analysis/synthesize-character-card` |
+| медиа от карточки | `ensureCharacterMediaJobs(sourceKind: 'card')` | портрет, голос и анимация от `appearancePrompt` карточки; приоритет 65 у окна 1, 45 у фоновых |
 
 Два инварианта отличают карточку от текущего профиля персонажа:
 
@@ -175,7 +176,9 @@ external результат закономерно беднее по событ�
   упоминания. Факт из главы 8 не может попасть в карточку персонажа из главы 1,
   потому что текст главы 8 в вызов не передаётся.
 - **Карточка неизменяема.** Строка не обновляется; новая версия — следующая
-  `card_revision`, точечные правки — через correction overlay ниже.
+  `card_revision`, точечные правки — через correction overlay ниже. Ревизия
+  медиа персонажа привязана к хэшу документа карточки, поэтому портрет
+  перерисовывается тогда и только тогда, когда включается новая `card_revision`.
 
 Ответ модели проверяется дважды, и это разные вопросы. Генератор спрашивает,
 обоснованно ли утверждение и устойчива ли черта (тот же `filterStableTraits`,
