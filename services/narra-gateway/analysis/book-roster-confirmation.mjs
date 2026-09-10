@@ -29,7 +29,13 @@ export const MAX_CANDIDATE_PAIRS = 128
 export const MAX_REQUEST_BYTES = 96 * 1024
 const MAX_FRAGMENT_QUOTE_CHARS = 240
 
-export const ROSTER_CANDIDATE_KINDS = Object.freeze(['person', 'place', 'group', 'other'])
+// `mentioned` отделяет названное лицо от действующего. Байрон, Цицерон и
+// Пушкин — люди, и как `person` они получали карточку наравне с Печориным,
+// хотя в книге не действуют, а помянуты для сравнения. Карточку получает
+// только `person`, поэтому различие тут и живёт.
+export const ROSTER_CANDIDATE_KINDS = Object.freeze([
+  'person', 'mentioned', 'place', 'group', 'other'
+])
 export const ROSTER_MERGE_BASES = Object.freeze([
   'name_variant',
   'nickname',
@@ -160,6 +166,17 @@ function coMentionParagraphs(fragments) {
  * `co_mentioned_participants` — кандидаты систематически встречаются в одном
  * абзаце, то есть текст показывает их как двух участников сцены, а не как два
  * имени одного человека.
+ *
+ * Со-упоминание снимается соседством. «Обломов» и «Илья» стоят в одних абзацах
+ * постоянно — это и есть обычный русский повествовательный приём, когда одного
+ * человека называют то по имени, то по фамилии, — и запрет держал ровно ту
+ * пару, которую надо было слить: до модели она не доходила никогда. Но те же
+ * имена встречаются и подряд, одним оборотом («Илья Ильич Обломов»), а вот
+ * двое участников сцены рядом не стоят. Поэтому соседство сильнее
+ * со-упоминания: пара уходит к модели вместе с цитатами, и решает она.
+ *
+ * Коллизию пола соседство не снимает: там спорят не роли в сцене, а
+ * доказательства, и лишний повод их не примиряет.
  */
 export function rosterForbiddenPairs(candidates, { fragments = null } = {}) {
   const paragraphs = coMentionParagraphs(fragments)
@@ -188,6 +205,11 @@ export function rosterForbiddenPairs(candidates, { fragments = null } = {}) {
         : [rightParagraphs, leftParagraphs]
       for (const paragraph of smaller) if (larger.has(paragraph)) shared += 1
       if (shared >= CO_MENTION_MIN && shared >= CO_MENTION_SHARE * smaller.size) {
+        const adjacency = Math.max(
+          adjacentCount(left, right.candidateKey),
+          adjacentCount(right, left.candidateKey)
+        )
+        if (adjacency >= ADJACENT_NAME_MIN) continue
         values.set(key, { leftKey, rightKey, reason: 'co_mentioned_participants' })
       }
     }

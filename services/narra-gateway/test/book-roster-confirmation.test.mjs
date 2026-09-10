@@ -4,6 +4,7 @@ import {
   MAX_CANDIDATE_PAIRS,
   MAX_REQUEST_BYTES,
   ROSTER_CONFIRMATION_VERSION,
+  ROSTER_CANDIDATE_KINDS,
   applyRosterConfirmation,
   buildRosterConfirmationRequest,
   candidateGenderSignals,
@@ -625,4 +626,80 @@ test('an explicit merge on a co-mentioned pair is still refused', () => {
   })
   assert.deepEqual(confirmation.acceptedMerges, [])
   assert.equal(applyRosterConfirmation({ request, candidates, confirmation }).length, 2)
+})
+
+test('names that stand next to each other survive the co-mention veto', () => {
+  // «Обломов» и «Илья» стоят в одних абзацах постоянно — это обычный русский
+  // приём, когда одного человека называют то по имени, то по фамилии. Запрет
+  // по со-упоминанию держал ровно ту пару, которую надо было слить: до модели
+  // она не доходила, и «Обломов» с «Ильёй» остались двумя людьми, а «Штольц» с
+  // «Андреем» — ещё двумя.
+  const rows = [
+    candidate({
+      candidateKey: 'name:oblomov',
+      displayName: 'Обломов',
+      count: 1185,
+      adjacentNames: [{ candidateKey: 'name:ilya', count: 2 }]
+    }),
+    candidate({
+      candidateKey: 'name:ilya',
+      displayName: 'Илья',
+      count: 318,
+      adjacentNames: [{ candidateKey: 'name:oblomov', count: 2 }]
+    })
+  ]
+  const fragments = fragmentsFor([
+    ['name:oblomov', [1, 2, 3, 4, 5]],
+    ['name:ilya', [1, 2, 3, 6, 7]]
+  ])
+  assert.deepEqual(rosterForbiddenPairs(rows, { fragments }), [])
+  const pairs = rosterCandidatePairs(rows, { forbiddenPairs: [] })
+  assert.equal(pairs.length, 1)
+  assert.ok(pairs[0].signals.includes('adjacent_full_name'))
+
+  // Двое участников сцены рядом не стоят, и запрет для них остаётся.
+  const apart = rows.map((row) => ({ ...row, adjacentNames: [] }))
+  assert.equal(rosterForbiddenPairs(apart, { fragments })[0].reason, 'co_mentioned_participants')
+})
+
+test('adjacency does not reconcile a gender conflict', () => {
+  // Со-упоминание говорит о ролях в сцене, и соседство его перевешивает.
+  // Коллизия пола — о доказательствах, и лишний повод их не примиряет.
+  const rows = [
+    candidate({
+      candidateKey: 'name:mr-bennet',
+      displayName: 'Mr Bennet',
+      honorificGender: 'male',
+      adjacentNames: [{ candidateKey: 'name:mrs-bennet', count: 9 }]
+    }),
+    candidate({
+      candidateKey: 'name:mrs-bennet',
+      displayName: 'Mrs Bennet',
+      honorificGender: 'female',
+      adjacentNames: [{ candidateKey: 'name:mr-bennet', count: 9 }]
+    })
+  ]
+  assert.equal(rosterForbiddenPairs(rows)[0].reason, 'gender_conflict')
+})
+
+test('a named-but-absent person is not a character and gets no card', () => {
+  // Байрон, Цицерон и Пушкин — люди, и как `person` они получали карточку
+  // наравне с Печориным, хотя в книге не действуют, а помянуты для сравнения.
+  assert.ok(ROSTER_CANDIDATE_KINDS.includes('mentioned'))
+  const candidates = [
+    candidate({ candidateKey: 'name:pechorin', displayName: 'Печорин' }),
+    candidate({ candidateKey: 'name:bayron', displayName: 'Байрон' })
+  ]
+  const roster = applyRosterConfirmation({
+    request: { roster: candidates.map(({ candidateKey }) => ({ candidateKey })) },
+    candidates,
+    confirmation: {
+      acceptedMerges: [],
+      classifications: [
+        { candidateKey: 'name:pechorin', kind: 'person', canonicalName: 'Печорин' },
+        { candidateKey: 'name:bayron', kind: 'mentioned', canonicalName: 'Байрон' }
+      ]
+    }
+  })
+  assert.deepEqual(roster.map(({ canonicalName }) => canonicalName), ['Печорин'])
 })
