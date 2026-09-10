@@ -9,6 +9,7 @@ const localCompose = await readFile(
 )
 const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8')
 const gatewaySource = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
+const gatewayConfigSource = await readFile(new URL('../gateway-config.mjs', import.meta.url), 'utf8')
 const deploySource = await readFile(new URL('../deploy.sh', import.meta.url), 'utf8')
 const remoteDeploySource = await readFile(
   new URL('../deploy-remote.sh', import.meta.url),
@@ -96,7 +97,7 @@ test('external research services are isolated in the local-only compose profile'
 
 test('gateway LLM capacity is aligned with the larger scan pool', () => {
   assert.match(envExample, /^LLM_CONCURRENCY=12$/m)
-  assert.match(gatewaySource, /envInt\('LLM_CONCURRENCY', 12, 100\)/)
+  assert.match(gatewayConfigSource, /envInt\('LLM_CONCURRENCY', 12, 100\)/)
 })
 
 test('markup and synthesis start as one-replica canaries and remain explicitly scalable', () => {

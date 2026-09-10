@@ -29,8 +29,9 @@ test('aborted queued work is removed', async () => {
 })
 
 test('personal SaluteSpeech scope does not over-admit its five upstream streams', async () => {
+  const config = await readFile(new URL('../gateway-config.mjs', import.meta.url), 'utf8')
   const source = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
-  assert.match(source, /envInt\('SPEECH_CONCURRENCY', 5, 5\)/)
+  assert.match(config, /envInt\('SPEECH_CONCURRENCY', 5, 5\)/)
   assert.match(source, /getToken\('SALUTE_SPEECH_PERS'/)
   assert.equal(parseEnvInt({}, 'SPEECH_CONCURRENCY', 5, 5), 5)
   assert.rejects(
