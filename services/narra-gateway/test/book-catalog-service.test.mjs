@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
-import { decodeBookContentCursor } from '../book-content.mjs'
-import { createBookCatalogService } from '../book-catalog-service.mjs'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
+import { decodeBookContentCursor } from '../books/book-content.mjs'
+import { createBookCatalogService } from '../catalog/book-catalog-service.mjs'
 
 const HASH = 'a'.repeat(64)
 const OVERLAY_MARKUP_ID = '11111111-1111-4111-8111-111111111111'

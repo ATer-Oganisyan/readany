@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
 import {
   createGenerationWorker,
   normalizeBookIdentityResult,
@@ -8,7 +8,7 @@ import {
   normalizeCharacterBundleInput,
   normalizeCharacterBundleResult,
   parseBookMarkupWorkerJobTypes
-} from '../generation-worker.mjs'
+} from '../generation/generation-worker.mjs'
 
 const HASH = 'a'.repeat(64)
 const silentLogger = { info() {}, warn() {}, error() {} }

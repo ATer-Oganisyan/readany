@@ -8,7 +8,7 @@ import {
   fallbackProfileDescription,
   filterStableTraits,
   requireGenerationServiceToken
-} from '../internal-generation-service.mjs'
+} from '../generation/internal-generation-service.mjs'
 
 function memoryStorage(initial = {}) {
   const objects = new Map(Object.entries(initial).map(([key, value]) => [key, {

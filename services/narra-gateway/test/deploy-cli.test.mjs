@@ -102,7 +102,7 @@ test('migration changes conservatively select the complete application runtime',
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /services= gateway book-markup-worker/)
   assert.match(result.stdout, /book-tts-markup-worker/)
-  assert.match(result.stdout, /migrate node migrate\.mjs --check/)
+  assert.match(result.stdout, /migrate node db\/migrate\.mjs --check/)
 })
 
 test('production migration apply requires a separate confirmation', () => {
@@ -140,7 +140,7 @@ test('remote deploy uploads only the fixed deployment bundle', () => {
   assert.match(result.stdout, /scp .*deploy\.sh .*migrate\.sh .*compose\.i167\.yml/s)
   assert.match(result.stdout, /deploy\.sh.*--environment.*test.*--component.*gateway/s)
   assert.match(result.stdout, /ssh -tt .*sudo/)
-  assert.doesNotMatch(result.stdout, /Dockerfile|package\.json|index\.mjs|migrate\.mjs/)
+  assert.doesNotMatch(result.stdout, /Dockerfile|package\.json|index\.mjs|db\/migrate\.mjs/)
   assert.match(result.stdout, /no connection was made/)
 })
 

@@ -15,7 +15,7 @@ The Gateway, not the client, owns model sampling and reasoning parameters. The
 legacy `temperature` field is still accepted by `/v2/ai/chat/stream` and
 `/v2/ai/chat/complete` for mobile compatibility, but its value is ignored.
 
-[`model-request-config.mjs`](model-request-config.mjs) is the source of truth for
+[`providers/model-request-config.mjs`](providers/model-request-config.mjs) is the source of truth for
 provider/model capabilities and purpose-specific defaults. Unknown models get
 no optional sampling parameters. The currently configured GPT-5.6 Luna routes
 use `temperature: 0.85` together with `reasoning_effort: none` for
@@ -423,7 +423,7 @@ bucket access and the presence of the internal generator. The i167 Compose file
 runs a private MinIO service, creates its bucket and non-root application user,
 and starts the `book-backend` worker profile when that flag is enabled. Railway
 needs a separate worker process using
-`node book-markup-worker.mjs`; its HTTP health check should target `/ready` on
+`node books/book-markup-worker.mjs`; its HTTP health check should target `/ready` on
 the Gateway service.
 
 Copy `.env.example` to `.env` only for local development. Secrets belong in the

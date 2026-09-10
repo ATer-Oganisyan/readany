@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { assembleBookMarkupV3 } from '../book-analysis-assembler.mjs'
-import { createPostgresBookAnalysisRepository } from '../book-analysis-repository.mjs'
-import { resolveBookAnalysisEntities } from '../book-analysis-resolver.mjs'
-import { validateBookMarkupV3 } from '../book-analysis-validator.mjs'
-import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
+import { assembleBookMarkupV3 } from '../analysis/book-analysis-assembler.mjs'
+import { createPostgresBookAnalysisRepository } from '../analysis/book-analysis-repository.mjs'
+import { resolveBookAnalysisEntities } from '../analysis/book-analysis-resolver.mjs'
+import { validateBookMarkupV3 } from '../analysis/book-analysis-validator.mjs'
+import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 

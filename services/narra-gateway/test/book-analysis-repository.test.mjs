@@ -4,7 +4,7 @@ import {
   buildProvisionalAnalysisCharacters,
   bookAnalysisRunIdempotencyKey,
   createPostgresBookAnalysisRepository
-} from '../book-analysis-repository.mjs'
+} from '../analysis/book-analysis-repository.mjs'
 
 function scriptedPool(scripts) {
   const queries = []

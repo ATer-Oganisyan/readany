@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { loadGatewayConfig } from '../gateway-config.mjs'
+import { loadGatewayConfig } from '../platform/gateway-config.mjs'
 
 // Минимальное окружение, при котором конфигурация вообще собирается.
 const BASE = Object.freeze({

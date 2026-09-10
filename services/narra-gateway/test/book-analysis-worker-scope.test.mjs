@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBookAnalysisPrepareWorker } from '../book-analysis-prepare-worker.mjs'
-import { createBookAnalysisPublishWorker } from '../book-analysis-publish-worker.mjs'
-import { createBookAnalysisResolveWorker } from '../book-analysis-resolve-worker.mjs'
-import { createBookAnalysisScanWorker } from '../book-analysis-scan-worker.mjs'
-import { createBookAnalysisSynthesizeWorker } from '../book-analysis-synthesize-worker.mjs'
-import { createBookAnalysisValidateWorker } from '../book-analysis-validate-worker.mjs'
+import { createBookAnalysisPrepareWorker } from '../analysis/book-analysis-prepare-worker.mjs'
+import { createBookAnalysisPublishWorker } from '../analysis/book-analysis-publish-worker.mjs'
+import { createBookAnalysisResolveWorker } from '../analysis/book-analysis-resolve-worker.mjs'
+import { createBookAnalysisScanWorker } from '../analysis/book-analysis-scan-worker.mjs'
+import { createBookAnalysisSynthesizeWorker } from '../analysis/book-analysis-synthesize-worker.mjs'
+import { createBookAnalysisValidateWorker } from '../analysis/book-analysis-validate-worker.mjs'
 
 const runIds = ['123e4567-e89b-42d3-a456-426614174099']
 const quietLogger = { info() {}, error() {} }

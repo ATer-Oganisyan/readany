@@ -6,7 +6,7 @@ import {
   createSseUsageCollector,
   normalizeFinishReason,
   providerAttemptProperties
-} from '../analytics-properties.mjs'
+} from '../platform/analytics-properties.mjs'
 
 test('provider attempt analytics never emits null or invalid identifiers', () => {
   assert.deepEqual(providerAttemptProperties('123e4567-e89b-42d3-a456-426614174001', 'summary', {

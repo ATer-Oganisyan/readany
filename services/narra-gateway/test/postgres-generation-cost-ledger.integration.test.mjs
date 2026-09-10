@@ -4,7 +4,7 @@ import test from 'node:test'
 import {
   createGenerationCostLedger,
   generationCostReport
-} from '../generation-cost-ledger.mjs'
+} from '../generation/generation-cost-ledger.mjs'
 
 const connectionString = process.env.GENERATION_COST_E2E_DATABASE_URL
 

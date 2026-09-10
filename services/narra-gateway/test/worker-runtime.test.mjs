@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CANONICAL_STAGES, parseAnalysisStages } from '../book-analysis-worker.mjs'
-import { runWorkerLoop } from '../worker-runtime.mjs'
+import { CANONICAL_STAGES, parseAnalysisStages } from '../analysis/book-analysis-worker.mjs'
+import { runWorkerLoop } from '../platform/worker-runtime.mjs'
 
 function silentLog() {
   const events = []

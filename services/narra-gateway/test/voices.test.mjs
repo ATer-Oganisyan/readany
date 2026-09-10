@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { voiceForGender } from '../voices.mjs'
+import { voiceForGender } from '../providers/voices.mjs'
 
 test('unknown character gender always gets the unspecified fallback voice', () => {
   assert.equal(voiceForGender('She', null), 'Erm')

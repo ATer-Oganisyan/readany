@@ -165,7 +165,7 @@ if [ "$pull_policy" != "never" ]; then
 fi
 
 if [ "$action" = "check" ]; then
-  run "${compose[@]}" run --rm --no-deps migrate node migrate.mjs --check
+  run "${compose[@]}" run --rm --no-deps migrate node db/migrate.mjs --check
 else
   run "${compose[@]}" run --rm migrate
 fi

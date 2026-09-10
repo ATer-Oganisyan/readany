@@ -5,7 +5,7 @@ import {
   SCENE_PROVIDER_PROMPT_LIMIT,
   parseSceneJobBody,
   sceneGenerationPrompt
-} from '../scene-generation.mjs'
+} from '../generation/scene-generation.mjs'
 
 const requestId = '11111111-1111-4111-8111-111111111111'
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseGenerationQueueCommand } from '../generation-queue-control.mjs'
+import { parseGenerationQueueCommand } from '../generation/generation-queue-control.mjs'
 
 const EDITION = '11111111-1111-4111-8111-111111111111'
 const PAUSE = '22222222-2222-4222-8222-222222222222'

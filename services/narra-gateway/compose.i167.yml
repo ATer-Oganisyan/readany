@@ -34,7 +34,7 @@ x-book-analysis-storage-environment: &book-analysis-storage-environment
 x-book-analysis-worker: &book-analysis-worker
   image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
   healthcheck:
-    test: ["CMD", "node", "worker-healthcheck.mjs"]
+    test: ["CMD", "node", "platform/worker-healthcheck.mjs"]
     interval: 30s
     timeout: 5s
     retries: 3
@@ -240,7 +240,7 @@ services:
   migrate:
     profiles: ["operations"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must be set}
-    command: ["node", "migrate.mjs"]
+    command: ["node", "db/migrate.mjs"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -263,11 +263,11 @@ services:
   book-markup-worker:
     profiles: ["book-backend"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
-    command: ["node", "book-markup-worker.mjs"]
+    command: ["node", "books/book-markup-worker.mjs"]
     deploy:
       replicas: ${BOOK_MARKUP_WORKER_REPLICAS:-1}
     healthcheck:
-      test: ["CMD", "node", "worker-healthcheck.mjs"]
+      test: ["CMD", "node", "platform/worker-healthcheck.mjs"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -311,11 +311,11 @@ services:
   book-identity-worker:
     profiles: ["book-backend"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
-    command: ["node", "book-identity-worker.mjs"]
+    command: ["node", "books/book-identity-worker.mjs"]
     deploy:
       replicas: ${BOOK_IDENTITY_WORKER_REPLICAS:-1}
     healthcheck:
-      test: ["CMD", "node", "worker-healthcheck.mjs"]
+      test: ["CMD", "node", "platform/worker-healthcheck.mjs"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -358,7 +358,7 @@ services:
   book-tts-markup-worker:
     <<: *book-analysis-worker
     profiles: ["tts-markup"]
-    command: ["node", "book-tts-markup-worker-runner.mjs"]
+    command: ["node", "tts/book-tts-markup-worker-runner.mjs"]
     read_only: true
     deploy:
       replicas: ${BOOK_TTS_MARKUP_WORKER_REPLICAS:-1}
@@ -372,7 +372,7 @@ services:
   book-analysis-worker:
     <<: *book-analysis-worker
     profiles: ["book-backend"]
-    command: ["node", "book-analysis-worker.mjs"]
+    command: ["node", "analysis/book-analysis-worker.mjs"]
     deploy:
       replicas: ${BOOK_ANALYSIS_WORKER_REPLICAS:-1}
     environment:
@@ -385,7 +385,7 @@ services:
   book-analysis-pool:
     <<: *book-analysis-worker
     profiles: ["book-analysis-pool"]
-    command: ["node", "book-analysis-worker.mjs"]
+    command: ["node", "analysis/book-analysis-worker.mjs"]
     deploy:
       replicas: ${BOOK_ANALYSIS_POOL_REPLICAS:-2}
     environment:
@@ -396,7 +396,7 @@ services:
   book-media-worker:
     <<: *book-analysis-worker
     profiles: ["media"]
-    command: ["node", "book-markup-worker.mjs"]
+    command: ["node", "books/book-markup-worker.mjs"]
     deploy:
       replicas: ${BOOK_MEDIA_WORKER_REPLICAS:-1}
     env_file:
@@ -409,7 +409,7 @@ services:
   book-scene-worker:
     <<: *book-analysis-worker
     profiles: ["scenes"]
-    command: ["node", "book-markup-worker.mjs"]
+    command: ["node", "books/book-markup-worker.mjs"]
     deploy:
       replicas: ${BOOK_SCENE_WORKER_REPLICAS:-1}
     env_file:
@@ -422,7 +422,7 @@ services:
   generation-queue-operator:
     profiles: ["operator-campaigns"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
-    command: ["node", "generation-queue-operator.mjs", "status"]
+    command: ["node", "generation/generation-queue-operator.mjs", "status"]
     depends_on:
       postgres:
         condition: service_healthy

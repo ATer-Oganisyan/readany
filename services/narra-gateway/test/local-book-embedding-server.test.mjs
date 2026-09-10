@@ -4,7 +4,7 @@ import test from 'node:test'
 import {
   createLocalEmbeddingServer,
   localHashEmbedding
-} from '../local-book-embedding-server.mjs'
+} from '../search/local-book-embedding-server.mjs'
 
 function cosine(left, right) {
   return left.reduce((sum, item, index) => sum + item * right[index], 0)

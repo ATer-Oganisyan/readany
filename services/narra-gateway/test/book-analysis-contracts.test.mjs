@@ -13,7 +13,7 @@ import {
   normalizeBookAnalysisResolvedEntity,
   normalizeBookMarkupV3,
   normalizeEvidenceClaim
-} from '../book-analysis-contracts.mjs'
+} from '../analysis/book-analysis-contracts.mjs'
 
 const evidenceId = '11111111-1111-4111-8111-111111111111'
 

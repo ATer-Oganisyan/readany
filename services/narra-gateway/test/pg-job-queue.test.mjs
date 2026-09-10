@@ -10,7 +10,7 @@ import {
   jobQueueColumns,
   leaseExpiredSql,
   renewLeaseSql
-} from '../pg-job-queue.mjs'
+} from '../db/pg-job-queue.mjs'
 
 const migrations = {
   analysis: await readFile(new URL('../migrations/005_parallel_book_analysis.sql', import.meta.url), 'utf8'),

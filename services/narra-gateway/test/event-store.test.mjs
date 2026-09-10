@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createEventStore } from '../event-store.mjs'
+import { createEventStore } from '../platform/event-store.mjs'
 
 function event(id) {
   return {

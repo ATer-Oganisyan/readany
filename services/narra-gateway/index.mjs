@@ -1,12 +1,12 @@
 import express from 'express'
-import { loadGatewayConfig } from './gateway-config.mjs'
-import { httpErr, statusFor } from './gateway-errors.mjs'
-import { createKandinskyImageClient } from './provider-kandinsky-image.mjs'
-import { createKandinskyVideoClient } from './provider-kandinsky-video.mjs'
+import { loadGatewayConfig } from './platform/gateway-config.mjs'
+import { httpErr, statusFor } from './platform/gateway-errors.mjs'
+import { createKandinskyImageClient } from './providers/provider-kandinsky-image.mjs'
+import { createKandinskyVideoClient } from './providers/provider-kandinsky-video.mjs'
 import cors from 'cors'
 import { createHmac, randomUUID } from 'crypto'
 import path from 'node:path'
-import { httpsRequest } from './http.mjs'
+import { httpsRequest } from './platform/http.mjs'
 import {
   parseAvatarBody,
   parseChatBody,
@@ -16,40 +16,40 @@ import {
   parsePortraitBody,
   parseSynthesisBody,
   validationErrors
-} from './contracts.mjs'
+} from './platform/contracts.mjs'
 import {
   llmRouteReadiness,
   mediaImageQualityForDimensions,
   requestChat,
   requestCoverImageWithFallback
-} from './providers.mjs'
+} from './providers/providers.mjs'
 import {
   settleProviderResponse,
   validateChatCompletionPayload
-} from './provider-response.mjs'
-import { parseEventBatch } from './events.mjs'
-import { createEventStore } from './event-store.mjs'
-import { readBoundedBody } from './safe-fetch.mjs'
-import { fetchImportSource, importSourceFailure } from './import-source.mjs'
-import { requestAbortSignal, withTimeout } from './concurrency.mjs'
+} from './providers/provider-response.mjs'
+import { parseEventBatch } from './platform/events.mjs'
+import { createEventStore } from './platform/event-store.mjs'
+import { readBoundedBody } from './platform/safe-fetch.mjs'
+import { fetchImportSource, importSourceFailure } from './platform/import-source.mjs'
+import { requestAbortSignal, withTimeout } from './platform/concurrency.mjs'
 import {
   analyticsRoute,
   completionProperties,
   createSseUsageCollector,
   providerAttemptProperties
-} from './analytics-properties.mjs'
+} from './platform/analytics-properties.mjs'
 import {
   shouldRetryKandinsky,
   shouldRetryKandinskyStatus,
   videoRetryDelay
-} from './retry-policy.mjs'
+} from './providers/retry-policy.mjs'
 import {
   imageEmptyResultError,
   imageUpstreamError,
   simplifiedScenePrompt,
   shouldFallbackAfterImageError
-} from './image-policy.mjs'
-import { sberCaBundle } from './sber-tls.mjs'
+} from './providers/image-policy.mjs'
+import { sberCaBundle } from './providers/sber-tls.mjs'
 import {
   createFixedWindowLimiter,
   createPersistentBudgetMiddleware,
@@ -60,42 +60,42 @@ import {
   requireGatewayAuth,
   requireOperatorAuth,
   resolveTokenSecret
-} from './security.mjs'
-import { createInstallationRegistry } from './installation-registry.mjs'
-import { gatewayReadiness } from './readiness.mjs'
-import { createCoverJobStore } from './cover-job-store.mjs'
-import { createCoverJobRunner } from './cover-job-runner.mjs'
-import { bookCoverPrompt } from './catalog-cover-prompt.mjs'
-import { parseSceneJobBody, sceneGenerationPrompt } from './scene-generation.mjs'
-import { createBookCatalogRouter } from './book-catalog-api.mjs'
-import { createBookEmbeddingClientFromEnv } from './book-embedding-client.mjs'
-import { createBookSearchRouter } from './book-search-api.mjs'
-import { createPostgresBookSearchRepository } from './book-search-repository.mjs'
-import { createBookSearchService } from './book-search-service.mjs'
-import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
-import { createCatalogIngestService } from './catalog-ingest-service.mjs'
-import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
-import { createBookOperatorRouter } from './book-operator-api.mjs'
-import { createPostgresBookOperatorRepository } from './book-operator-repository.mjs'
-import { createPostgresBookCharacterCorrectionRepository } from './book-character-correction-repository.mjs'
-import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
-import { createPostgresBookTtsMarkupRepository } from './book-tts-markup-repository.mjs'
-import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
-import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
+} from './platform/security.mjs'
+import { createInstallationRegistry } from './platform/installation-registry.mjs'
+import { gatewayReadiness } from './platform/readiness.mjs'
+import { createCoverJobStore } from './generation/cover-job-store.mjs'
+import { createCoverJobRunner } from './generation/cover-job-runner.mjs'
+import { bookCoverPrompt } from './generation/catalog-cover-prompt.mjs'
+import { parseSceneJobBody, sceneGenerationPrompt } from './generation/scene-generation.mjs'
+import { createBookCatalogRouter } from './catalog/book-catalog-api.mjs'
+import { createBookEmbeddingClientFromEnv } from './search/book-embedding-client.mjs'
+import { createBookSearchRouter } from './search/book-search-api.mjs'
+import { createPostgresBookSearchRepository } from './search/book-search-repository.mjs'
+import { createBookSearchService } from './search/book-search-service.mjs'
+import { createCatalogIngestRouter } from './catalog/catalog-ingest-api.mjs'
+import { createCatalogIngestService } from './catalog/catalog-ingest-service.mjs'
+import { createPostgresBookAnalysisRepository } from './analysis/book-analysis-repository.mjs'
+import { createBookOperatorRouter } from './books/book-operator-api.mjs'
+import { createPostgresBookOperatorRepository } from './books/book-operator-repository.mjs'
+import { createPostgresBookCharacterCorrectionRepository } from './books/book-character-correction-repository.mjs'
+import { createPostgresBookMarkupRepository } from './books/postgres-book-markup-repository.mjs'
+import { createPostgresBookTtsMarkupRepository } from './tts/book-tts-markup-repository.mjs'
+import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './db/postgres-runtime.mjs'
+import { createBookObjectStorageFromEnv } from './books/book-object-storage.mjs'
 import {
   createInternalGenerationRouter,
   createInternalGenerationService
-} from './internal-generation-service.mjs'
-import { createGenerationCostLedger } from './generation-cost-ledger.mjs'
-import { createBestEffortGenerationCostRecorder } from './generation-cost-recorder.mjs'
-import { createOperationalMetricsRepository } from './operational-metrics-repository.mjs'
+} from './generation/internal-generation-service.mjs'
+import { createGenerationCostLedger } from './generation/generation-cost-ledger.mjs'
+import { createBestEffortGenerationCostRecorder } from './generation/generation-cost-recorder.mjs'
+import { createOperationalMetricsRepository } from './db/operational-metrics-repository.mjs'
 import {
   operationalRuntimeMetrics,
   recordProviderFailure
-} from './operational-runtime-metrics.mjs'
-import { createLocalIdleAnimation } from './local-idle-animation.mjs'
-import { createPrivateMaterialCleanup } from './private-material-cleanup.mjs'
-import { withChatCompliance, withImageCompliance } from './rf-compliance.mjs'
+} from './platform/operational-runtime-metrics.mjs'
+import { createLocalIdleAnimation } from './generation/local-idle-animation.mjs'
+import { createPrivateMaterialCleanup } from './platform/private-material-cleanup.mjs'
+import { withChatCompliance, withImageCompliance } from './providers/rf-compliance.mjs'
 
 // ================= Конфигурация =================
 const {

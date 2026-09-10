@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
-import { createOperationalMetricsRepository } from '../operational-metrics-repository.mjs'
-import { createPostgresBookMarkupRepository } from '../postgres-book-markup-repository.mjs'
-import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
+import { createOperationalMetricsRepository } from '../db/operational-metrics-repository.mjs'
+import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
+import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 

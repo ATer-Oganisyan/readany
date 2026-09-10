@@ -414,7 +414,7 @@ if [ "$pull_policy" != "never" ]; then
 fi
 
 if [ "$application_selected" = 1 ]; then
-  run "${compose[@]}" run --rm --no-deps migrate node migrate.mjs --check
+  run "${compose[@]}" run --rm --no-deps migrate node db/migrate.mjs --check
 fi
 
 up_args=(up -d --force-recreate --wait --wait-timeout "$wait_timeout" --pull never)
