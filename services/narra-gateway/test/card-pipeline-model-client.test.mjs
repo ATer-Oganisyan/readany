@@ -12,7 +12,7 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { contentFromEventStream } from '../evaluation/run-card-pipeline.mjs'
+import { contentFromEventStream, isEventStream } from '../evaluation/run-card-pipeline.mjs'
 
 function sse(...events) {
   return `${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`
@@ -69,6 +69,23 @@ test('a malformed event is skipped instead of losing the whole answer', () => {
     'data: [DONE]'
   ].join('\n')
   assert.equal(contentFromEventStream(text), 'начало и конец')
+})
+
+test('a truncated stream is told apart from a non-stream body', () => {
+  // Различать обязательно, и это была настоящая ошибка. Обрыв потока до первого
+  // куска ответа (шло рассуждение, ответ не начался) выглядел как «Unexpected
+  // token 'd', "data: {"ch"… is not valid JSON»: в обоих случаях шёл JSON.parse
+  // по тексту SSE. Обрыв — это повторяемый сбой, а не битый ответ.
+  const truncated = 'data: {"choices":[{"delta":{"reasoning_content":"думаю…"}}]}\n\n'
+  assert.ok(isEventStream(truncated))
+  assert.equal(contentFromEventStream(truncated), '')
+
+  const plain = JSON.stringify({ choices: [{ message: { content: '{"roster": []}' } }] })
+  assert.equal(isEventStream(plain), false)
+
+  // Комментарий keep-alive — тоже поток, даже если содержательных событий нет.
+  assert.ok(isEventStream(': ping\n\n'))
+  assert.equal(isEventStream(''), false)
 })
 
 test('a non-stream body yields nothing here, so the caller can fall back', () => {

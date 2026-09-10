@@ -146,6 +146,11 @@ function postJson({ url, apiKey, body, timeoutMs }) {
  * Рассуждение приходит в `reasoning_content`, ответ — в `content`; собирается
  * только второе, иначе в разбор JSON уходят размышления модели.
  */
+/** Тело — поток SSE, а не обычный JSON. */
+export function isEventStream(text) {
+  return /^\s*(?::|data:|event:)/m.test(String(text))
+}
+
 export function contentFromEventStream(text) {
   let content = ''
   for (const line of String(text).split('\n')) {
@@ -170,7 +175,17 @@ export function createModelClient(env = process.env) {
   const baseUrl = String(env.JUDGE_BASE_URL || env.LITELLM_BASE_URL || '').replace(/\/$/, '')
   const apiKey = env.JUDGE_API_KEY || env.LITELLM_API_KEY
   const model = env.JUDGE_MODEL || env.LITELLM_MODEL
-  const timeoutMs = Number(env.MODEL_TIMEOUT_MS || 1_800_000)
+  // Бюджет простоя, а не всей операции: `call.setTimeout` — таймаут молчания
+  // сокета, он сбрасывается на каждом байте. При потоке провайдер начинает
+  // присылать байты за секунды (измерено на настоящем запросе подтверждения
+  // roster: первый байт через 2.6 с), поэтому долгое молчание означает не
+  // «модель думает», а «запрос попал на застрявший upstream». Прежние
+  // тридцать минут превращали такой случай в тридцать минут ожидания: прогон
+  // «Преступления и наказания» простоял 22 минуты на первой попытке и 10 минут
+  // на тривиальном запросе в 8 000 токенов, тогда как запрос на 32 000 токенов
+  // в тот же момент прошёл за 10 секунд. Две минуты молчания — это уже сбой, и
+  // дешевле начать заново.
+  const timeoutMs = Number(env.MODEL_TIMEOUT_MS || 120_000)
   if (!baseUrl || !apiKey || !model) return null
   const attempts = Number(env.MODEL_MAX_ATTEMPTS || 5)
   // Поток по умолчанию: без него длинный запрос рвут по простою. `MODEL_STREAM=0`
@@ -190,10 +205,20 @@ export function createModelClient(env = process.env) {
           if (stream) {
             const content = contentFromEventStream(response.text)
             if (content) return content
-            // Провайдер ответил не потоком, хотя его просили: разбираем как
-            // обычный ответ, а не молча возвращаем пустую строку.
-            const body = JSON.parse(response.text)
-            return body?.choices?.[0]?.message?.content ?? ''
+            // Пустой ответ при потоке значит одно из двух, и различать их
+            // обязательно. Если в теле есть события SSE, поток кончился до
+            // первого куска ответа — рассуждение шло, ответ не начался; это
+            // обрыв, и повторять его можно. Если событий нет, провайдер ответил
+            // обычным JSON, хотя его просили потоком, — тогда разбираем как
+            // непотоковый ответ. Раньше здесь в обоих случаях шёл JSON.parse по
+            // тексту SSE, и настоящий обрыв выглядел как «Unexpected token 'd',
+            // \"data: {\"ch\"…\" is not valid JSON».
+            if (isEventStream(response.text)) {
+              throw Object.assign(
+                new Error('model stream ended before any content delta'),
+                { code: 'MODEL_STREAM_TRUNCATED' }
+              )
+            }
           }
           const body = JSON.parse(response.text)
           return body?.choices?.[0]?.message?.content ?? ''
