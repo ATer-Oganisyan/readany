@@ -31,6 +31,7 @@ import {
   CARD_MEDIA_PRIORITY,
   CHARACTER_CARD_TARGET_VERSION
 } from '../analysis/book-character-card.mjs'
+import { ROSTER_CONFIRMATION_VERSION } from '../analysis/book-roster-confirmation.mjs'
 import {
   cardWindowChapterFrontier,
   nextCardWindow
@@ -496,6 +497,97 @@ export function createPostgresBookMarkupRepository(pool, {
     )
     if (!existing.rows[0]) throw new Error('idempotent book identity job disappeared')
     return { ...jobRow(existing.rows[0]), created: false, ...spec }
+  }
+
+  /**
+   * Постановка карточек одного окна внутри уже открытой транзакции.
+   *
+   * Вынесено из `enqueueCardWindow`, потому что подтверждение состава ставит
+   * карточки своего окна в той же транзакции, в которой пишет roster: иначе
+   * roster оказался бы записан, а карточек никто бы не поставил, и по прогону
+   * было бы не понять, чего он ждёт.
+   */
+  async function enqueueCardWindowJobs(client, { runId, bookEditionId, windowIndex, priority }) {
+        const window = await client.query(
+          `SELECT start_offset, end_offset, assign_start_offset, assign_end_offset,
+                  priority_class, status
+           FROM book_card_windows
+           WHERE run_id = $1 AND window_index = $2
+           FOR UPDATE`,
+          [runId, windowIndex]
+        )
+        if (!window.rows[0]) {
+          const error = new Error(`card window ${windowIndex} does not exist`)
+          error.code = 'CARD_WINDOW_MISSING'
+          throw error
+        }
+        const row = window.rows[0]
+        if (row.status !== 'queued') {
+          return { status: row.status, windowIndex, created: 0, jobs: [] }
+        }
+        // Персонажи окна: первое упоминание внутри диапазона состава этого
+        // окна и хотя бы один фрагмент до барьера — без фрагментов карточку
+        // строить нечем. Фрагменты считаются по барьеру, состав — по
+        // `assign_*`: это разные границы, и смешивать их нельзя.
+        const characters = await client.query(
+          `SELECT character_key, MIN(start_offset)::bigint AS first_offset,
+                  COUNT(*)::int AS fragment_count
+           FROM book_character_fragments
+           WHERE run_id = $1 AND start_offset < $2
+           GROUP BY character_key
+           HAVING MIN(start_offset) >= $3 AND MIN(start_offset) < $4
+           ORDER BY MIN(start_offset), character_key`,
+          [runId, row.end_offset, row.assign_start_offset, row.assign_end_offset]
+        )
+        // Имя и его варианты приходят в задание вместе с ним: генератор читает
+        // их только из payload, и без них он получал технический ключ вместо
+        // имени, пустые варианты и нулевую частотность — а на абзаце с
+        // несколькими героями по ключу целевого персонажа не определить.
+        const names = await inventoryNamesByKey(client, runId)
+        const jobs = []
+        for (const character of characters.rows) {
+          const idempotencyKey =
+            `${runId}:character-card:${windowIndex}:${character.character_key}`
+          const named = names.get(character.character_key) ??
+            names.get(characterIdentityKey(character.character_key)) ?? null
+          const inserted = await client.query(
+            `INSERT INTO generation_jobs (
+               id, idempotency_key, job_type, book_edition_id, character_key,
+               target_version, status, priority, payload, analysis_run_id, card_window_index
+             ) VALUES ($1, $2, 'character_card', $3, $4, $5, 'queued', $6, $7::jsonb, $8, $9)
+             ON CONFLICT (idempotency_key) DO NOTHING
+             RETURNING id`,
+            [
+              idFactory(), idempotencyKey, bookEditionId, character.character_key,
+              CHARACTER_CARD_TARGET_VERSION, priority,
+              JSON.stringify({
+                card_revision: 1,
+                fragment_count: Number(character.fragment_count),
+                first_mention_text_offset: Number(character.first_offset),
+                character_name: named?.name ?? null,
+                character_names: named?.names ?? [],
+                mention_count: named?.mentionCount ?? null
+              }),
+              runId, windowIndex
+            ]
+          )
+          if (inserted.rows[0]) jobs.push(inserted.rows[0].id)
+        }
+        await client.query(
+          `UPDATE book_card_windows
+           SET status = CASE WHEN $3 > 0 THEN 'running' ELSE 'ready' END,
+               started_at = COALESCE(started_at, now()),
+               finished_at = CASE WHEN $3 > 0 THEN NULL ELSE now() END
+           WHERE run_id = $1 AND window_index = $2`,
+          [runId, windowIndex, jobs.length]
+        )
+        return {
+          status: jobs.length ? 'running' : 'ready',
+          windowIndex,
+          priorityClass: row.priority_class,
+          created: jobs.length,
+          jobs
+        }
   }
 
   /**
@@ -2583,88 +2675,8 @@ export function createPostgresBookMarkupRepository(pool, {
      * получал карточку уже по первым двум главам — не по правилу D1.
      */
     async enqueueCardWindow({ runId, bookEditionId, windowIndex, priority }) {
-      return transaction(pool, async (client) => {
-        const window = await client.query(
-          `SELECT start_offset, end_offset, assign_start_offset, assign_end_offset,
-                  priority_class, status
-           FROM book_card_windows
-           WHERE run_id = $1 AND window_index = $2
-           FOR UPDATE`,
-          [runId, windowIndex]
-        )
-        if (!window.rows[0]) {
-          const error = new Error(`card window ${windowIndex} does not exist`)
-          error.code = 'CARD_WINDOW_MISSING'
-          throw error
-        }
-        const row = window.rows[0]
-        if (row.status !== 'queued') {
-          return { status: row.status, windowIndex, created: 0, jobs: [] }
-        }
-        // Персонажи окна: первое упоминание внутри диапазона состава этого
-        // окна и хотя бы один фрагмент до барьера — без фрагментов карточку
-        // строить нечем. Фрагменты считаются по барьеру, состав — по
-        // `assign_*`: это разные границы, и смешивать их нельзя.
-        const characters = await client.query(
-          `SELECT character_key, MIN(start_offset)::bigint AS first_offset,
-                  COUNT(*)::int AS fragment_count
-           FROM book_character_fragments
-           WHERE run_id = $1 AND start_offset < $2
-           GROUP BY character_key
-           HAVING MIN(start_offset) >= $3 AND MIN(start_offset) < $4
-           ORDER BY MIN(start_offset), character_key`,
-          [runId, row.end_offset, row.assign_start_offset, row.assign_end_offset]
-        )
-        // Имя и его варианты приходят в задание вместе с ним: генератор читает
-        // их только из payload, и без них он получал технический ключ вместо
-        // имени, пустые варианты и нулевую частотность — а на абзаце с
-        // несколькими героями по ключу целевого персонажа не определить.
-        const names = await inventoryNamesByKey(client, runId)
-        const jobs = []
-        for (const character of characters.rows) {
-          const idempotencyKey =
-            `${runId}:character-card:${windowIndex}:${character.character_key}`
-          const named = names.get(character.character_key) ??
-            names.get(characterIdentityKey(character.character_key)) ?? null
-          const inserted = await client.query(
-            `INSERT INTO generation_jobs (
-               id, idempotency_key, job_type, book_edition_id, character_key,
-               target_version, status, priority, payload, analysis_run_id, card_window_index
-             ) VALUES ($1, $2, 'character_card', $3, $4, $5, 'queued', $6, $7::jsonb, $8, $9)
-             ON CONFLICT (idempotency_key) DO NOTHING
-             RETURNING id`,
-            [
-              idFactory(), idempotencyKey, bookEditionId, character.character_key,
-              CHARACTER_CARD_TARGET_VERSION, priority,
-              JSON.stringify({
-                card_revision: 1,
-                fragment_count: Number(character.fragment_count),
-                first_mention_text_offset: Number(character.first_offset),
-                character_name: named?.name ?? null,
-                character_names: named?.names ?? [],
-                mention_count: named?.mentionCount ?? null
-              }),
-              runId, windowIndex
-            ]
-          )
-          if (inserted.rows[0]) jobs.push(inserted.rows[0].id)
-        }
-        await client.query(
-          `UPDATE book_card_windows
-           SET status = CASE WHEN $3 > 0 THEN 'running' ELSE 'ready' END,
-               started_at = COALESCE(started_at, now()),
-               finished_at = CASE WHEN $3 > 0 THEN NULL ELSE now() END
-           WHERE run_id = $1 AND window_index = $2`,
-          [runId, windowIndex, jobs.length]
-        )
-        return {
-          status: jobs.length ? 'running' : 'ready',
-          windowIndex,
-          priorityClass: row.priority_class,
-          created: jobs.length,
-          jobs
-        }
-      })
+      return transaction(pool, async (client) =>
+        enqueueCardWindowJobs(client, { runId, bookEditionId, windowIndex, priority }))
     },
 
     /**
@@ -2730,6 +2742,196 @@ export function createPostgresBookMarkupRepository(pool, {
         priority: next.priority
       })
       return { closed, enqueued, maxChapterIndex }
+    },
+
+    /**
+     * Вход задания подтверждения состава.
+     *
+     * Кандидаты берутся из инвентаря, а не из отдельной таблицы: инвентарь —
+     * и есть их источник, и второй источник истины тут не нужен. Фрагменты
+     * читаются целиком, даже когда подтверждается одно окно: по ним считаются
+     * со-упоминания, а это защита от слияния двух участников одной сцены, и
+     * считать её по части книги значит ослабить.
+     */
+    async getRosterConfirmationInput(job) {
+      const result = await pool.query(
+        `SELECT job.analysis_run_id, job.card_window_index,
+                edition.title, edition.author, edition.language,
+                run.normalized_text_object_key, run.normalized_text_hash, run.text_length,
+                inventory.inventory_version, inventory.document AS inventory_document,
+                card_window.start_offset, card_window.end_offset,
+                card_window.assign_start_offset, card_window.assign_end_offset
+         FROM generation_jobs AS job
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_analysis_runs AS run ON run.id = job.analysis_run_id
+         LEFT JOIN book_name_inventory AS inventory ON inventory.run_id = job.analysis_run_id
+         LEFT JOIN book_card_windows AS card_window
+           ON card_window.run_id = job.analysis_run_id
+          AND card_window.window_index = job.card_window_index
+         WHERE job.id = $1 AND job.job_type = 'roster_confirm'
+           AND job.status = 'running' AND job.lease_token = $2::uuid`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      const candidates = Array.isArray(row.inventory_document?.candidates)
+        ? row.inventory_document.candidates
+        : []
+      if (!candidates.length) {
+        const error = new Error(`run ${row.analysis_run_id} has no name inventory to confirm`)
+        error.code = 'ROSTER_INVENTORY_MISSING'
+        throw error
+      }
+      const fragments = await pool.query(
+        `SELECT character_key, fragment_id, paragraph_index, chapter_index,
+                start_offset, end_offset, mention_count
+         FROM book_character_fragments
+         WHERE run_id = $1
+         ORDER BY character_key, start_offset`,
+        [row.analysis_run_id]
+      )
+      const byCharacter = new Map()
+      for (const fragment of fragments.rows) {
+        const entry = byCharacter.get(fragment.character_key) ?? []
+        entry.push({
+          fragmentId: fragment.fragment_id,
+          characterKey: fragment.character_key,
+          paragraphIndex: Number(fragment.paragraph_index),
+          chapterIndex: Number(fragment.chapter_index),
+          startOffset: Number(fragment.start_offset),
+          endOffset: Number(fragment.end_offset),
+          mentionCount: Number(fragment.mention_count)
+        })
+        byCharacter.set(fragment.character_key, entry)
+      }
+      const previous = await pool.query(
+        `SELECT character_key, canonical_name, names, candidate_keys, mention_count,
+                first_mention_text_offset, tier
+         FROM book_character_roster WHERE run_id = $1`,
+        [row.analysis_run_id]
+      )
+      return {
+        runId: row.analysis_run_id,
+        bookEditionId: job.bookEditionId,
+        windowIndex: row.card_window_index === null ? null : Number(row.card_window_index),
+        title: row.title,
+        author: row.author ?? '',
+        language: row.language ?? '',
+        textLength: Number(row.text_length),
+        normalizedTextObjectKey: row.normalized_text_object_key,
+        normalizedTextHash: row.normalized_text_hash,
+        inventoryVersion: row.inventory_version ?? '',
+        window: row.start_offset === null
+          ? null
+          : {
+              startOffset: Number(row.start_offset),
+              endOffset: Number(row.end_offset),
+              assignStartOffset: Number(row.assign_start_offset),
+              assignEndOffset: Number(row.assign_end_offset)
+            },
+        candidates,
+        fragments: {
+          characters: [...byCharacter.entries()].map(([characterKey, entry]) => ({
+            characterKey,
+            fragments: entry
+          }))
+        },
+        previousRoster: previous.rows.map((character) => ({
+          characterKey: character.character_key,
+          canonicalName: character.canonical_name,
+          names: character.names ?? [],
+          candidateKeys: character.candidate_keys ?? [],
+          mentionCount: Number(character.mention_count),
+          firstMentionTextOffset: Number(character.first_mention_text_offset),
+          tier: character.tier
+        }))
+      }
+    },
+
+    /**
+     * Запись подтверждённого состава и постановка следующего шага.
+     *
+     * Всё одной транзакцией: roster, карточки окна и следующий заход
+     * подтверждения. Частичный результат оставил бы прогон в состоянии, из
+     * которого не видно, что делать дальше, — roster записан, а карточек никто
+     * не поставил.
+     */
+    async completeRosterConfirmation(job, {
+      runId,
+      bookEditionId,
+      windowIndex,
+      roster,
+      revisions = [],
+      skipped = false
+    }) {
+      return transaction(pool, async (client) => {
+        for (const character of roster) {
+          await client.query(
+            `INSERT INTO book_character_roster (
+               run_id, character_key, canonical_name, names, candidate_keys,
+               mention_count, first_mention_text_offset, tier, window_index
+             ) VALUES ($1, $2, $3, $4::text[], $5::text[], $6, $7, $8, $9)
+             ON CONFLICT (run_id, character_key) DO UPDATE SET
+               canonical_name = EXCLUDED.canonical_name,
+               names = EXCLUDED.names,
+               candidate_keys = EXCLUDED.candidate_keys,
+               mention_count = EXCLUDED.mention_count,
+               first_mention_text_offset = EXCLUDED.first_mention_text_offset,
+               tier = EXCLUDED.tier,
+               window_index = EXCLUDED.window_index,
+               confirmed_at = now()`,
+            [
+              runId, character.characterKey, character.canonicalName,
+              character.names ?? [], character.candidateKeys ?? [],
+              character.mentionCount, character.firstMentionTextOffset,
+              character.tier, windowIndex
+            ]
+          )
+        }
+
+        let cardJobsCreated = 0
+        if (windowIndex !== null && !skipped) {
+          const enqueued = await enqueueCardWindowJobs(client, {
+            runId, bookEditionId, windowIndex, priority: CARD_MEDIA_PRIORITY.foreground
+          })
+          cardJobsCreated = enqueued.created
+        }
+
+        // Полный заход ставится после окна: он длинный, и держать за ним
+        // первые карточки незачем.
+        let nextConfirmation = 'none'
+        if (windowIndex !== null) {
+          const inserted = await client.query(
+            `INSERT INTO generation_jobs (
+               id, idempotency_key, job_type, book_edition_id,
+               target_version, status, priority, payload, analysis_run_id
+             ) VALUES ($1, $2, 'roster_confirm', $3, $4, 'queued', $5, '{}'::jsonb, $6)
+             ON CONFLICT DO NOTHING
+             RETURNING id`,
+            [
+              idFactory(), `${runId}:roster-confirm:book`, bookEditionId,
+              ROSTER_CONFIRMATION_VERSION, CARD_MEDIA_PRIORITY.background, runId
+            ]
+          )
+          nextConfirmation = inserted.rows[0] ? 'book' : 'already_queued'
+        }
+
+        await client.query(
+          `UPDATE generation_jobs
+           SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+               locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1`,
+          [job.id, JSON.stringify({
+            window_index: windowIndex,
+            character_count: roster.length,
+            revision_count: revisions.length,
+            card_jobs_created: cardJobsCreated,
+            next_confirmation: nextConfirmation,
+            skipped
+          })]
+        )
+        return { cardJobsCreated, nextConfirmation, characterCount: roster.length }
+      })
     },
 
     /**
