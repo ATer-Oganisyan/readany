@@ -676,3 +676,13 @@ test('a card job fails cleanly when the worker has no object storage', async () 
   assert.equal((await worker.runOnce()).status, 'failed')
   assert.equal(failedCode, 'CARD_STORAGE_UNAVAILABLE')
 })
+
+test('the worker dispatches roster confirmation and refuses it without storage', async () => {
+  // Подтверждению состава нужен нормализованный текст: цитаты фрагментов
+  // восстанавливаются из него по координатам, а не дублируются в базе. Воркер
+  // без хранилища остаётся рабочим для прежних типов и честно отказывает
+  // только этому — вместо того чтобы падать на старте.
+  const { BOOK_MARKUP_WORKER_JOB_TYPES } = await import('../generation/generation-worker.mjs')
+  assert.ok(BOOK_MARKUP_WORKER_JOB_TYPES.includes('roster_confirm'))
+  assert.deepEqual(parseBookMarkupWorkerJobTypes('roster_confirm'), ['roster_confirm'])
+})

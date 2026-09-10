@@ -8,6 +8,10 @@ import { voiceForGender } from '../providers/voices.mjs'
 import { normalizeBookDisplayIdentity } from '../books/book-identity.mjs'
 import { CHARACTER_CARD_JOB_TYPE } from '../analysis/book-character-card.mjs'
 import { createCharacterCardRunner } from '../analysis/book-character-card-runner.mjs'
+import {
+  ROSTER_CONFIRM_JOB_TYPE,
+  createRosterConfirmRunner
+} from '../analysis/book-roster-confirm-runner.mjs'
 
 export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   'book_markup',
@@ -15,6 +19,7 @@ export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   'scene_image',
   'character_bundle',
   CHARACTER_CARD_JOB_TYPE,
+  ROSTER_CONFIRM_JOB_TYPE,
   ...Object.values(CHARACTER_MEDIA_JOB_TYPES)
 ])
 const JOB_TYPES = new Set(['book_identity', ...BOOK_MARKUP_WORKER_JOB_TYPES])
@@ -39,6 +44,7 @@ const JOB_LABELS = {
   scene_image: 'иллюстрация сцены',
   character_bundle: 'пакет персонажа',
   character_card: 'карточка персонажа',
+  roster_confirm: 'состав книги',
   character_portrait: 'портрет персонажа',
   character_audio: 'голос персонажа',
   character_animation: 'анимация персонажа'
@@ -287,6 +293,11 @@ export function createGenerationWorker({
   const characterCardRunner = storage
     ? createCharacterCardRunner({ repository, storage, generator, logger })
     : null
+  // Подтверждению состава текст нужен по той же причине, что карточке: цитаты
+  // фрагментов восстанавливаются из него по координатам, а не дублируются в базе.
+  const rosterConfirmRunner = storage
+    ? createRosterConfirmRunner({ repository, storage, generator, logger })
+    : null
 
   async function runBookMarkup(job) {
     const startedAt = Date.now()
@@ -517,6 +528,14 @@ export function createGenerationWorker({
               })
             }
             return characterCardRunner.run(job)
+          }
+          if (job.type === ROSTER_CONFIRM_JOB_TYPE) {
+            if (!rosterConfirmRunner) {
+              throw Object.assign(new Error('roster confirmation requires object storage'), {
+                code: 'ROSTER_STORAGE_UNAVAILABLE'
+              })
+            }
+            return rosterConfirmRunner.run(job)
           }
           return runCharacterBundle(job)
         })
