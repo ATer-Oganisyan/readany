@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { assertLeaseSeconds, claimJobSql, jobQueueColumns, renewLeaseSql } from './pg-job-queue.mjs'
+import { transaction } from './postgres-runtime.mjs'
 import {
   BOOK_IDENTITY_VERSION,
   bookIdentityTargetVersion,
@@ -39,33 +41,15 @@ function catalogCoverTargetVersion(contentSha256) {
   return `${CATALOG_COVER_VERSION}-${contentSha256.slice(0, 16)}`
 }
 
+const GENERATION_QUEUE = 'generation_jobs'
+// В generation_jobs нет колонки срока аренды — он вычисляется от locked_at;
+// потолка попыток в момент захвата тоже нет, ретраями управляет оператор.
+const GENERATION_COLUMNS = jobQueueColumns({ maxAttempts: null, leaseExpiresAt: null })
+
 function leaseLost(jobId) {
   const error = new Error(`generation job lease lost: ${jobId}`)
   error.code = 'LEASE_LOST'
   return error
-}
-
-async function transaction(pool, operation) {
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const client = await pool.connect()
-    let retry = false
-    try {
-      await client.query('BEGIN')
-      const result = await operation(client)
-      await client.query('COMMIT')
-      return result
-    } catch (error) {
-      await client.query('ROLLBACK').catch(() => {})
-      retry = error?.code === '40P01' && attempt < 3
-      if (!retry) throw error
-    } finally {
-      client.release()
-    }
-    if (retry) {
-      const delayMs = 10 * attempt + Math.floor(Math.random() * 20)
-      await new Promise((resolve) => setTimeout(resolve, delayMs))
-    }
-  }
 }
 
 function jobRow(row) {
@@ -2316,44 +2300,37 @@ export function createPostgresBookMarkupRepository(pool, {
       if (allowedBookEditionIds?.some((value) => !UUID.test(String(value)))) {
         throw new TypeError('bookEditionIds must contain UUIDs')
       }
+      assertLeaseSeconds(leaseSeconds)
       const leaseToken = idFactory()
       const result = await pool.query(
-        `WITH candidate AS (
-           SELECT id
-           FROM generation_jobs
-           WHERE ($4::text[] IS NULL OR job_type = ANY($4::text[]))
-             AND ($5::uuid[] IS NULL OR book_edition_id = ANY($5::uuid[]))
-             AND operator_pause_id IS NULL AND ((
-             status = 'queued' AND available_at <= now()
-           ) OR (
-             status = 'running' AND locked_at < now() - make_interval(secs => $2)
-           )) AND (
-             job_type <> 'character_animation' OR EXISTS (
+        claimJobSql({
+          table: GENERATION_QUEUE,
+          columns: GENERATION_COLUMNS,
+          where: [
+            '($4::text[] IS NULL OR job.job_type = ANY($4::text[]))',
+            '($5::uuid[] IS NULL OR job.book_edition_id = ANY($5::uuid[]))',
+            'job.operator_pause_id IS NULL',
+            // Анимация ждёт готовый портрет того же персонажа.
+            `(job.job_type <> 'character_animation' OR EXISTS (
                SELECT 1 FROM generation_jobs AS portrait
-               WHERE portrait.book_edition_id = generation_jobs.book_edition_id
-                 AND portrait.character_key = generation_jobs.character_key
-                 AND portrait.target_version = generation_jobs.target_version
+               WHERE portrait.book_edition_id = job.book_edition_id
+                 AND portrait.character_key = job.character_key
+                 AND portrait.target_version = job.target_version
                  AND portrait.job_type = 'character_portrait'
-               AND portrait.status = 'ready'
-             )
-           ) AND (
-             job_type <> 'catalog_cover' OR NOT EXISTS (
+                 AND portrait.status = 'ready'
+             ))`,
+            // Обложка не рисуется, пока identity книги ещё в очереди.
+            `(job.job_type <> 'catalog_cover' OR NOT EXISTS (
                SELECT 1 FROM generation_jobs AS identity
-               WHERE identity.book_edition_id = generation_jobs.book_edition_id
+               WHERE identity.book_edition_id = job.book_edition_id
                  AND identity.job_type = 'book_identity'
                  AND identity.status IN ('queued', 'running')
-             )
-           )
-           ORDER BY priority DESC, available_at, created_at
-           FOR UPDATE SKIP LOCKED
-           LIMIT 1
-         )
-         UPDATE generation_jobs AS job
-         SET status = 'running', locked_at = now(), locked_by = $1,
-             lease_token = $3::uuid, attempts = attempts + 1, updated_at = now()
-         FROM candidate
-         WHERE job.id = candidate.id
-         RETURNING job.*`,
+             ))`
+          ],
+          lockedBy: '$1',
+          leaseSeconds: '$2',
+          leaseToken: '$3'
+        }),
         [workerId, leaseSeconds, leaseToken, allowedJobTypes, allowedBookEditionIds]
       )
       const job = jobRow(result.rows[0])
@@ -2424,9 +2401,12 @@ export function createPostgresBookMarkupRepository(pool, {
 
     async renewGenerationLease(job) {
       const result = await pool.query(
-        `UPDATE generation_jobs SET locked_at = now(), updated_at = now()
-         WHERE id = $1 AND status = 'running' AND lease_token = $2::uuid
-         RETURNING id`,
+        renewLeaseSql({
+          table: GENERATION_QUEUE,
+          columns: GENERATION_COLUMNS,
+          id: '$1',
+          leaseToken: '$2'
+        }),
         [job.id, job.leaseToken]
       )
       if (!result.rows[0]) throw leaseLost(job.id)

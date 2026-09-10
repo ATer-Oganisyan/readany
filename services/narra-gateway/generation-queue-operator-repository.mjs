@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { transaction } from './postgres-runtime.mjs'
 
 function selectorSql(selector, firstParameter = 1) {
   const clauses = ["status = 'queued'", 'operator_pause_id IS NULL']
@@ -16,21 +17,6 @@ function selectorSql(selector, firstParameter = 1) {
     clauses.push(`payload->>'campaign_id' = $${firstParameter + parameters.length - 1}`)
   }
   return { where: clauses.join(' AND '), parameters }
-}
-
-async function transaction(pool, operation) {
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
-    const result = await operation(client)
-    await client.query('COMMIT')
-    return result
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {})
-    throw error
-  } finally {
-    client.release()
-  }
 }
 
 export function createGenerationQueueOperatorRepository(pool, { idFactory = randomUUID } = {}) {

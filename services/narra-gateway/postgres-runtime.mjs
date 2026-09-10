@@ -4,6 +4,43 @@ import { parseEnvInt } from './env.mjs'
 
 const MIGRATION_LOCK_NAME = 'readany_book_markup_migrations'
 
+/**
+ * Транзакция с повтором при deadlock (40P01). Повтор безопасен: операция
+ * начинается с чистого BEGIN, а закоммиченного эффекта у отката нет.
+ */
+export async function transaction(pool, operation, { attempts = 3 } = {}) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const client = await pool.connect()
+    let retry = false
+    try {
+      await client.query('BEGIN')
+      const result = await operation(client)
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      retry = error?.code === '40P01' && attempt < attempts
+      if (!retry) throw error
+    } finally {
+      client.release()
+    }
+    if (retry) {
+      // Разводим конкурентов по времени, иначе deadlock повторяется тем же составом.
+      const delayMs = 10 * attempt + Math.floor(Math.random() * 20)
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+  throw new Error('transaction retries exhausted')
+}
+
+export function repositoryError(code, message, status) {
+  return Object.assign(new Error(message), { code, ...(status ? { status } : {}) })
+}
+
+export function leaseLost(queue, jobId) {
+  return repositoryError('LEASE_LOST', `${queue} job lease lost: ${jobId}`)
+}
+
 function databaseSsl(env, connectionString) {
   const mode = String(
     env.DATABASE_SSL_MODE || (env.NODE_ENV === 'production' ? 'verify-full' : 'disable')

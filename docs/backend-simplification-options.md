@@ -23,7 +23,10 @@ current architecture docs. The complexity is structural: boilerplate that was
 copied instead of parameterized, and a deployment topology finer-grained than
 the schema requires.
 
-## Option A — collapse 6 analysis worker processes into 1
+> **Status (2026-09-10):** A and B are implemented on
+> `refactor/backend-simplification-a-b`. C, D and E remain open.
+
+## Option A — collapse 6 analysis worker processes into 1 — DONE
 
 All six stages claim from **one** table (`book_analysis_jobs`) through **one**
 stage-parameterized method (`claimAnalysisJob(workerId, { stages })`,
@@ -47,7 +50,20 @@ all stages.
 
 Effort ~1 day. Risk low. Highest payoff of anything listed here.
 
-## Option B — one queue primitive instead of five
+**As implemented.** `book-analysis-worker.mjs` takes the stage list from argv or
+`BOOK_ANALYSIS_STAGES` and polls them in one loop; the scan, resolve, stage and
+external runners are gone. A shared `worker-runtime.mjs` now carries the loop
+(shutdown, pool, migrations, heartbeat, poll, idle log, backoff), and the search
+and TTS runners use it too — both gained a heartbeat and idle logging they did
+not have. Compose keeps one `book-analysis-worker` plus an opt-in
+`book-analysis-pool` profile for hot stages.
+
+The cost, which the old topology paid for deliberately: one process now holds
+both storage and generator credentials, where `publish` previously held neither.
+`BOOK_ANALYSIS_STAGES` restores the split for anyone who wants per-stage least
+privilege back.
+
+## Option B — one queue primitive instead of five — DONE
 
 `book_analysis_jobs`, `generation_jobs`, `book_search_jobs` and
 `book_tts_markup_jobs` carry the same columns (`status`, `priority`, `attempts`,
@@ -62,6 +78,31 @@ contract. Each domain keeps its own table and payload shape.
 Effort ~3 days. Risk medium — it touches every worker path, but each queue has
 integration coverage (`test/postgres-*.integration.test.mjs`). Payoff: uniform
 retry and lease behaviour, roughly 600 LOC removed.
+
+**As implemented.** `pg-job-queue.mjs` holds the mechanics — the column
+contract, the claimable predicate, the ordering, the lease assignment, the
+claim/renew/sweep query shapes — while each repository keeps its own domain
+predicates, because those carry business rules and must stay readable. All four
+claims (`book_analysis_jobs`, `generation_jobs`, `book_search_jobs`,
+`book_tts_markup_jobs`) and all four lease renewals go through it. The four
+remaining `SKIP LOCKED` blocks are operator bulk mutations (retry, purge, pause,
+resume), not claims, and were left alone.
+
+Two latent defects surfaced while generating the SQL, both invisible to the
+unit tests because they use fake pools:
+
+- `book_tts_markup_jobs` has no `locked_at` column, so a naive shared writer
+  would have emitted an invalid `UPDATE`. `lockedAt` is now optional in the
+  column contract, and a test cross-checks every declared contract against the
+  migration that owns the table.
+- an unqualified `ORDER BY created_at` is ambiguous once the analysis claim
+  joins `book_analysis_runs`, which also has `created_at`. Every fragment now
+  defaults to the same `job` alias.
+
+Also folded in: five copies of `transaction` became one, and the shared version
+keeps the deadlock retry with backoff that only the markup repository had.
+`validateLeaseSeconds` stays local to the analysis repository — its 30-second
+floor is a domain rule, not shared mechanics.
 
 ## Option C — split the two god-files by responsibility
 
