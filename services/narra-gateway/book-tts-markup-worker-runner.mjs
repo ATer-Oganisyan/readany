@@ -4,60 +4,43 @@ import { createGenerationServiceClient } from './generation-service-client.mjs'
 import { createPostgresBookTtsMarkupRepository } from './book-tts-markup-repository.mjs'
 import { createBookTtsMarkupWorker } from './book-tts-markup-worker.mjs'
 import { parseEnvInt } from './env.mjs'
-import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
-import { createWorkerHeartbeat } from './worker-heartbeat.mjs'
+import { runWorkerLoop, withWorkerRuntime } from './worker-runtime.mjs'
 
-const shutdown = new AbortController()
-process.once('SIGTERM', () => shutdown.abort())
-process.once('SIGINT', () => shutdown.abort())
+const env = process.env
+const workerId = String(env.BOOK_TTS_MARKUP_WORKER_ID || `book-tts-${randomUUID()}`)
+const pollMs = parseEnvInt(env, 'BOOK_TTS_MARKUP_WORKER_POLL_MS', 1_000, 60_000)
+const idleLogMs = parseEnvInt(env, 'BOOK_TTS_MARKUP_IDLE_LOG_MS', 300_000, 3_600_000)
+const leaseSeconds = parseEnvInt(env, 'BOOK_TTS_MARKUP_JOB_LEASE_SECONDS', 600, 3_600)
+const leaseRenewMs = parseEnvInt(env, 'BOOK_TTS_MARKUP_LEASE_RENEW_MS', 60_000, 1_800_000)
 
-function delay(milliseconds) {
-  return new Promise((resolve) => {
-    const finish = () => {
-      clearTimeout(timer)
-      shutdown.signal.removeEventListener('abort', finish)
-      resolve()
-    }
-    const timer = setTimeout(finish, milliseconds)
-    shutdown.signal.addEventListener('abort', finish, { once: true })
-  })
-}
-
-const workerId = String(process.env.BOOK_TTS_MARKUP_WORKER_ID || `book-tts-${randomUUID()}`)
-const pollMs = parseEnvInt(process.env, 'BOOK_TTS_MARKUP_WORKER_POLL_MS', 1_000, 60_000)
-const leaseSeconds = parseEnvInt(process.env, 'BOOK_TTS_MARKUP_JOB_LEASE_SECONDS', 600, 3_600)
-const leaseRenewMs = parseEnvInt(process.env, 'BOOK_TTS_MARKUP_LEASE_RENEW_MS', 60_000, 1_800_000)
-const pool = await createPostgresPoolFromEnv(process.env)
-let heartbeat
-
-try {
-  await runBookMarkupMigrations(pool)
-  heartbeat = createWorkerHeartbeat({
-    pool,
-    workerId,
-    workerType: process.env.WORKER_TYPE || 'book-tts-markup'
-  })
-  await heartbeat.start()
-  const worker = createBookTtsMarkupWorker({
-    repository: createPostgresBookTtsMarkupRepository(pool),
-    storage: createBookObjectStorageFromEnv(process.env),
-    generator: createGenerationServiceClient({
-      baseUrl: process.env.GENERATOR_BASE_URL,
-      token: process.env.GENERATOR_SERVICE_TOKEN,
-      timeoutMs: parseEnvInt(process.env, 'GENERATOR_TIMEOUT_MS', 600_000, 900_000)
-    }),
-    workerId,
-    leaseSeconds,
-    leaseRenewMs
-  })
-  while (!shutdown.signal.aborted) {
-    const result = await worker.runOnce().catch((error) => {
-      console.error('[book-tts-markup] worker loop failed', error)
-      return { status: 'idle' }
+await withWorkerRuntime(
+  { component: 'book-tts-markup-worker', workerType: 'book-tts-markup', workerId },
+  async ({ pool, log, signal }) => {
+    const worker = createBookTtsMarkupWorker({
+      repository: createPostgresBookTtsMarkupRepository(pool),
+      storage: createBookObjectStorageFromEnv(env),
+      generator: createGenerationServiceClient({
+        baseUrl: env.GENERATOR_BASE_URL,
+        token: env.GENERATOR_SERVICE_TOKEN,
+        timeoutMs: parseEnvInt(env, 'GENERATOR_TIMEOUT_MS', 600_000, 900_000)
+      }),
+      workerId,
+      leaseSeconds,
+      leaseRenewMs
     })
-    if (result.status === 'idle') await delay(pollMs)
+    log.info('worker.ready', 'TTS-воркер разметки запущен', {
+      worker: workerId,
+      poll_ms: pollMs,
+      lease_seconds: leaseSeconds
+    })
+    await runWorkerLoop({
+      slots: [{ name: 'tts-markup', workerId, worker }],
+      pollMs,
+      idleLogMs,
+      log,
+      signal,
+      workerId,
+      queueLabel: 'TTS-разметки'
+    })
   }
-} finally {
-  heartbeat?.stop()
-  await pool.end()
-}
+)

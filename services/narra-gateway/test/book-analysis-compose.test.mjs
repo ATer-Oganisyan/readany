@@ -25,32 +25,33 @@ const stagingEnvSource = await readFile(
   'utf8'
 )
 
-const stages = {
-  prepare: '["node", "book-analysis-worker.mjs"]',
-  scan: '["node", "book-analysis-scan-worker-runner.mjs"]',
-  resolve: '["node", "book-analysis-resolve-worker-runner.mjs"]',
-  synthesize: '["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]',
-  validate: '["node", "book-analysis-stage-worker-runner.mjs", "validate"]',
-  publish: '["node", "book-analysis-stage-worker-runner.mjs", "publish"]'
-}
-
-test('canonical v3 analysis deploys every stage in the explicit book-backend profile', () => {
+test('canonical v3 analysis runs as one multi-stage worker in the book-backend profile', () => {
   assert.doesNotMatch(compose, /profiles: \["book-analysis-shadow"\]/)
-  for (const [stage, command] of Object.entries(stages)) {
-    const service = `  book-analysis-${stage}:\n`
-    assert.ok(compose.includes(service), `missing ${stage} service`)
-    assert.ok(compose.includes(`    command: ${command}`), `wrong ${stage} command`)
-    const section = compose.slice(compose.indexOf(service), compose.indexOf(service) + 500)
-    assert.match(section, /profiles: \["book-backend"\]/)
+  const worker = compose.slice(
+    compose.indexOf('  book-analysis-worker:'),
+    compose.indexOf('  book-analysis-pool:')
+  )
+  assert.match(worker, /command: \["node", "book-analysis-worker\.mjs"\]/)
+  assert.match(worker, /profiles: \["book-backend"\]/)
+  assert.match(worker, /WORKER_TYPE: book-analysis$/m)
+  // Единая очередь book_analysis_jobs: отдельных сервисов на стадию больше нет.
+  for (const stage of ['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish']) {
+    assert.ok(!compose.includes(`  book-analysis-${stage}:\n`), `stale ${stage} service`)
   }
+  assert.doesNotMatch(compose, /book-analysis-\w+-worker-runner\.mjs/)
 })
 
-test('scan stage starts with one canary worker and can be scaled explicitly', () => {
-  const scan = compose.slice(
-    compose.indexOf('  book-analysis-scan:'),
-    compose.indexOf('  book-analysis-resolve:')
+test('a hot-stage pool stays available as an explicit opt-in profile', () => {
+  const pool = compose.slice(
+    compose.indexOf('  book-analysis-pool:'),
+    compose.indexOf('  book-media-worker:')
   )
-  assert.match(scan, /replicas: \$\{BOOK_ANALYSIS_SCAN_REPLICAS:-1\}/)
+  assert.match(pool, /profiles: \["book-analysis-pool"\]/)
+  assert.match(pool, /command: \["node", "book-analysis-worker\.mjs"\]/)
+  assert.match(pool, /BOOK_ANALYSIS_STAGES: \$\{BOOK_ANALYSIS_POOL_STAGES:-scan\}/)
+  assert.match(pool, /replicas: \$\{BOOK_ANALYSIS_POOL_REPLICAS:-2\}/)
+  assert.match(envExample, /^BOOK_ANALYSIS_POOL_STAGES=scan$/m)
+  assert.match(envExample, /^BOOK_ANALYSIS_WORKER_REPLICAS=1$/m)
 })
 
 test('ScanPolicy defaults to balanced and reaches prepare, gateway and scan workers', () => {
@@ -63,19 +64,14 @@ test('ScanPolicy defaults to balanced and reaches prepare, gateway and scan work
     compose.indexOf('\n  gateway:\n'),
     compose.indexOf('\n  postgres:\n')
   )
-  const prepare = compose.slice(
-    compose.indexOf('  book-analysis-prepare:'),
-    compose.indexOf('  book-analysis-scan:')
-  )
-  const scan = compose.slice(
-    compose.indexOf('  book-analysis-scan:'),
-    compose.indexOf('  book-analysis-resolve:')
+  const worker = compose.slice(
+    compose.indexOf('  book-analysis-worker:'),
+    compose.indexOf('  book-analysis-pool:')
   )
   assert.match(gateway, /<<: \*book-analysis-scan-policy-environment/)
-  assert.match(prepare, /\*book-analysis-scan-policy-environment/)
-  assert.match(scan, /\*book-analysis-scan-policy-environment/)
+  assert.match(worker, /\*book-analysis-scan-policy-environment/)
   assert.match(localCompose, /BOOK_ANALYSIS_SCAN_POLICY_PROFILE: \$\{BOOK_ANALYSIS_SCAN_POLICY_PROFILE:-balanced\}/)
-  assert.match(localCompose, /<<: \[\*database-environment, \*storage-environment, \*scan-policy-environment\]/)
+  assert.match(localCompose, /<<: \[\*database-environment, \*storage-environment, \*generator-environment, \*scan-policy-environment\]/)
   assert.match(gatewaySource, /book_analysis_scan_policy:/)
   assert.match(gatewaySource, /preserve_partial_results: BOOK_ANALYSIS_SCAN_POLICY\.preservePartialResults/)
 })
@@ -88,12 +84,12 @@ test('external research services are isolated in the local-only compose profile'
   )
   const worker = localCompose.slice(
     localCompose.indexOf('  book-analysis-external:'),
-    localCompose.indexOf('  book-analysis-resolve:')
+    localCompose.indexOf('\nvolumes:')
   )
   assert.match(adapter, /profiles: \["book-analysis-external"\]/)
   assert.match(adapter, /read_only: true/)
   assert.doesNotMatch(adapter, /\n    ports:/)
-  assert.match(worker, /book-analysis-external-worker-runner\.mjs/)
+  assert.match(worker, /command: \["node", "book-analysis-worker\.mjs", "external"\]/)
   assert.match(worker, /AUTIOBOOK_ADAPTER_BASE_URL: http:\/\/autiobook-adapter\.railway\.internal:8080/)
   assert.match(gatewaySource, /BOOK_ANALYSIS_PIPELINE/)
 })
@@ -106,20 +102,20 @@ test('gateway LLM capacity is aligned with the larger scan pool', () => {
 test('markup and synthesis start as one-replica canaries and remain explicitly scalable', () => {
   const markup = compose.slice(
     compose.indexOf('  book-markup-worker:'),
-    compose.indexOf('  book-analysis-prepare:')
+    compose.indexOf('  book-analysis-worker:')
   )
-  const synthesize = compose.slice(
-    compose.indexOf('  book-analysis-synthesize:'),
-    compose.indexOf('  book-analysis-validate:')
+  const analysis = compose.slice(
+    compose.indexOf('  book-analysis-worker:'),
+    compose.indexOf('  book-analysis-pool:')
   )
   assert.match(markup, /replicas: \$\{BOOK_MARKUP_WORKER_REPLICAS:-1\}/)
-  assert.match(synthesize, /replicas: \$\{BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-1\}/)
+  assert.match(analysis, /replicas: \$\{BOOK_ANALYSIS_WORKER_REPLICAS:-1\}/)
 })
 
 test('book display identity has one separate durable worker', () => {
   const identity = compose.slice(
     compose.indexOf('  book-identity-worker:'),
-    compose.indexOf('  book-analysis-prepare:')
+    compose.indexOf('  book-analysis-worker:')
   )
   assert.match(identity, /command: \["node", "book-identity-worker\.mjs"\]/)
   assert.match(identity, /replicas: \$\{BOOK_IDENTITY_WORKER_REPLICAS:-1\}/)
@@ -130,7 +126,7 @@ test('book display identity has one separate durable worker', () => {
 test('TTS markup runs as an independently scalable hardened container', () => {
   const worker = compose.slice(
     compose.indexOf('  book-tts-markup-worker:'),
-    compose.indexOf('  book-analysis-prepare:')
+    compose.indexOf('  book-analysis-worker:')
   )
   assert.match(worker, /command: \["node", "book-tts-markup-worker-runner\.mjs"\]/)
   assert.match(worker, /profiles: \["tts-markup"\]/)
@@ -248,18 +244,20 @@ test('staging environment preparation preserves existing secrets', () => {
   assert.match(stagingEnvSource, /compose\.env\.\$timestamp/)
 })
 
-test('stage services receive only the provider credentials they need', () => {
-  const resolve = compose.slice(
-    compose.indexOf('  book-analysis-resolve:'),
-    compose.indexOf('  book-analysis-synthesize:')
+test('the analysis worker declares every credential its stages need', () => {
+  const worker = compose.slice(
+    compose.indexOf('  book-analysis-worker:'),
+    compose.indexOf('  book-analysis-pool:')
   )
-  const publish = compose.slice(
-    compose.indexOf('  book-analysis-publish:'),
-    compose.indexOf('  book-media-worker:')
-  )
-  assert.match(resolve, /book-analysis-database-environment/)
-  assert.match(resolve, /book-analysis-generator-environment/)
-  assert.doesNotMatch(resolve, /book-analysis-storage-environment/)
-  assert.match(publish, /book-analysis-database-environment/)
-  assert.doesNotMatch(publish, /generator-environment|storage-environment/)
+  // Один процесс обслуживает scan (storage + generator) и publish (только БД),
+  // поэтому per-stage least privilege сменился явным общим профилем.
+  assert.match(worker, /book-analysis-database-environment/)
+  assert.match(worker, /book-analysis-storage-environment/)
+  assert.match(worker, /book-analysis-generator-environment/)
+})
+
+test('deploy maps every analysis worker source file onto the single service', () => {
+  assert.match(deploySource, /analysis_services=\(book-analysis-worker\)/)
+  assert.match(deploySource, /book-analysis-\*worker\.mjs\)/)
+  assert.match(deploySource, /worker-runtime\.mjs\)/)
 })

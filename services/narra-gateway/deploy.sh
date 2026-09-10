@@ -22,14 +22,7 @@ changed_paths=()
 services=()
 
 gateway_services=(gateway)
-analysis_services=(
-  book-analysis-prepare
-  book-analysis-scan
-  book-analysis-resolve
-  book-analysis-synthesize
-  book-analysis-validate
-  book-analysis-publish
-)
+analysis_services=(book-analysis-worker)
 book_worker_services=(book-markup-worker book-identity-worker "${analysis_services[@]}")
 media_services=(book-media-worker)
 scene_services=(book-scene-worker)
@@ -286,26 +279,11 @@ select_from_changed_path() {
     services/narra-gateway/index.mjs)
       add_service gateway
       ;;
-    services/narra-gateway/book-analysis-scan-worker.mjs|services/narra-gateway/book-analysis-scan-worker-runner.mjs)
-      add_service book-analysis-scan
+    services/narra-gateway/book-analysis-*worker.mjs)
+      add_many "${analysis_services[@]}"
       ;;
-    services/narra-gateway/book-analysis-resolve-worker.mjs|services/narra-gateway/book-analysis-resolve-worker-runner.mjs)
-      add_service book-analysis-resolve
-      ;;
-    services/narra-gateway/book-analysis-prepare-worker.mjs|services/narra-gateway/book-analysis-worker.mjs)
-      add_service book-analysis-prepare
-      ;;
-    services/narra-gateway/book-analysis-synthesize-worker.mjs)
-      add_service book-analysis-synthesize
-      ;;
-    services/narra-gateway/book-analysis-validate-worker.mjs)
-      add_service book-analysis-validate
-      ;;
-    services/narra-gateway/book-analysis-publish-worker.mjs)
-      add_service book-analysis-publish
-      ;;
-    services/narra-gateway/book-analysis-stage-worker-runner.mjs)
-      add_many book-analysis-synthesize book-analysis-validate
+    services/narra-gateway/worker-runtime.mjs)
+      add_many "${worker_services[@]}"
       ;;
     services/narra-gateway/book-identity-worker.mjs)
       add_service book-identity-worker
