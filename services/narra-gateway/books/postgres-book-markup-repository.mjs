@@ -2497,6 +2497,153 @@ export function createPostgresBookMarkupRepository(pool, {
       }
     },
 
+    /**
+     * Вход задания карточки персонажа.
+     *
+     * Цитаты фрагментов здесь не возвращаются: в `book_character_fragments`
+     * текст не дублируется, и раннер восстанавливает его из нормализованного
+     * текста по этим же смещениям. Возвращается ровно окно этого задания —
+     * фрагмент за его границей в выборку не попадает, и это тот же
+     * спойлер-барьер, только выраженный в WHERE.
+     */
+    async getCharacterCardInput(job) {
+      const result = await pool.query(
+        `SELECT job.analysis_run_id, job.card_window_index,
+                edition.title, edition.author, edition.language,
+                run.normalized_text_object_key, run.normalized_text_hash,
+                run.text_length,
+                card_window.start_offset, card_window.end_offset, card_window.chapter_indexes,
+                inventory.inventory_version,
+                job.payload->>'character_name' AS character_name,
+                job.payload->'character_names' AS character_names,
+                job.payload->>'mention_count' AS mention_count,
+                job.payload->>'card_revision' AS card_revision
+         FROM generation_jobs AS job
+         JOIN book_editions AS edition ON edition.id = job.book_edition_id
+         JOIN book_analysis_runs AS run ON run.id = job.analysis_run_id
+         JOIN book_card_windows AS card_window
+           ON card_window.run_id = job.analysis_run_id
+          AND card_window.window_index = job.card_window_index
+         LEFT JOIN book_name_inventory AS inventory ON inventory.run_id = job.analysis_run_id
+         WHERE job.id = $1 AND job.job_type = 'character_card'
+           AND job.status = 'running' AND job.lease_token = $2::uuid`,
+        [job.id, job.leaseToken]
+      )
+      if (!result.rows[0]) throw leaseLost(job.id)
+      const row = result.rows[0]
+      const fragments = await pool.query(
+        `SELECT fragment_id, paragraph_index, chapter_index,
+                start_offset, end_offset, mention_count
+         FROM book_character_fragments
+         WHERE run_id = $1 AND character_key = $2
+           AND start_offset >= $3 AND end_offset <= $4
+         ORDER BY start_offset, fragment_id`,
+        [row.analysis_run_id, job.characterKey, row.start_offset, row.end_offset]
+      )
+      if (!fragments.rows.length) {
+        const error = new Error(`character ${job.characterKey} has no fragments in its card window`)
+        error.code = 'CARD_FRAGMENTS_MISSING'
+        throw error
+      }
+      const names = Array.isArray(row.character_names) ? row.character_names : []
+      return {
+        runId: row.analysis_run_id,
+        bookEditionId: job.bookEditionId,
+        characterKey: job.characterKey,
+        windowIndex: Number(row.card_window_index),
+        title: row.title,
+        author: row.author ?? '',
+        language: row.language ?? '',
+        textLength: Number(row.text_length),
+        normalizedTextObjectKey: row.normalized_text_object_key,
+        normalizedTextHash: row.normalized_text_hash,
+        inventoryVersion: row.inventory_version ?? '',
+        cardRevision: Number(row.card_revision ?? 1),
+        window: {
+          startOffset: Number(row.start_offset),
+          endOffset: Number(row.end_offset),
+          chapterIndexes: (row.chapter_indexes ?? []).map(Number)
+        },
+        character: {
+          canonicalName: row.character_name ?? names[0] ?? job.characterKey,
+          names,
+          mentionCount: Number(row.mention_count ?? 0),
+          firstMentionTextOffset: Number(fragments.rows[0].start_offset)
+        },
+        fragments: fragments.rows.map((fragment) => ({
+          fragmentId: fragment.fragment_id,
+          characterKey: job.characterKey,
+          paragraphIndex: Number(fragment.paragraph_index),
+          chapterIndex: Number(fragment.chapter_index),
+          startOffset: Number(fragment.start_offset),
+          endOffset: Number(fragment.end_offset),
+          mentionCount: Number(fragment.mention_count)
+        }))
+      }
+    },
+
+    /**
+     * Запись карточки. Строка неизменяема, поэтому вставка идёт с
+     * `ON CONFLICT DO NOTHING` по (run, персонаж, ревизия): повторная попытка
+     * задания не создаёт вторую карточку и не переписывает первую. Прежняя
+     * включённая ревизия выключается в той же транзакции — частичное состояние
+     * с двумя включёнными карточками одного героя ридер увидеть не должен.
+     */
+    async publishCharacterCard(job, {
+      runId,
+      bookEditionId,
+      characterKey,
+      windowIndex,
+      cardRevision,
+      fragmentSetHash,
+      normalizedTextHash,
+      promptVersion,
+      card
+    }) {
+      return transaction(pool, async (client) => {
+        await requireLeasedJob(client, job)
+        const document = JSON.stringify(card)
+        await client.query(
+          `UPDATE book_character_cards SET enabled = FALSE
+           WHERE run_id = $1 AND character_key = $2 AND enabled AND card_revision <> $3`,
+          [runId, characterKey, cardRevision]
+        )
+        const inserted = await client.query(
+          `INSERT INTO book_character_cards (
+             id, run_id, book_edition_id, character_key, card_revision, window_index,
+             enabled, first_mention_text_offset, window_start_offset, window_end_offset,
+             document, document_hash, fragment_set_hash, normalized_text_hash, prompt_version
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, TRUE, $7, $8, $9, $10::jsonb, $11, $12, $13, $14
+           )
+           ON CONFLICT (run_id, character_key, card_revision) DO NOTHING
+           RETURNING id`,
+          [
+            idFactory(), runId, bookEditionId, characterKey, cardRevision, windowIndex,
+            card.firstMentionTextOffset, card.cardWindow.startOffset, card.cardWindow.endOffset,
+            document, createHash('sha256').update(document).digest('hex'),
+            fragmentSetHash, normalizedTextHash, promptVersion
+          ]
+        )
+        await client.query(
+          `UPDATE generation_jobs
+           SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+               locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+           WHERE id = $1`,
+          [job.id, JSON.stringify({
+            character_key: characterKey,
+            card_revision: cardRevision,
+            trait_count: card.traits.length,
+            inserted: Boolean(inserted.rows[0])
+          })]
+        )
+        return {
+          status: inserted.rows[0] ? 'published' : 'existing',
+          cardId: inserted.rows[0]?.id ?? null
+        }
+      })
+    },
+
     async getCatalogCoverInput(job) {
       const result = await pool.query(
         `SELECT COALESCE(edition.display_title, edition.title) AS title,

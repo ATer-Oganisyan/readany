@@ -97,17 +97,54 @@ test('an unsupported claim is rejected: a fact with no fragments is what cards e
   )
 })
 
-test('trait count bounds are enforced on both sides', () => {
-  assert.throws(
-    () => validateCharacterCard(card({ traits: [{ value: 'одна', fragmentIds: ['frag:a'] }] })),
-    { code: 'CHARACTER_CARD_INVALID', message: /at least 3 traits/ }
-  )
+test('the trait ceiling is enforced and there is deliberately no floor', () => {
   const many = Array.from({ length: MAX_CARD_TRAITS + 1 }, (_, index) =>
     ({ value: `черта ${index}`, fragmentIds: ['frag:a'] }))
   assert.throws(() => validateCharacterCard(card({ traits: many })), {
     code: 'CHARACTER_CARD_INVALID',
     message: /exceeds 6 entries/
   })
+  // Аудит устойчивости черт состязателен и вправе снять все заявленные черты.
+  // Нижняя граница превратила бы строгую проверку в отказ выдать карточку, а
+  // карточка с био и пустым «Характером» полезнее отсутствующей.
+  const none = validateCharacterCard(card({ traits: [] }), { fragments: FRAGMENTS })
+  assert.deepEqual(none.traits, [])
+  assert.ok(none.bio.value)
+  const one = validateCharacterCard(
+    card({ traits: [{ value: 'наблюдательная', fragmentIds: ['frag:a'] }] }),
+    { fragments: FRAGMENTS }
+  )
+  assert.equal(one.traits.length, 1)
+})
+
+test('role is optional but must be grounded when present', () => {
+  const withRole = validateCharacterCard(
+    card({ role: { value: 'вторая из пяти дочерей', fragmentIds: ['frag:a'] } }),
+    { fragments: FRAGMENTS }
+  )
+  assert.equal(withRole.role.value, 'вторая из пяти дочерей')
+  assert.equal(validateCharacterCard(card(), { fragments: FRAGMENTS }).role, null)
+  assert.throws(
+    () => validateCharacterCard(card({ role: { value: 'выдумка', fragmentIds: [] } })),
+    { code: 'CHARACTER_CARD_INVALID', message: /at least one fragment/ }
+  )
+  assert.throws(
+    () => validateCharacterCard(
+      card({ role: { value: 'выдумка', fragmentIds: ['frag:elsewhere'] } }),
+      { fragments: FRAGMENTS }
+    ),
+    { code: 'CHARACTER_CARD_INVALID', message: /unknown fragment/ }
+  )
+})
+
+test('the greeting is creative and carries no fragment references', () => {
+  const validated = validateCharacterCard(
+    card({ greeting: 'Здравствуйте. Я Элизабет.' }),
+    { fragments: FRAGMENTS }
+  )
+  assert.equal(validated.greeting, 'Здравствуйте. Я Элизабет.')
+  assert.equal(characterCardProjection(validated).greeting, 'Здравствуйте. Я Элизабет.')
+  assert.equal(validateCharacterCard(card(), { fragments: FRAGMENTS }).greeting, '')
 })
 
 test('the contract version, gender, hashes and timestamp are all checked', () => {

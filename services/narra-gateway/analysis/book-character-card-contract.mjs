@@ -18,7 +18,12 @@
 export const CHARACTER_CARD_CONTRACT_VERSION = 'character-card-v1'
 export const CHARACTER_CARD_PROMPT_VERSION = 'character-card-prompt-v1'
 
-export const MIN_CARD_TRAITS = 3
+/**
+ * Сколько черт просить у модели. Просим с запасом: аудит стабильности черт
+ * (`filterStableTraits`) намеренно состязателен и удаляет всё, что держится на
+ * одной сцене, поэтому кандидатов должно быть больше, чем нужно на выходе.
+ */
+export const CARD_TRAIT_CANDIDATE_TARGET = 8
 export const MAX_CARD_TRAITS = 6
 export const MAX_CARD_LOCATIONS = 8
 export const MAX_CARD_BIO_CHARS = 600
@@ -166,14 +171,18 @@ export function validateCharacterCard(card, { fragments = null } = {}) {
     invalid('card.mentionCountInWindow: must not exceed mentionCount')
   }
 
+  // Нижней границы у числа черт нет, и это осознанно: аудит устойчивости
+  // (`filterStableTraits`) вправе удалить все заявленные черты, и жёсткий
+  // минимум превратил бы строгую проверку в отказ выдать карточку вообще.
+  // Карточка с био и пустым «Характером» полезнее отсутствующей.
   const traits = claimArray(source.traits, 'card.traits', MAX_CARD_TRAITS, {
     maxChars: 120,
     withConfidence: true
   })
-  if (traits.length < MIN_CARD_TRAITS) {
-    invalid(`card.traits: at least ${MIN_CARD_TRAITS} traits are required`)
-  }
   const bio = claim(source.bio, 'card.bio', { maxChars: MAX_CARD_BIO_CHARS })
+  const role = source.role == null
+    ? null
+    : claim(source.role, 'card.role', { maxChars: 200 })
   const locations = claimArray(source.locations, 'card.locations', MAX_CARD_LOCATIONS, {
     maxChars: 160
   })
@@ -195,6 +204,7 @@ export function validateCharacterCard(card, { fragments = null } = {}) {
     mentionCountInWindow,
     traits,
     bio,
+    role,
     locations,
     appearancePrompt: textValue(
       source.appearancePrompt,
@@ -204,6 +214,9 @@ export function validateCharacterCard(card, { fragments = null } = {}) {
     ),
     gender,
     age: textValue(source.age, 'card.age', 80, { optional: true }),
+    // Приветствие — творческое поле, а не факт книги, поэтому ссылок на
+    // фрагменты у него нет и быть не должно: цитировать тут нечего.
+    greeting: textValue(source.greeting, 'card.greeting', 600, { optional: true }),
     source: {
       normalizedTextHash: hashValue(
         sourceMeta.normalizedTextHash,
@@ -231,6 +244,7 @@ export function validateCharacterCard(card, { fragments = null } = {}) {
     const referenced = new Set([
       ...traits.flatMap(({ fragmentIds }) => fragmentIds),
       ...bio.fragmentIds,
+      ...(role?.fragmentIds ?? []),
       ...locations.flatMap(({ fragmentIds }) => fragmentIds)
     ])
     for (const fragmentId of referenced) {
@@ -266,7 +280,9 @@ export function characterCardProjection(card, { cardStatus = 'ready' } = {}) {
     name: card.name,
     fullName: card.fullName,
     aliases: card.aliases,
+    role: card.role?.value ?? null,
     description: card.bio.value,
+    greeting: card.greeting,
     traits: card.traits.map(({ value }) => value),
     locations: card.locations.map(({ value }) => value),
     appearancePrompt: card.appearancePrompt,

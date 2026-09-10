@@ -6,12 +6,15 @@ import {
 import { createOperationalLogger } from '../platform/operational-log.mjs'
 import { voiceForGender } from '../providers/voices.mjs'
 import { normalizeBookDisplayIdentity } from '../books/book-identity.mjs'
+import { CHARACTER_CARD_JOB_TYPE } from '../analysis/book-character-card.mjs'
+import { createCharacterCardRunner } from '../analysis/book-character-card-runner.mjs'
 
 export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   'book_markup',
   'catalog_cover',
   'scene_image',
   'character_bundle',
+  CHARACTER_CARD_JOB_TYPE,
   ...Object.values(CHARACTER_MEDIA_JOB_TYPES)
 ])
 const JOB_TYPES = new Set(['book_identity', ...BOOK_MARKUP_WORKER_JOB_TYPES])
@@ -35,6 +38,7 @@ const JOB_LABELS = {
   catalog_cover: 'каталожная обложка',
   scene_image: 'иллюстрация сцены',
   character_bundle: 'пакет персонажа',
+  character_card: 'карточка персонажа',
   character_portrait: 'портрет персонажа',
   character_audio: 'голос персонажа',
   character_animation: 'анимация персонажа'
@@ -270,12 +274,19 @@ export function createGenerationWorker({
   repository,
   generator,
   workerId,
+  storage = null,
   logger = console,
   leaseRenewMs = 60_000
 }) {
   if (!repository || !generator) throw new TypeError('repository and generator are required')
   if (typeof workerId !== 'string' || !workerId) throw new TypeError('workerId is required')
   const log = createOperationalLogger({ component: 'book-worker', logger })
+  // Карточке нужен нормализованный текст книги, а медиа-заданиям — нет.
+  // Воркер без хранилища остаётся рабочим для всех прежних типов и честно
+  // отказывает только карточке, вместо того чтобы падать на старте.
+  const characterCardRunner = storage
+    ? createCharacterCardRunner({ repository, storage, generator, logger })
+    : null
 
   async function runBookMarkup(job) {
     const startedAt = Date.now()
@@ -499,6 +510,14 @@ export function createGenerationWorker({
           if (job.type === 'book_identity') return runBookIdentity(job)
           if (job.type === 'catalog_cover') return runCatalogCover(job)
           if (job.type === 'scene_image') return runBookScene(job)
+          if (job.type === CHARACTER_CARD_JOB_TYPE) {
+            if (!characterCardRunner) {
+              throw Object.assign(new Error('character card jobs require object storage'), {
+                code: 'CARD_STORAGE_UNAVAILABLE'
+              })
+            }
+            return characterCardRunner.run(job)
+          }
           return runCharacterBundle(job)
         })
         log.info('job.completed', 'Задание успешно завершено', {

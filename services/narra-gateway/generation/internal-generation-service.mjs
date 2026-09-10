@@ -29,6 +29,7 @@ import {
   CHUNK_LABELS,
   adaptiveScanParts,
   cached,
+  characterCardMessages,
   characterKey,
   greetingFallback,
   greetingMatchesLanguage,
@@ -40,6 +41,8 @@ import {
   normalizeBookSceneRequest,
   normalizeBundleRequest,
   normalizeCatalogCoverRequest,
+  normalizeCharacterCardRequest,
+  normalizeCharacterCardResult,
   normalizeCharacterProfileResult,
   normalizeCharacterSynthesisRequest,
   normalizeCharacters,
@@ -467,6 +470,50 @@ export function createInternalGenerationService({
             normalized.profile.personalitySnapshots.at(-1)?.traits?.length ?? 0
         })
         return { profile: normalized.profile }
+      })
+    },
+
+    /**
+     * Карточка персонажа по фрагментам его окна: один вызов на персонажа.
+     *
+     * Вход — абзацы книги внутри окна, а не наблюдения другого вызова, поэтому
+     * запрос отвергается, если хоть один фрагмент лежит за окном: то, чего
+     * модель не увидит, она и не расскажет.
+     */
+    async synthesizeCharacterCard(rawInput, signal) {
+      const input = normalizeCharacterCardRequest(rawInput)
+      const common = {
+        run: input.runId,
+        character_key: input.characterKey,
+        fragment_count: input.fragments.length,
+        window_end_offset: input.cardWindow.endOffset
+      }
+      return cached(storage, input.idempotencyKey, input, async () => {
+        log.info('card.started', 'Формирую карточку персонажа по фрагментам окна', common)
+        const response = await completeChat({
+          messages: characterCardMessages(input),
+          signal,
+          costContext: {
+            bookEditionId: input.bookEditionId,
+            analysisRunId: input.runId,
+            operation: 'synthesize_character_card',
+            stage: 'card',
+            metadata: {
+              character_key: input.characterKey,
+              prompt_version: input.promptVersion
+            }
+          }
+        })
+        const normalized = normalizeCharacterCardResult(parseJsonObject(response), input)
+        log.info('card.completed', 'Карточка персонажа готова', {
+          ...common,
+          provider_trait_count: normalized.providerTraitCount,
+          accepted_trait_count: normalized.acceptedTraitCount,
+          dropped_trait_count: normalized.droppedTraitCount,
+          bio_present: Boolean(normalized.card.bio),
+          location_count: normalized.card.locations.length
+        })
+        return { card: normalized.card }
       })
     },
 
@@ -1084,6 +1131,10 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   router.post(
     '/v1/book-analysis/synthesize-character',
     endpoint((body, signal) => service.synthesizeCharacterProfile(body, signal))
+  )
+  router.post(
+    '/v1/book-analysis/synthesize-character-card',
+    endpoint((body, signal) => service.synthesizeCharacterCard(body, signal))
   )
   return router
 }

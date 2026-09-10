@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
 import {
@@ -558,4 +559,120 @@ test('worker distinguishes a scheduled retry from an exhausted failure', async (
     assert.equal((await worker.runOnce()).status, 'failed')
     assert.ok(lines.some((line) => line.includes(`event="${expectedEvent}"`)))
   }
+})
+
+test('the worker dispatches a character card job to the card runner', async () => {
+  const text = [
+    'Элизабет Беннет жила в Лонгборне с четырьмя сёстрами.',
+    'Элизабет заметила, что гость наблюдает за нею внимательно.'
+  ].join('\n\n')
+  const bytes = Buffer.from(text, 'utf8')
+  const textHash = createHash('sha256').update(bytes).digest('hex')
+  const fragmentAt = (index, needle) => {
+    const startOffset = text.indexOf(needle)
+    return {
+      fragmentId: `frag:char:elizabeth:${index}`,
+      characterKey: 'char:elizabeth',
+      paragraphIndex: index,
+      chapterIndex: 0,
+      startOffset,
+      endOffset: startOffset + needle.length,
+      mentionCount: 1
+    }
+  }
+  const fragments = [
+    fragmentAt(0, 'Элизабет Беннет жила в Лонгборне с четырьмя сёстрами.'),
+    fragmentAt(1, 'Элизабет заметила, что гость наблюдает за нею внимательно.')
+  ]
+  let published = null
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-card',
+        type: 'character_card',
+        bookEditionId: 'book-card',
+        characterKey: 'char:elizabeth',
+        leaseToken: 'lease-card'
+      }
+    },
+    async getCharacterCardInput() {
+      return {
+        runId: 'run-card',
+        bookEditionId: 'book-card',
+        characterKey: 'char:elizabeth',
+        windowIndex: 0,
+        title: 'Гордость и предубеждение',
+        author: 'Джейн Остин',
+        language: 'ru',
+        textLength: text.length,
+        normalizedTextObjectKey: 'analysis/run-card/normalized-text-v2.txt',
+        normalizedTextHash: textHash,
+        inventoryVersion: 'name-inventory-v1',
+        cardRevision: 1,
+        window: { startOffset: 0, endOffset: text.length, chapterIndexes: [0, 1] },
+        character: {
+          canonicalName: 'Элизабет',
+          names: ['Элизабет'],
+          mentionCount: 12,
+          firstMentionTextOffset: fragments[0].startOffset
+        },
+        fragments
+      }
+    },
+    async publishCharacterCard(job, payload) {
+      published = payload
+      return { status: 'published', cardId: 'card-1' }
+    },
+    async failGenerationJob() { assert.fail('job must not fail') }
+  }
+  const generator = {
+    async generateCharacterCard() {
+      return {
+        card: {
+          gender: 'female',
+          traits: [],
+          bio: {
+            value: 'Элизабет живёт в Лонгборне с сёстрами.',
+            fragmentIds: [fragments[0].fragmentId]
+          }
+        }
+      }
+    }
+  }
+  const storage = { async getBytes() { return { bytes, mimeType: 'text/plain' } } }
+  const worker = createGenerationWorker({
+    repository,
+    generator,
+    storage,
+    workerId: 'worker-card',
+    logger: silentLogger
+  })
+  const result = await worker.runOnce()
+  assert.equal(result.status, 'completed')
+  assert.equal(result.result.characterKey, 'char:elizabeth')
+  assert.equal(published.card.contractVersion, 'character-card-v1')
+})
+
+test('a card job fails cleanly when the worker has no object storage', async () => {
+  let failedCode = null
+  const repository = {
+    async claimGenerationJob() {
+      return {
+        id: 'job-card',
+        type: 'character_card',
+        bookEditionId: 'book-card',
+        characterKey: 'char:elizabeth',
+        leaseToken: 'lease-card'
+      }
+    },
+    async failGenerationJob(job, code) { failedCode = code; return { status: 'failed' } }
+  }
+  const worker = createGenerationWorker({
+    repository,
+    generator: {},
+    workerId: 'worker-card',
+    logger: silentLogger
+  })
+  assert.equal((await worker.runOnce()).status, 'failed')
+  assert.equal(failedCode, 'CARD_STORAGE_UNAVAILABLE')
 })

@@ -102,6 +102,17 @@ export function createGenerationServiceClient({
         ...input
       })
     },
+    generateCharacterCard(input) {
+      return post('internal/v1/book-analysis/synthesize-character-card', {
+        idempotencyKey: [
+          input.runId,
+          'character-card',
+          input.characterKey,
+          input.promptVersion
+        ].join(':'),
+        ...input
+      })
+    },
     scanBookChunk(input) {
       return post('internal/v1/book-analysis/scan-chunk', {
         idempotencyKey: [

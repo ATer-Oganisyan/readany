@@ -1,0 +1,363 @@
+/**
+ * Карточка персонажа: сборка запроса и приёмка ответа (P3 work order'а).
+ *
+ * Разделение ответственности между генератором и шлюзом здесь не формальность.
+ * Генератор превращает фрагменты в утверждения и сам же проверяет их
+ * обоснованность и устойчивость черт — это его предметная проверка. Шлюз
+ * проверяет другое: что каждая процитированная ссылка ведёт на фрагмент этого
+ * персонажа внутри его окна. Вторая проверка обязана жить здесь, потому что
+ * именно шлюз пишет строку карточки: спойлер-барьер не может зависеть от
+ * добросовестности того, кто прислал ответ.
+ *
+ * Из этого следует и порядок: сначала контракт, потом запись. Карточка, не
+ * прошедшая {@link validateCharacterCard}, не пишется вовсе — падает job, а не
+ * инвариант.
+ */
+
+import { createHash } from 'node:crypto'
+import {
+  buildCharacterNameMatcherSpec,
+  findCharacterNameMatches
+} from './character-name-matcher.mjs'
+import {
+  CARD_TRAIT_CANDIDATE_TARGET,
+  CHARACTER_CARD_CONTRACT_VERSION,
+  CHARACTER_CARD_PROMPT_VERSION,
+  MAX_CARD_BIO_CHARS,
+  MAX_CARD_TRAITS,
+  validateCharacterCard
+} from './book-character-card-contract.mjs'
+
+export const CHARACTER_CARD_JOB_TYPE = 'character_card'
+
+/** Предел входа одного вызова карточки — как в D3 work order'а. */
+export const MAX_CARD_REQUEST_BYTES = 48 * 1024
+export const MAX_CARD_REQUEST_FRAGMENTS = 240
+const MAX_CARD_QUOTE_CHARS = 1_200
+
+function cardError(code, message) {
+  return Object.assign(new Error(message), { code })
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+/**
+ * Хэш набора фрагментов: идентичность входа карточки. В него входят только
+ * координаты и порядок, но не текст — текст восстанавливается из
+ * нормализованного текста по этим же координатам, а его собственный хэш у
+ * карточки записан отдельно.
+ */
+export function characterCardFragmentSetHash(fragments) {
+  const canonical = [...fragments]
+    .map(({ fragmentId, startOffset, endOffset }) =>
+      [fragmentId, startOffset, endOffset].join(':'))
+    .sort(compareText)
+    .join('\n')
+  return sha256(canonical)
+}
+
+/**
+ * Фрагменты, попадающие во вход вызова. Отбор равномерный по окну и с запасом
+ * по байтам: цитаты длиннее предела режутся, а сам список — усекается с конца,
+ * потому что порядок здесь хронологический и терять надо позднее, а не раннее.
+ */
+function selectRequestFragments(fragments, { maxBytes, maxFragments }) {
+  const ordered = [...fragments].sort((left, right) =>
+    left.startOffset - right.startOffset || compareText(left.fragmentId, right.fragmentId))
+  const capped = ordered.length <= maxFragments
+    ? ordered
+    : Array.from({ length: maxFragments }, (_, index) =>
+      ordered[Math.round(index * (ordered.length - 1) / (maxFragments - 1))])
+  const selected = []
+  const seen = new Set()
+  let bytes = 2
+  for (const fragment of capped) {
+    if (seen.has(fragment.fragmentId)) continue
+    const item = {
+      id: fragment.fragmentId,
+      quote: String(fragment.quote ?? '').slice(0, MAX_CARD_QUOTE_CHARS),
+      startOffset: fragment.startOffset,
+      endOffset: fragment.endOffset,
+      chapterIndex: fragment.chapterIndex ?? -1
+    }
+    const size = Buffer.byteLength(JSON.stringify(item), 'utf8') + 1
+    if (bytes + size > maxBytes) break
+    seen.add(fragment.fragmentId)
+    selected.push(item)
+    bytes += size
+  }
+  return selected
+}
+
+/**
+ * Запрос карточки персонажа.
+ *
+ * Фрагменты обязаны лежать внутри окна ещё до вызова: окно — это то, чего
+ * модель не увидит, а не то, что она обещает не использовать.
+ */
+export function buildCharacterCardRequest({
+  runId,
+  bookEditionId,
+  characterKey,
+  character,
+  window,
+  fragments,
+  title,
+  author = '',
+  language = '',
+  normalizedTextHash,
+  inventoryVersion = '',
+  promptVersion = CHARACTER_CARD_PROMPT_VERSION,
+  maxBytes = MAX_CARD_REQUEST_BYTES,
+  maxFragments = MAX_CARD_REQUEST_FRAGMENTS
+}) {
+  if (!runId || !characterKey) throw cardError('CARD_REQUEST_INVALID', 'runId and characterKey are required')
+  if (!window || !Number.isSafeInteger(window.startOffset) || !Number.isSafeInteger(window.endOffset) ||
+      window.endOffset <= window.startOffset) {
+    throw cardError('CARD_REQUEST_INVALID', 'window must be a non-empty range')
+  }
+  const list = Array.isArray(fragments) ? fragments : []
+  if (!list.length) {
+    throw cardError('CARD_FRAGMENTS_MISSING', `character ${characterKey} has no fragments in its window`)
+  }
+  for (const fragment of list) {
+    if (fragment.startOffset < window.startOffset || fragment.endOffset > window.endOffset) {
+      throw cardError(
+        'CARD_FRAGMENT_OUT_OF_WINDOW',
+        `fragment ${fragment.fragmentId} lies outside the card window`
+      )
+    }
+    if (fragment.characterKey && fragment.characterKey !== characterKey) {
+      throw cardError(
+        'CARD_FRAGMENT_FOREIGN',
+        `fragment ${fragment.fragmentId} belongs to ${fragment.characterKey}`
+      )
+    }
+  }
+  const selected = selectRequestFragments(list, { maxBytes, maxFragments })
+  if (!selected.length) {
+    throw cardError('CARD_FRAGMENTS_MISSING', 'no fragment fits the request budget')
+  }
+  return {
+    runId,
+    bookEditionId,
+    characterKey,
+    promptVersion,
+    contractVersion: CHARACTER_CARD_CONTRACT_VERSION,
+    inventoryVersion,
+    normalizedTextHash,
+    bookTitle: title,
+    bookAuthor: author,
+    language,
+    traitCandidateTarget: CARD_TRAIT_CANDIDATE_TARGET,
+    maxTraits: MAX_CARD_TRAITS,
+    character: {
+      characterKey,
+      name: character.canonicalName ?? character.name,
+      aliases: (character.names ?? character.aliases ?? []).slice(0, 16),
+      mentionCount: character.mentionCount ?? 0,
+      firstMentionTextOffset: character.firstMentionTextOffset ?? 0
+    },
+    cardWindow: {
+      startOffset: window.startOffset,
+      endOffset: window.endOffset,
+      chapterIndexes: window.chapterIndexes ?? []
+    },
+    fragments: selected
+  }
+}
+
+const SENTENCE_BOUNDARY = /[^.!?…]+[.!?…]+["»”')\]]*/gu
+
+function fragmentSentences(quote, maxLength) {
+  const normalized = String(quote ?? '').replace(/\s+/gu, ' ').trim()
+  if (!normalized) return []
+  const matches = normalized.match(SENTENCE_BOUNDARY) ??
+    (/[.!?…]$/u.test(normalized) ? [normalized] : [])
+  return matches
+    .map((sentence) => sentence.trim())
+    // Оборванное предложение не берём: цитата обязана читаться как цитата.
+    .filter((sentence) => sentence.length >= 12 && sentence.length <= maxLength)
+}
+
+/**
+ * Экстрактивное био из фрагментов окна — когда модель не дала обоснованного
+ * описания. Берутся целые предложения из самых ранних фрагментов: это заведомо
+ * факт из текста, потому что это и есть текст. Тот же приём, которым
+ * `character-profile-v8` спасал пустое description, только источник другой —
+ * абзацы, а не fact-заметки модели.
+ *
+ * Предложение выбирается не первое в абзаце, а первое, которое персонажа
+ * называет. Абзац попал в его фрагменты потому, что упоминает его где-то, и
+ * первое предложение может быть вообще не о нём — на изданиях Gutenberg с
+ * длинным вступлением так и получается.
+ */
+export function extractiveCardBio(fragments, {
+  names = [],
+  maxLength = MAX_CARD_BIO_CHARS,
+  maxSentences = 3
+} = {}) {
+  const spec = names.length
+    ? buildCharacterNameMatcherSpec([{ id: 'character', name: names.join(' '), aliases: names }])
+    : null
+  const ordered = [...fragments].sort((left, right) =>
+    left.startOffset - right.startOffset || compareText(left.fragmentId, right.fragmentId))
+  const sentences = []
+  const fragmentIds = []
+  const seen = new Set()
+  let length = 0
+  for (const fragment of ordered) {
+    if (sentences.length >= maxSentences) break
+    const candidates = fragmentSentences(fragment.quote, maxLength)
+    if (!candidates.length) continue
+    const sentence = spec
+      ? candidates.find((item) => findCharacterNameMatches(item, spec).length > 0)
+      : candidates[0]
+    if (!sentence) continue
+    const key = sentence.toLocaleLowerCase('ru-RU')
+    if (seen.has(key)) continue
+    const nextLength = length + (sentences.length ? 1 : 0) + sentence.length
+    if (nextLength > maxLength) continue
+    seen.add(key)
+    sentences.push(sentence)
+    fragmentIds.push(fragment.fragmentId)
+    length = nextLength
+  }
+  if (!sentences.length) return null
+  return { value: sentences.join(' '), fragmentIds: [...new Set(fragmentIds)].sort() }
+}
+
+function claimFragmentIds(claim) {
+  return Array.isArray(claim?.fragmentIds) ? claim.fragmentIds : []
+}
+
+/**
+ * Оставляет только утверждения, все ссылки которых ведут на известные
+ * фрагменты этого персонажа внутри окна. Утверждение с посторонней ссылкой
+ * отбрасывается целиком, а не «чинится» удалением ссылки: обрезанное
+ * подтверждение — уже не то подтверждение, которое модель имела в виду.
+ */
+function groundedClaims(claims, allowed) {
+  const kept = []
+  let dropped = 0
+  for (const claim of Array.isArray(claims) ? claims : []) {
+    const fragmentIds = claimFragmentIds(claim)
+    if (!fragmentIds.length || !fragmentIds.every((id) => allowed.has(id))) {
+      dropped += 1
+      continue
+    }
+    kept.push(claim)
+  }
+  return { kept, dropped }
+}
+
+function groundedClaim(claim, allowed) {
+  if (!claim) return null
+  const fragmentIds = claimFragmentIds(claim)
+  if (!fragmentIds.length || !fragmentIds.every((id) => allowed.has(id))) return null
+  return claim
+}
+
+/**
+ * Приёмка ответа генератора: ссылочный аудит, экстрактивный fallback для био и
+ * проверка контракта. Возвращает готовую к записи строку карточки.
+ *
+ * @param {object} input запрос, построенный {@link buildCharacterCardRequest}
+ * @param {object} result ответ генератора
+ * @param {Array} fragments полный набор фрагментов персонажа в окне
+ */
+export function finalizeCharacterCard({
+  input,
+  result,
+  fragments,
+  cardRevision = 1,
+  createdAt = new Date().toISOString()
+}) {
+  if (!input) throw cardError('CARD_REQUEST_INVALID', 'input is required')
+  const windowFragments = (Array.isArray(fragments) ? fragments : []).filter((fragment) =>
+    fragment.startOffset >= input.cardWindow.startOffset &&
+    fragment.endOffset <= input.cardWindow.endOffset)
+  if (!windowFragments.length) {
+    throw cardError('CARD_FRAGMENTS_MISSING', 'no fragments available for the card window')
+  }
+  // Разрешены только те фрагменты, которые действительно были в запросе:
+  // модель не могла обосноваться тем, чего не видела.
+  const allowed = new Set(input.fragments.map(({ id }) => id))
+  const card = result?.card && typeof result.card === 'object' ? result.card : result ?? {}
+
+  const traitResult = groundedClaims(card.traits, allowed)
+  const traits = traitResult.kept.slice(0, MAX_CARD_TRAITS)
+  const locationResult = groundedClaims(card.locations, allowed)
+  const role = groundedClaim(card.role, allowed)
+  let bio = groundedClaim(card.bio, allowed)
+  let bioSource = 'model'
+  if (!bio) {
+    const fallback = extractiveCardBio(
+      input.fragments.map((item) => ({
+        fragmentId: item.id,
+        quote: item.quote,
+        startOffset: item.startOffset
+      })),
+      { names: [input.character.name, ...input.character.aliases].filter(Boolean) }
+    )
+    if (!fallback) {
+      throw cardError('CARD_BIO_MISSING', 'neither the model nor the fragments yield a bio')
+    }
+    bio = fallback
+    bioSource = 'extractive'
+  }
+
+  const fragmentSetHash = characterCardFragmentSetHash(windowFragments)
+  const validated = validateCharacterCard({
+    contractVersion: CHARACTER_CARD_CONTRACT_VERSION,
+    characterKey: input.characterKey,
+    name: card.name || input.character.name,
+    fullName: card.fullName ?? '',
+    aliases: Array.isArray(card.aliases) && card.aliases.length
+      ? card.aliases
+      : input.character.aliases,
+    firstMentionTextOffset: input.character.firstMentionTextOffset,
+    cardWindow: input.cardWindow,
+    mentionCount: input.character.mentionCount,
+    mentionCountInWindow: windowFragments.reduce(
+      (sum, fragment) => sum + (fragment.mentionOffsets?.length ?? fragment.mentionCount ?? 1),
+      0
+    ),
+    traits,
+    bio,
+    role,
+    locations: locationResult.kept,
+    appearancePrompt: card.appearancePrompt ?? '',
+    gender: card.gender || 'unknown',
+    age: card.age ?? '',
+    greeting: card.greeting ?? '',
+    source: {
+      normalizedTextHash: input.normalizedTextHash,
+      inventoryVersion: input.inventoryVersion || 'name-inventory-v1',
+      fragmentSetHash,
+      promptVersion: input.promptVersion
+    },
+    createdAt
+  }, { fragments: windowFragments })
+
+  return {
+    card: validated,
+    cardRevision,
+    fragmentSetHash,
+    audit: {
+      bioSource,
+      requestFragmentCount: input.fragments.length,
+      windowFragmentCount: windowFragments.length,
+      droppedTraitCount: traitResult.dropped + Math.max(0, traitResult.kept.length - traits.length),
+      droppedLocationCount: locationResult.dropped,
+      roleAccepted: Boolean(role),
+      citedFragmentCount: validated.referencedFragmentCount ?? 0
+    }
+  }
+}
