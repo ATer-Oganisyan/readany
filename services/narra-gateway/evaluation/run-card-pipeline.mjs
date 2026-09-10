@@ -160,12 +160,19 @@ export function isEventStream(text) {
  * повторять, а не отдавать вызывающему: разбор JSON идёт вне цикла повторов, и
  * обрезанный ответ роняет прогон вместо повторного запроса.
  *
- * Признак завершённости — `[DONE]` или `finish_reason` у выбора; провайдеры
- * шлют либо то, либо другое, поэтому годится любой.
+ * Признак завершённости — `[DONE]` или `finish_reason` у выбора: провайдеры
+ * шлют либо то, либо другое. Но не всякая причина завершения означает готовый
+ * ответ: `length` — это упёрлись в лимит токенов, `content_filter` — обрубили
+ * фильтром, и в обоих случаях приходит ровно тот же обрезанный JSON, что при
+ * обрыве соединения, только с честным `[DONE]` в конце. Поэтому причина
+ * сохраняется и проверяется: `[DONE]` сам по себе завершённости не доказывает.
  */
+const COMPLETE_FINISH_REASONS = new Set(['stop', 'tool_calls', 'function_call'])
+
 export function parseEventStream(text) {
   let content = ''
-  let done = false
+  let terminated = false
+  let finishReason = null
   let error = null
   let events = 0
   for (const line of String(text).split('\n')) {
@@ -175,7 +182,7 @@ export function parseEventStream(text) {
     if (!data) continue
     events += 1
     if (data === '[DONE]') {
-      done = true
+      terminated = true
       continue
     }
     let event = null
@@ -191,11 +198,16 @@ export function parseEventStream(text) {
       continue
     }
     const choice = event?.choices?.[0]
-    if (choice?.finish_reason) done = true
+    if (choice?.finish_reason) {
+      terminated = true
+      finishReason = String(choice.finish_reason)
+    }
     const piece = choice?.delta?.content ?? choice?.message?.content
     if (typeof piece === 'string') content += piece
   }
-  return { content, done, error, events }
+  const done = terminated &&
+    (finishReason === null || COMPLETE_FINISH_REASONS.has(finishReason))
+  return { content, done, finishReason, error, events }
 }
 
 /** Только текст ответа. Полнота потока — у {@link parseEventStream}. */
@@ -249,12 +261,16 @@ export function createModelClient(env = process.env, { postJsonImpl = postJson }
             }
             // Ответ отдаётся только у дошедшего до конца потока. Оборванный
             // поток с непустым `content` — это обрезанный JSON, и повторить его
-            // дешевле, чем уронить прогон на разборе.
+            // дешевле, чем уронить прогон на разборе. Причина завершения важна
+            // не меньше самого завершения: `length` приходит вместе с `[DONE]`,
+            // и ответ при этом всё равно обрезан.
             if (parsed.content && parsed.done) return parsed.content
             if (parsed.content) {
               throw Object.assign(
-                new Error('model stream ended without a completion marker'),
-                { code: 'MODEL_STREAM_TRUNCATED' }
+                new Error(parsed.finishReason
+                  ? `model stopped before finishing: ${parsed.finishReason}`
+                  : 'model stream ended without a completion marker'),
+                { code: 'MODEL_STREAM_TRUNCATED', finishReason: parsed.finishReason }
               )
             }
             // Пустой ответ при потоке значит одно из двух, и различать их

@@ -120,7 +120,7 @@ test('a stream that stopped mid-answer is not reported as finished', () => {
   assert.equal(parsed.error, null)
 })
 
-test('a completion marker or a finish reason both count as finished', () => {
+test('a completion marker or a stop reason both count as finished', () => {
   const withDone = 'data: {"choices":[{"delta":{"content":"ок"}}]}\n\ndata: [DONE]\n'
   assert.deepEqual(
     { content: parseEventStream(withDone).content, done: parseEventStream(withDone).done },
@@ -128,6 +128,22 @@ test('a completion marker or a finish reason both count as finished', () => {
   )
   const withFinishReason = 'data: {"choices":[{"delta":{"content":"ок"},"finish_reason":"stop"}]}\n'
   assert.equal(parseEventStream(withFinishReason).done, true)
+})
+
+test('hitting the token limit is not a finished answer, even with [DONE]', () => {
+  // `length` приходит вместе с честным `[DONE]`, а JSON при этом обрезан ровно
+  // так же, как при обрыве связи. Считать это успехом значит отдать
+  // «{"classifications": [» вызывающему, где разбор идёт уже вне цикла повторов.
+  for (const reason of ['length', 'content_filter']) {
+    const text = [
+      `data: {"choices":[{"delta":{"content":"{\\"classifications\\": ["},"finish_reason":"${reason}"}]}`,
+      'data: [DONE]'
+    ].join('\n')
+    const parsed = parseEventStream(text)
+    assert.equal(parsed.content, '{"classifications": [', reason)
+    assert.equal(parsed.finishReason, reason)
+    assert.equal(parsed.done, false, `${reason} не должен считаться завершением`)
+  }
 })
 
 test('an error event after the first deltas is surfaced, not swallowed', () => {
@@ -209,4 +225,27 @@ test('a complete stream is returned on the first attempt', async () => {
   const { complete, calls } = stubbedClient([ok])
   assert.equal(await complete([{ role: 'user', content: 'x' }]), '{}')
   assert.equal(calls.length, 1)
+})
+
+test('a token-limit answer is retried and then named by its reason', async () => {
+  const capped = {
+    status: 200,
+    text: [
+      'data: {"choices":[{"delta":{"content":"{\\"classifications\\": ["},"finish_reason":"length"}]}',
+      'data: [DONE]'
+    ].join('\n')
+  }
+  const complete2 = {
+    status: 200,
+    text: 'data: {"choices":[{"delta":{"content":"{\\"ok\\": true}"},"finish_reason":"stop"}]}\n'
+  }
+  const retried = stubbedClient([capped, complete2])
+  assert.equal(await retried.complete([{ role: 'user', content: 'x' }]), '{"ok": true}')
+  assert.equal(retried.calls.length, 2)
+
+  const exhausted = stubbedClient([capped])
+  await assert.rejects(
+    exhausted.complete([{ role: 'user', content: 'x' }]),
+    (error) => error.code === 'MODEL_STREAM_TRUNCATED' && error.finishReason === 'length'
+  )
 })

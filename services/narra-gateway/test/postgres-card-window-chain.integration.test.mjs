@@ -110,6 +110,15 @@ async function seedBook(pool, { chapterCount = 6, charactersPerWindow = 2 } = {}
   }
 }
 
+async function assignmentRanges(pool, runId) {
+  const rows = await pool.query(
+    `SELECT assign_start_offset AS start, assign_end_offset AS "end"
+     FROM book_card_windows WHERE run_id = $1 ORDER BY window_index`,
+    [runId]
+  )
+  return rows.rows.map(({ start, end }) => [Number(start), Number(end)])
+}
+
 async function windowStatuses(pool, runId) {
   const rows = await pool.query(
     'SELECT window_index, status FROM book_card_windows WHERE run_id = $1 ORDER BY window_index',
@@ -367,45 +376,59 @@ test('a job queued without names still reaches the model with a name', {
   }
 })
 
-test('the migration backfills window assignment ranges that are disjoint and non-empty', {
+test('migration 031 repairs the ranges that 030 left degenerate', {
   skip: !connectionString
 }, async () => {
-  // Смещённый на одно окно досчёт давал первому окну [0, 0]: LAG отсутствовал, а
-  // start_offset равен нулю. Окно не отвечало ни за кого, а второе забирало обе
-  // первые главы и уводило ранних героев из foreground-окна.
+  // Досчёт в 030 смещал диапазон на одно окно, и первое окно получало [0, 0]:
+  // LAG отсутствует, а start_offset равен нулю. Окно не отвечало ни за кого, а
+  // второе забирало обе первые главы и уводило ранних героев из
+  // foreground-окна. Править саму 030 нельзя: runBookMarkupMigrations сверяет
+  // контрольную сумму файла до выполнения SQL, и база, где 030 уже применена,
+  // от такой правки перестала бы стартовать. Поэтому чинит отдельная миграция.
   const isolated = await createIsolatedPostgres(connectionString)
   const { pool } = isolated
   try {
-    const book = await seedBook(pool, { chapterCount: 4, charactersPerWindow: 0 })
-    // Возвращаем таблицу в состояние «до миграции»: строки старого прогона
-    // пришли без этих колонок.
-    await pool.query(
-      `ALTER TABLE book_card_windows
-         ALTER COLUMN assign_start_offset DROP NOT NULL,
-         ALTER COLUMN assign_end_offset DROP NOT NULL`
-    )
-    await pool.query(
-      'UPDATE book_card_windows SET assign_start_offset = NULL, assign_end_offset = NULL WHERE run_id = $1',
-      [book.runId]
-    )
-    const migration = await readFile(
-      path.join(directory, '..', 'migrations', '030_card_window_assignment.sql'),
-      'utf8'
-    )
-    await pool.query(migration)
+    const broken = await seedBook(pool, { chapterCount: 4, charactersPerWindow: 0 })
+    const exact = await seedBook(pool, { chapterCount: 4, charactersPerWindow: 0 })
+    const exactBefore = await assignmentRanges(pool, exact.runId)
 
-    const rows = await pool.query(
-      `SELECT window_index, assign_start_offset AS start, assign_end_offset AS "end"
-       FROM book_card_windows WHERE run_id = $1 ORDER BY window_index`,
-      [book.runId]
+    // Состояние после 030: у первого окна [0, 0], у остальных пролёт предыдущего.
+    await pool.query(
+      `UPDATE book_card_windows AS target
+       SET assign_start_offset = shifted.assign_start,
+           assign_end_offset = GREATEST(shifted.assign_end, shifted.assign_start)
+       FROM (
+         SELECT run_id, window_index,
+                COALESCE(LAG(end_offset, 2) OVER (PARTITION BY run_id ORDER BY window_index), 0)
+                  AS assign_start,
+                CASE
+                  WHEN LEAD(window_index) OVER (PARTITION BY run_id ORDER BY window_index) IS NULL
+                    THEN end_offset
+                  ELSE COALESCE(LAG(end_offset) OVER (PARTITION BY run_id ORDER BY window_index),
+                                start_offset)
+                END AS assign_end
+         FROM book_card_windows WHERE run_id = $1
+       ) AS shifted
+       WHERE target.run_id = shifted.run_id AND target.window_index = shifted.window_index`,
+      [broken.runId]
     )
-    const ranges = rows.rows.map(({ start, end }) => [Number(start), Number(end)])
-    for (const [index, [start, end]] of ranges.entries()) {
-      assert.ok(end > start, `окно ${index} получило пустой диапазон ${start}..${end}`)
-      if (index > 0) assert.equal(start, ranges[index - 1][1], `разрыв перед окном ${index}`)
+    assert.deepEqual((await assignmentRanges(pool, broken.runId))[0], [0, 0])
+
+    await pool.query(await readFile(
+      path.join(directory, '..', 'migrations', '031_card_window_assignment_repair.sql'),
+      'utf8'
+    ))
+
+    const repaired = await assignmentRanges(pool, broken.runId)
+    for (const [index, [rangeStart, rangeEnd]] of repaired.entries()) {
+      assert.ok(rangeEnd > rangeStart, `окно ${index} осталось пустым: ${rangeStart}..${rangeEnd}`)
+      if (index > 0) assert.equal(rangeStart, repaired[index - 1][1], `разрыв перед окном ${index}`)
     }
-    assert.equal(ranges[0][0], 0)
-    assert.equal(ranges.at(-1)[1], book.textLength)
+    assert.equal(repaired[0][0], 0)
+    assert.equal(repaired.at(-1)[1], broken.textLength)
+
+    // Прогон с точными диапазонами не трогается: у него нет подписи дефекта.
+    assert.deepEqual(await assignmentRanges(pool, exact.runId), exactBefore)
   } finally {
     await isolated.release()
   }

@@ -16,54 +16,33 @@ ALTER TABLE book_card_windows
   ADD COLUMN IF NOT EXISTS assign_start_offset INTEGER,
   ADD COLUMN IF NOT EXISTS assign_end_offset INTEGER;
 
--- Досчёт для уже существующих прогонов.
---
--- Точный диапазон считается по границам глав, а из строк окон границы глав не
--- восстанавливаются: у первого окна их несколько, и внутренние в базе не
--- записаны. Поэтому здесь окно забирает свой собственный пролёт — от конца
--- предыдущего окна до своего конца, — а не пролёт предыдущего.
---
--- Что это значит для старого прогона: барьер карточки оказывается на главу уже
--- точного, то есть «глава появления» вместо «глава появления + 1». Это
--- беднее, но безопасно — спойлеров такой барьер не добавляет, — и, в отличие
--- от смещённого варианта, диапазоны не вырождаются: у смещённого правила
--- первое окно получало [0, 0] и не отвечало ни за кого, а второе забирало обе
--- первые главы и уводило ранних героев из foreground-окна. Точные диапазоны
--- новый прогон получает от `buildBookCardWindows`; старому для этого нужен
--- повторный Prepare.
-WITH own_span AS (
+-- Досчёт для уже существующих прогонов: состав окна N — главы окна N-1, потому
+-- что барьер персонажа кончается главой, следующей за главой его появления.
+-- Последнее окно забирает и свою главу: за её конец текст не идёт.
+WITH shifted AS (
   SELECT run_id, window_index,
-         COALESCE(LAG(end_offset) OVER (PARTITION BY run_id ORDER BY window_index), 0)
+         COALESCE(LAG(end_offset, 2) OVER (PARTITION BY run_id ORDER BY window_index), 0)
            AS assign_start,
-         end_offset AS assign_end
+         CASE
+           WHEN LEAD(window_index) OVER (PARTITION BY run_id ORDER BY window_index) IS NULL
+             THEN end_offset
+           ELSE COALESCE(LAG(end_offset) OVER (PARTITION BY run_id ORDER BY window_index),
+                         start_offset)
+         END AS assign_end
   FROM book_card_windows
 )
 UPDATE book_card_windows AS target
-SET assign_start_offset = own_span.assign_start,
-    assign_end_offset = GREATEST(own_span.assign_end, own_span.assign_start)
-FROM own_span
-WHERE target.run_id = own_span.run_id
-  AND target.window_index = own_span.window_index
+SET assign_start_offset = shifted.assign_start,
+    assign_end_offset = GREATEST(shifted.assign_end, shifted.assign_start)
+FROM shifted
+WHERE target.run_id = shifted.run_id
+  AND target.window_index = shifted.window_index
   AND target.assign_start_offset IS NULL;
 
 ALTER TABLE book_card_windows
   ALTER COLUMN assign_start_offset SET NOT NULL,
   ALTER COLUMN assign_end_offset SET NOT NULL;
 
--- Идемпотентно: миграцию прогоняют и повторно (например, тест досчёта).
-DO $$
-BEGIN
-  -- Проверка по конкретной таблице, а не по имени во всех схемах: тесты
-  -- гоняют миграции в изолированных схемах, и глобальное имя нашлось бы от
-  -- соседней схемы, а ограничение в этой так и не появилось бы.
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'book_card_windows_assignment_range'
-      AND conrelid = 'book_card_windows'::regclass
-  ) THEN
-    ALTER TABLE book_card_windows
-      ADD CONSTRAINT book_card_windows_assignment_range
-        CHECK (assign_start_offset >= 0 AND assign_end_offset >= assign_start_offset);
-  END IF;
-END;
-$$;
+ALTER TABLE book_card_windows
+  ADD CONSTRAINT book_card_windows_assignment_range
+    CHECK (assign_start_offset >= 0 AND assign_end_offset >= assign_start_offset);
