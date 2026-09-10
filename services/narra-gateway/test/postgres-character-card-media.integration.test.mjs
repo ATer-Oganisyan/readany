@@ -23,7 +23,13 @@ function hash(value) {
 
 const TEXT_LENGTH = 200_000
 
-function cardDocument({ characterKey, name, firstMentionTextOffset, windowEndOffset }) {
+function cardDocument({
+  characterKey,
+  name,
+  firstMentionTextOffset,
+  windowEndOffset,
+  appearancePrompt = null
+}) {
   return validateCharacterCard({
     contractVersion: 'character-card-v1',
     characterKey,
@@ -37,7 +43,7 @@ function cardDocument({ characterKey, name, firstMentionTextOffset, windowEndOff
     traits: [{ value: 'наблюдательный', fragmentIds: [`frag:${characterKey}:0`], confidence: 0.9 }],
     bio: { value: `${name} появляется в этой книге.`, fragmentIds: [`frag:${characterKey}:0`] },
     locations: [],
-    appearancePrompt: `внешность ${name}`,
+    appearancePrompt: appearancePrompt ?? `внешность ${name}`,
     gender: 'female',
     age: '',
     greeting: '',
@@ -51,40 +57,58 @@ function cardDocument({ characterKey, name, firstMentionTextOffset, windowEndOff
   })
 }
 
-async function seed(pool) {
-  const bookEditionId = randomUUID()
+/**
+ * Книга и прогон анализа. `bookEditionId` можно передать, чтобы засеять второй
+ * прогон той же книги: именно так возникают две включённые карточки одного
+ * персонажа, и именно это должен различать выбор источника портрета.
+ */
+async function seed(pool, {
+  bookEditionId: existingBookEditionId = null,
+  runSequence = 1
+} = {}) {
+  const bookEditionId = existingBookEditionId ?? randomUUID()
   const runId = randomUUID()
-  await pool.query(
-    `INSERT INTO book_editions (
-       id, scope, catalog_key, content_sha256, title, author, format, status, language
-     ) VALUES ($1, 'catalog', $2, $3, 'Карточки и портреты', 'Автор', 'epub', 'base_ready', 'ru')`,
-    [bookEditionId, `cards-${bookEditionId}`, hash(`source:${bookEditionId}`)]
-  )
+  if (!existingBookEditionId) {
+    await pool.query(
+      `INSERT INTO book_editions (
+         id, scope, catalog_key, content_sha256, title, author, format, status, language
+       ) VALUES ($1, 'catalog', $2, $3, 'Карточки и портреты', 'Автор', 'epub', 'base_ready', 'ru')`,
+      [bookEditionId, `cards-${bookEditionId}`, hash(`source:${bookEditionId}`)]
+    )
+  }
   await pool.query(
     `INSERT INTO book_analysis_runs (
        id, idempotency_key, book_edition_id, pipeline_version, prompt_version,
        input_hash, normalized_text_object_key, normalized_text_hash, text_length,
-       sections, stage, status, completed_at
+       run_sequence, sections, stage, status, completed_at
      ) VALUES (
-       $1, $2, $3, 'book-analysis-v51', 'book-scan-v17', $4, $5, $6, $7,
+       $1, $2, $3, 'book-analysis-v51', 'book-scan-v17', $4, $5, $6, $7, $8,
        '[]'::jsonb, 'publish', 'ready', now()
      )`,
     [
       runId, `cards:${runId}`, bookEditionId, hash(`source:${bookEditionId}`),
-      `analysis/${runId}/normalized-text-v2.txt`, hash('normalized'), TEXT_LENGTH
+      `analysis/${runId}/normalized-text-v2.txt`, hash('normalized'), TEXT_LENGTH,
+      runSequence
     ]
   )
   // Окно 0 — первые главы, окно 5 — фоновое.
-  for (const [windowIndex, endOffset, priorityClass] of [
-    [0, 40_000, 'foreground'],
-    [5, 160_000, 'background']
+  for (const [windowIndex, endOffset, priorityClass, assignStartOffset, assignEndOffset] of [
+    [0, 40_000, 'foreground', 0, 20_000],
+    [5, 160_000, 'background', 120_000, 140_000]
   ]) {
     await pool.query(
       `INSERT INTO book_card_windows (
          run_id, window_index, start_offset, end_offset,
+         assign_start_offset, assign_end_offset,
          chapter_indexes, priority_class, status
-       ) VALUES ($1, $2, 0, $3, $4::integer[], $5, 'queued')`,
-      [runId, windowIndex, endOffset, [windowIndex, windowIndex + 1], priorityClass]
+       ) VALUES ($1, $2, 0, $3, $4, $5, $6::integer[], $7, 'queued')`,
+      // Барьер начинается с нуля у всех окон, состав — свой у каждого: окно N
+      // отвечает за персонажей, впервые названных в его собственных главах.
+      [
+        runId, windowIndex, endOffset,
+        assignStartOffset, assignEndOffset,
+        [windowIndex, windowIndex + 1], priorityClass
+      ]
     )
   }
   return { bookEditionId, runId }
@@ -178,6 +202,96 @@ test('migrations 027 and 028 apply and enforce the card invariants', {
       ),
       /generation_jobs_card_window_v1/
     )
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('a portrait is drawn from the card of its own analysis run', {
+  skip: !connectionString
+}, async () => {
+  // Третья ошибка ревью PR #91: уникальность карточки и выключение прежней
+  // ревизии ограничены `run_id`, поэтому после повторного анализа одной книги
+  // включённых карточек одного персонажа бывает несколько — по одной на прогон.
+  // Выбор источника без фильтра брал любую через LIMIT 1: новая карточка
+  // получала медиа предыдущего анализа, а смена её документа портрет не
+  // обновляла.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const first = await seed(pool)
+    const characterKey = 'char:raskolnikov'
+
+    const publish = async ({ bookEditionId, runId, appearancePrompt }) => {
+      await seedCharacter(pool, { runId, characterKey, startOffset: 1_000 })
+      const jobId = await insertCardJob(pool, {
+        bookEditionId, runId, characterKey, windowIndex: 0
+      })
+      const job = await claimJob(pool, jobId)
+      return repository.publishCharacterCard(job, {
+        runId,
+        bookEditionId,
+        characterKey,
+        windowIndex: 0,
+        cardRevision: 1,
+        fragmentSetHash: hash(`frags:${runId}`),
+        normalizedTextHash: hash('normalized'),
+        promptVersion: 'character-card-prompt-v1',
+        mediaPriority: CARD_MEDIA_PRIORITY.foreground,
+        card: cardDocument({
+          characterKey,
+          name: 'Раскольников',
+          firstMentionTextOffset: 1_000,
+          windowEndOffset: 40_000,
+          appearancePrompt
+        })
+      })
+    }
+
+    const firstPublished = await publish({
+      bookEditionId: first.bookEditionId,
+      runId: first.runId,
+      appearancePrompt: 'потёртое пальто'
+    })
+    assert.equal(firstPublished.status, 'published')
+
+    // Второй прогон той же книги: своя строка прогона, своё окно, своя карточка.
+    const second = await seed(pool, {
+      bookEditionId: first.bookEditionId,
+      runSequence: 2
+    })
+    const secondPublished = await publish({
+      bookEditionId: first.bookEditionId,
+      runId: second.runId,
+      appearancePrompt: 'новая шляпа'
+    })
+    assert.equal(secondPublished.status, 'published')
+
+    // Обе карточки включены — иначе тест ничего не проверяет.
+    const enabled = await pool.query(
+      `SELECT run_id FROM book_character_cards
+       WHERE book_edition_id = $1 AND character_key = $2 AND enabled
+       ORDER BY run_id`,
+      [first.bookEditionId, characterKey]
+    )
+    assert.equal(enabled.rows.length, 2)
+
+    // Портрет второго прогона ссылается на документ второго прогона.
+    const cards = await pool.query(
+      `SELECT run_id, document_hash FROM book_character_cards
+       WHERE book_edition_id = $1 AND character_key = $2`,
+      [first.bookEditionId, characterKey]
+    )
+    const hashByRun = new Map(cards.rows.map((row) => [row.run_id, row.document_hash]))
+    const bundle = await pool.query(
+      `SELECT source_markup_hash FROM character_media_bundles
+       WHERE book_edition_id = $1 AND character_key = $2`,
+      [first.bookEditionId, characterKey]
+    )
+    assert.equal(bundle.rows.length, 1)
+    assert.equal(bundle.rows[0].source_markup_hash, hashByRun.get(second.runId))
+    assert.notEqual(bundle.rows[0].source_markup_hash, hashByRun.get(first.runId))
   } finally {
     await isolated.release()
   }

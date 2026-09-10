@@ -70,6 +70,8 @@ test('the first window covers two chapters and is followed by one window per cha
     windowIndex: 0,
     startOffset: 0,
     endOffset: 40_000,
+    assignStartOffset: 0,
+    assignEndOffset: 20_000,
     chapterIndexes: [0, 1],
     priorityClass: 'foreground'
   })
@@ -79,6 +81,45 @@ test('the first window covers two chapters and is followed by one window per cha
   // Каждое окно начинается с начала книги: карточка опирается на весь текст до
   // своей границы, а не только на свою главу.
   for (const window of result.windows) assert.equal(window.startOffset, 0)
+})
+
+test('the window that owns a character is the one D1 assigns, and only that one', () => {
+  // Ошибка ревью PR #91: барьер окна и его состав героев — разные границы.
+  // Барьер у всех окон начинается с нуля, поэтому состав, посчитанный по
+  // барьеру, забирал каждого раннего персонажа в каждое следующее окно, а
+  // персонажа второй главы — уже в первое.
+  const list = chapters(20_000, 20_000, 20_000, 20_000, 20_000)
+  const { windows } = buildBookCardWindows({ chapters: list })
+
+  // Диапазоны состава не пересекаются и покрывают книгу целиком.
+  const ranges = windows
+    .map(({ assignStartOffset, assignEndOffset }) => [assignStartOffset, assignEndOffset])
+    .filter(([start, end]) => end > start)
+  for (const [index, [start]] of ranges.entries()) {
+    if (index > 0) assert.equal(start, ranges[index - 1][1], `разрыв перед окном ${index}`)
+  }
+  assert.equal(ranges[0][0], 0)
+  assert.equal(ranges.at(-1)[1], list.at(-1).endOffset)
+
+  // И совпадают с правилом на каждом смещении текста.
+  for (let offset = 0; offset < list.at(-1).endOffset; offset += 1_000) {
+    const byRange = windows.findIndex(({ assignStartOffset, assignEndOffset }) =>
+      offset >= assignStartOffset && offset < assignEndOffset)
+    assert.equal(
+      byRange,
+      cardWindowIndexForOffset(windows, list, offset),
+      `окно для смещения ${offset}`
+    )
+  }
+})
+
+test('a window with no chapters of its own owns nobody', () => {
+  // Пустой диапазон — законный ответ, а не признак ошибки: у книги из одной
+  // главы первое окно и есть последнее, и никакого «следующего» окна нет.
+  const { windows } = buildBookCardWindows({ chapters: chapters(20_000) })
+  assert.equal(windows.length, 1)
+  assert.equal(windows[0].assignStartOffset, 0)
+  assert.equal(windows[0].assignEndOffset, 20_000)
 })
 
 test('very short opening chapters extend the first window to a chapter boundary', () => {

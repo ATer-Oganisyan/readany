@@ -1490,11 +1490,15 @@ export function createPostgresBookAnalysisRepository(pool, {
           await client.query(
             `INSERT INTO book_card_windows (
                run_id, window_index, start_offset, end_offset,
+               assign_start_offset, assign_end_offset,
                chapter_indexes, priority_class, status
-             ) VALUES ($1, $2, $3, $4, $5::integer[], $6, 'queued')
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7::integer[], $8, 'queued')
              ON CONFLICT (run_id, window_index) DO NOTHING`,
             [
               job.runId, window.windowIndex, window.startOffset, window.endOffset,
+              // Состав окна — не его барьер: см. `withAssignmentRanges`.
+              window.assignStartOffset ?? window.startOffset,
+              window.assignEndOffset ?? window.endOffset,
               window.chapterIndexes, window.priorityClass
             ]
           )

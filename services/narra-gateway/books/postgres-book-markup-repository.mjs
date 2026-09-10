@@ -499,6 +499,36 @@ export function createPostgresBookMarkupRepository(pool, {
   }
 
   /**
+   * Имя персонажа и его варианты из инвентаря прогона, по ключу кандидата.
+   *
+   * Единственный сохранённый источник имён на момент постановки карточки —
+   * документ инвентаря: подтверждённый roster в базе ещё не живёт, его пишет
+   * стадийный поток, который пока не подведён. Поэтому имена берутся отсюда, а
+   * payload задания остаётся приоритетным: когда поток подведут, он положит в
+   * задание подтверждённые имена, и они перекроют инвентарные.
+   */
+  async function inventoryNamesByKey(client, runId) {
+    const result = await client.query(
+      `SELECT document->'candidates' AS candidates
+       FROM book_name_inventory WHERE run_id = $1`,
+      [runId]
+    )
+    const candidates = result.rows[0]?.candidates
+    if (!Array.isArray(candidates)) return new Map()
+    return new Map(candidates
+      .filter((candidate) => typeof candidate?.candidateKey === 'string')
+      .map((candidate) => [candidate.candidateKey, {
+        name: candidate.displayName ?? candidate.candidateKey,
+        names: [...new Set([
+          candidate.displayName,
+          candidate.fullName,
+          ...(Array.isArray(candidate.aliases) ? candidate.aliases : [])
+        ].filter((value) => typeof value === 'string' && value.trim()))],
+        mentionCount: Number.isFinite(candidate.count) ? candidate.count : 0
+      }]))
+  }
+
+  /**
    * Источник медиа персонажа: опубликованная разметка или включённая карточка.
    *
    * Различается только этот запрос — постановка bundle, пересчёт ревизии и
@@ -507,7 +537,21 @@ export function createPostgresBookMarkupRepository(pool, {
    * включается новая `card_revision`, и ни секундой раньше: карточка
    * неизменяема, значит и портрет по ней переспрашивать незачем.
    */
-  async function characterCardMediaSource(client, { bookEditionId, characterKey, bundleVersion }) {
+  async function characterCardMediaSource(
+    client,
+    { bookEditionId, characterKey, bundleVersion, runId }
+  ) {
+    if (!runId) {
+      const error = new Error('runId is required to pick a card as the media source')
+      error.code = 'CARD_MEDIA_SOURCE_RUN_REQUIRED'
+      throw error
+    }
+    // Прогон обязателен. Уникальность карточки и выключение прежней ревизии
+    // ограничены `run_id`, поэтому после повторного анализа одной книги
+    // включённых карточек одного персонажа может быть несколько — по одной на
+    // прогон. Запрос без фильтра брал любую через LIMIT 1: новая карточка
+    // получала медиа предыдущего анализа, а смена её документа портрет не
+    // обновляла, потому что `source_markup_hash` в bundle оставался чужим.
     const result = await client.query(
       `SELECT card.document_hash AS source_markup_hash,
               card.card_revision, card.run_id, card.window_index,
@@ -520,9 +564,11 @@ export function createPostgresBookMarkupRepository(pool, {
         AND bundle.character_key = card.character_key
         AND bundle.bundle_version = $3
        WHERE card.book_edition_id = $1 AND card.character_key = $2 AND card.enabled
+         AND card.run_id = $4
+       ORDER BY card.card_revision DESC
        LIMIT 1
        FOR UPDATE OF card`,
-      [bookEditionId, characterKey, bundleVersion]
+      [bookEditionId, characterKey, bundleVersion, runId]
     )
     const row = result.rows[0]
     if (!row) return null
@@ -542,6 +588,7 @@ export function createPostgresBookMarkupRepository(pool, {
     bundleVersion,
     priority,
     sourceKind = 'markup',
+    runId = null,
     client: outerClient = null
   }) {
     const body = async (client) => {
@@ -551,7 +598,7 @@ export function createPostgresBookMarkupRepository(pool, {
       )
       if (sourceKind === 'card') {
         const resolved = await characterCardMediaSource(client, {
-          bookEditionId, characterKey, bundleVersion
+          bookEditionId, characterKey, bundleVersion, runId
         })
         if (!resolved) {
           const error = new Error('no enabled character card is available for media generation')
@@ -2503,15 +2550,19 @@ export function createPostgresBookMarkupRepository(pool, {
     /**
      * Ставит карточки одного окна и отмечает окно работающим.
      *
-     * Персонаж попадает в окно, если его первое упоминание лежит внутри окна:
-     * `book_card_windows` задаёт барьер, а не набор героев, и один и тот же
-     * персонаж не должен получить карточку дважды — за это отвечает уникальный
-     * индекс по (прогон, окно, персонаж).
+     * Барьер окна и его состав героев — разные вещи. Барьер (`start_offset`,
+     * `end_offset`) у всех окон начинается с нуля: карточка персонажа из главы 5
+     * опирается на весь текст до конца главы 6. Состав задаёт отдельный
+     * диапазон `assign_*`, посчитанный тем же правилом, что
+     * `cardWindowIndexForOffset`. Пока состав брался из барьера, каждый ранний
+     * персонаж выбирался заново в каждом следующем окне, а персонаж главы 2
+     * получал карточку уже по первым двум главам — не по правилу D1.
      */
     async enqueueCardWindow({ runId, bookEditionId, windowIndex, priority }) {
       return transaction(pool, async (client) => {
         const window = await client.query(
-          `SELECT start_offset, end_offset, priority_class, status
+          `SELECT start_offset, end_offset, assign_start_offset, assign_end_offset,
+                  priority_class, status
            FROM book_card_windows
            WHERE run_id = $1 AND window_index = $2
            FOR UPDATE`,
@@ -2526,22 +2577,30 @@ export function createPostgresBookMarkupRepository(pool, {
         if (row.status !== 'queued') {
           return { status: row.status, windowIndex, created: 0, jobs: [] }
         }
-        // Персонажи окна: первое упоминание внутри окна и хотя бы один
-        // фрагмент — без фрагментов карточку строить нечем.
+        // Персонажи окна: первое упоминание внутри диапазона состава этого
+        // окна и хотя бы один фрагмент до барьера — без фрагментов карточку
+        // строить нечем. Фрагменты считаются по барьеру, состав — по
+        // `assign_*`: это разные границы, и смешивать их нельзя.
         const characters = await client.query(
           `SELECT character_key, MIN(start_offset)::bigint AS first_offset,
                   COUNT(*)::int AS fragment_count
            FROM book_character_fragments
-           WHERE run_id = $1 AND start_offset < $3
+           WHERE run_id = $1 AND start_offset < $2
            GROUP BY character_key
-           HAVING MIN(start_offset) >= $2 AND MIN(start_offset) < $3
+           HAVING MIN(start_offset) >= $3 AND MIN(start_offset) < $4
            ORDER BY MIN(start_offset), character_key`,
-          [runId, row.start_offset, row.end_offset]
+          [runId, row.end_offset, row.assign_start_offset, row.assign_end_offset]
         )
+        // Имя и его варианты приходят в задание вместе с ним: генератор читает
+        // их только из payload, и без них он получал технический ключ вместо
+        // имени, пустые варианты и нулевую частотность — а на абзаце с
+        // несколькими героями по ключу целевого персонажа не определить.
+        const names = await inventoryNamesByKey(client, runId)
         const jobs = []
         for (const character of characters.rows) {
           const idempotencyKey =
             `${runId}:character-card:${windowIndex}:${character.character_key}`
+          const named = names.get(character.character_key) ?? null
           const inserted = await client.query(
             `INSERT INTO generation_jobs (
                id, idempotency_key, job_type, book_edition_id, character_key,
@@ -2555,7 +2614,10 @@ export function createPostgresBookMarkupRepository(pool, {
               JSON.stringify({
                 card_revision: 1,
                 fragment_count: Number(character.fragment_count),
-                first_mention_text_offset: Number(character.first_offset)
+                first_mention_text_offset: Number(character.first_offset),
+                character_name: named?.name ?? null,
+                character_names: named?.names ?? [],
+                mention_count: named?.mentionCount ?? null
               }),
               runId, windowIndex
             ]
@@ -2663,6 +2725,9 @@ export function createPostgresBookMarkupRepository(pool, {
            ON card.book_edition_id = job.book_edition_id
           AND card.character_key = job.character_key
           AND card.card_revision = (job.payload->>'card_revision')::integer
+          -- Прогон из payload, а не любая включённая карточка: иначе портрет
+          -- рисуется по карточке другого анализа той же книги.
+          AND card.run_id = (job.payload->>'analysis_run_id')::uuid
           AND card.enabled
          WHERE job.id = $1 AND job.status = 'running' AND job.lease_token = $2::uuid`,
         [job.id, job.leaseToken]
@@ -2813,9 +2878,16 @@ export function createPostgresBookMarkupRepository(pool, {
                 card_window.start_offset, card_window.end_offset, card_window.chapter_indexes,
                 card_window.priority_class,
                 inventory.inventory_version,
-                job.payload->>'character_name' AS character_name,
-                job.payload->'character_names' AS character_names,
-                job.payload->>'mention_count' AS mention_count,
+                -- Payload приоритетен, инвентарь — запас: задание, поставленное
+                -- до того, как имена стали писаться в payload, всё равно должно
+                -- дойти до модели с именем, а не с техническим ключом.
+                COALESCE(job.payload->>'character_name',
+                         candidate.value->>'displayName') AS character_name,
+                COALESCE(job.payload->'character_names',
+                         candidate.value->'aliases') AS character_names,
+                COALESCE(job.payload->>'mention_count',
+                         candidate.value->>'count') AS mention_count,
+                candidate.value->>'fullName' AS character_full_name,
                 job.payload->>'card_revision' AS card_revision
          FROM generation_jobs AS job
          JOIN book_editions AS edition ON edition.id = job.book_edition_id
@@ -2824,6 +2896,12 @@ export function createPostgresBookMarkupRepository(pool, {
            ON card_window.run_id = job.analysis_run_id
           AND card_window.window_index = job.card_window_index
          LEFT JOIN book_name_inventory AS inventory ON inventory.run_id = job.analysis_run_id
+         LEFT JOIN LATERAL (
+           SELECT value
+           FROM jsonb_array_elements(COALESCE(inventory.document->'candidates', '[]'::jsonb))
+           WHERE value->>'candidateKey' = job.character_key
+           LIMIT 1
+         ) AS candidate ON true
          WHERE job.id = $1 AND job.job_type = 'character_card'
            AND job.status = 'running' AND job.lease_token = $2::uuid`,
         [job.id, job.leaseToken]
@@ -2844,7 +2922,11 @@ export function createPostgresBookMarkupRepository(pool, {
         error.code = 'CARD_FRAGMENTS_MISSING'
         throw error
       }
-      const names = Array.isArray(row.character_names) ? row.character_names : []
+      const names = [...new Set([
+        row.character_name,
+        row.character_full_name,
+        ...(Array.isArray(row.character_names) ? row.character_names : [])
+      ].filter((value) => typeof value === 'string' && value.trim()))]
       return {
         runId: row.analysis_run_id,
         bookEditionId: job.bookEditionId,
@@ -2935,6 +3017,7 @@ export function createPostgresBookMarkupRepository(pool, {
           bundleVersion: BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
           priority: mediaPriority,
           sourceKind: 'card',
+          runId,
           client
         })
         await client.query(

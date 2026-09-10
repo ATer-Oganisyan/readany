@@ -110,8 +110,41 @@ export function buildBookCardWindows({
   return {
     cardWindowVersion: CARD_WINDOW_VERSION,
     chapterCount: chapters.length,
-    windows
+    windows: withAssignmentRanges(windows, chapters)
   }
+}
+
+/**
+ * Диапазон первых упоминаний, за который отвечает окно.
+ *
+ * Барьер окна и его состав героев — разные вещи, и путать их дорого. Барьер —
+ * это `[startOffset, endOffset]`, и он у всех окон начинается с нуля: карточка
+ * персонажа из главы 5 опирается на весь текст до конца главы 6. Состав же
+ * должен быть у каждого окна свой и не пересекаться с соседями, иначе ранний
+ * персонаж попадёт в каждое следующее окно, а персонаж главы 2 получит карточку
+ * уже по первым двум главам — то есть не по правилу D1.
+ *
+ * Правило состава здесь ровно то же, что у {@link cardWindowIndexForOffset}: за
+ * персонажа отвечает первое окно, чей конец не раньше конца главы, следующей за
+ * главой первого упоминания. Диапазон считается по границам глав, а не
+ * подбирается вручную, поэтому расхождения между назначением и барьером быть не
+ * может по построению.
+ */
+function withAssignmentRanges(windows, chapters) {
+  const ownedChapters = new Map(windows.map(({ windowIndex }) => [windowIndex, []]))
+  for (const chapter of chapters) {
+    const windowIndex = cardWindowIndexForOffset(windows, chapters, chapter.startOffset)
+    ownedChapters.get(windowIndex).push(chapter)
+  }
+  return windows.map((window) => {
+    const owned = ownedChapters.get(window.windowIndex)
+    return {
+      ...window,
+      // Пустой диапазон — законный ответ: окно есть, героев в нём нет.
+      assignStartOffset: owned.length ? owned[0].startOffset : window.endOffset,
+      assignEndOffset: owned.length ? owned[owned.length - 1].endOffset : window.endOffset
+    }
+  })
 }
 
 /**

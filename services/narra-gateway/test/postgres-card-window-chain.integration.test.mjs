@@ -13,6 +13,10 @@ import test from 'node:test'
 import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
 import { createIsolatedPostgres } from './support/isolated-postgres.mjs'
 import { CARD_MEDIA_PRIORITY } from '../analysis/book-character-card.mjs'
+import {
+  buildBookCardWindows,
+  cardWindowIndexForOffset
+} from '../analysis/book-card-windows.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 
@@ -45,38 +49,61 @@ async function seedBook(pool, { chapterCount = 6, charactersPerWindow = 2 } = {}
       `analysis/${runId}/normalized-text-v2.txt`, hash(`text:${runId}`), textLength
     ]
   )
-  // Окно 0 закрывает две главы, каждое следующее — одну.
-  const bounds = [[0, 2 * CHAPTER]]
-  for (let chapter = 2; chapter < chapterCount; chapter += 1) {
-    bounds.push([chapter * CHAPTER, (chapter + 1) * CHAPTER])
-  }
-  for (const [windowIndex, [start, end]] of bounds.entries()) {
+  // Окна строит та же функция, что в продакшене, а не ручные непересекающиеся
+  // границы: у настоящих окон барьер начинается с нуля у всех, и фикстура,
+  // которая этого не воспроизводит, скрывает ошибку назначения персонажей.
+  const chapters = Array.from({ length: chapterCount }, (_, index) => ({
+    index,
+    key: `chapter:${index}`,
+    title: '',
+    startOffset: index * CHAPTER,
+    endOffset: (index + 1) * CHAPTER
+  }))
+  const { windows } = buildBookCardWindows({ chapters })
+  for (const window of windows) {
     await pool.query(
       `INSERT INTO book_card_windows (
          run_id, window_index, start_offset, end_offset,
+         assign_start_offset, assign_end_offset,
          chapter_indexes, priority_class, status
-       ) VALUES ($1, $2, $3, $4, $5::integer[], $6, 'queued')`,
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7::integer[], $8, 'queued')`,
       [
-        runId, windowIndex, start, end,
-        // Окно 0 покрывает две первые главы, дальше по одной.
-        windowIndex === 0 ? [0, 1] : [windowIndex + 1],
-        windowIndex === 0 ? 'foreground' : 'background'
+        runId, window.windowIndex, window.startOffset, window.endOffset,
+        window.assignStartOffset, window.assignEndOffset,
+        window.chapterIndexes, window.priorityClass
       ]
     )
-    // Персонаж «принадлежит» окну по первому упоминанию внутри его границ.
+  }
+  // Персонажи раскладываются по главам, а окно за них отвечает по правилу D1:
+  // глава появления плюс одна. Ожидаемое окно считается тем же
+  // `cardWindowIndexForOffset`, которым его считает продакшен.
+  const expectedWindowByCharacter = new Map()
+  for (const chapter of chapters) {
     for (let index = 0; index < charactersPerWindow; index += 1) {
-      const characterKey = `char:w${windowIndex}-${index}`
-      const offset = start + 100 + index * 10
+      const characterKey = `char:c${chapter.index}-${index}`
+      const offset = chapter.startOffset + 100 + index * 10
+      expectedWindowByCharacter.set(
+        characterKey,
+        cardWindowIndexForOffset(windows, chapters, offset)
+      )
       await pool.query(
         `INSERT INTO book_character_fragments (
            run_id, character_key, fragment_id, paragraph_index, chapter_index,
            start_offset, end_offset, mention_count
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, 1)`,
-        [runId, characterKey, `frag:${characterKey}:0`, index, windowIndex, offset, offset + 50]
+        [runId, characterKey, `frag:${characterKey}:0`, index, chapter.index, offset, offset + 50]
       )
     }
   }
-  return { bookEditionId, runId, windowCount: bounds.length, textLength }
+  return {
+    bookEditionId,
+    runId,
+    windowCount: windows.length,
+    textLength,
+    windows,
+    chapters,
+    expectedWindowByCharacter
+  }
 }
 
 async function windowStatuses(pool, runId) {
@@ -156,6 +183,114 @@ test('the window chain enqueues one window at a time and closes it before the ne
       priority: CARD_MEDIA_PRIORITY.background
     })
     assert.equal(again.created, 0)
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('every character is enqueued once, in the window D1 assigns to it', {
+  skip: !connectionString
+}, async () => {
+  // Ошибка ревью PR #91: барьер всех окон начинается с нуля, и запрос состава
+  // по барьеру выбирал каждого раннего персонажа заново в каждом следующем
+  // окне, а персонажа второй главы — уже в первом, то есть строил его карточку
+  // по первым двум главам вместо правила «глава появления + 1».
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const book = await seedBook(pool, { chapterCount: 6, charactersPerWindow: 1 })
+
+    for (const window of book.windows) {
+      await pool.query(
+        `UPDATE book_card_windows SET status = 'queued' WHERE run_id = $1 AND window_index = $2`,
+        [book.runId, window.windowIndex]
+      )
+      await repository.enqueueCardWindow({
+        runId: book.runId,
+        bookEditionId: book.bookEditionId,
+        windowIndex: window.windowIndex,
+        priority: CARD_MEDIA_PRIORITY.background
+      })
+    }
+
+    const jobs = await pool.query(
+      `SELECT character_key, card_window_index
+       FROM generation_jobs
+       WHERE analysis_run_id = $1 AND job_type = 'character_card'
+       ORDER BY character_key, card_window_index`,
+      [book.runId]
+    )
+
+    // Ни одного повторного задания: один персонаж — одно окно.
+    const perCharacter = new Map()
+    for (const row of jobs.rows) {
+      const seen = perCharacter.get(row.character_key) ?? []
+      seen.push(Number(row.card_window_index))
+      perCharacter.set(row.character_key, seen)
+    }
+    for (const [characterKey, windowIndexes] of perCharacter) {
+      assert.deepEqual(
+        windowIndexes,
+        [book.expectedWindowByCharacter.get(characterKey)],
+        `${characterKey} назначен не тому окну`
+      )
+    }
+    assert.equal(perCharacter.size, book.expectedWindowByCharacter.size)
+    assert.equal(jobs.rows.length, book.expectedWindowByCharacter.size)
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('a card job carries the character name, its variants and its mention count', {
+  skip: !connectionString
+}, async () => {
+  // Вторая ошибка ревью: генератор читает имя только из payload, и без него
+  // получал технический ключ вместо имени, пустые варианты и нулевую
+  // частотность — а на абзаце с несколькими героями по ключу целевого
+  // персонажа не определить.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const book = await seedBook(pool, { chapterCount: 4, charactersPerWindow: 1 })
+    const characterKey = 'char:c0-0'
+    const candidates = [{
+      candidateKey: characterKey,
+      displayName: 'Раскольников',
+      fullName: 'Родион Романович Раскольников',
+      aliases: ['Родя', 'Родион Романыч'],
+      count: 976
+    }]
+    await pool.query(
+      `INSERT INTO book_name_inventory (
+         run_id, inventory_version, normalized_text_hash, text_length, chapter_count,
+         total_mentions, roster_count, significant_count, document, document_hash
+       ) VALUES ($1, 'name-inventory-v1', $2, $3, 4, 976, 1, 1, $4::jsonb, $5)`,
+      [
+        book.runId, hash(`text:${book.runId}`), book.textLength,
+        JSON.stringify({ candidates }), hash('inventory')
+      ]
+    )
+
+    await repository.enqueueCardWindow({
+      runId: book.runId,
+      bookEditionId: book.bookEditionId,
+      windowIndex: 0,
+      priority: CARD_MEDIA_PRIORITY.foreground
+    })
+    const payload = await pool.query(
+      `SELECT payload FROM generation_jobs
+       WHERE analysis_run_id = $1 AND character_key = $2 AND job_type = 'character_card'`,
+      [book.runId, characterKey]
+    )
+    assert.equal(payload.rows.length, 1)
+    assert.equal(payload.rows[0].payload.character_name, 'Раскольников')
+    assert.equal(payload.rows[0].payload.mention_count, 976)
+    assert.deepEqual(payload.rows[0].payload.character_names, [
+      'Раскольников', 'Родион Романович Раскольников', 'Родя', 'Родион Романыч'
+    ])
   } finally {
     await isolated.release()
   }
