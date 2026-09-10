@@ -96,3 +96,37 @@ test('loading twice with the same environment yields the same values', () => {
     assert.deepEqual(first[key], second[key])
   }
 })
+
+test('the image provider is read from the given environment, not from process.env', () => {
+  // Единственное место, где конфигурация читала чужое окружение: остальные
+  // настройки брались из переданного env, а провайдер картинок — из
+  // process.env. Из-за этого COVER_IMAGE_PROVIDER=litellm возвращал openrouter
+  // вместе с его моделью и таймаутом, и по ним же считался бюджет времени.
+  const config = load({
+    COVER_IMAGE_PROVIDER: 'litellm',
+    LITELLM_BASE_URL: 'https://litellm.example/v1',
+    LITELLM_API_KEY: 'ключ',
+    LITELLM_IMAGE_MODEL: 'своя-модель',
+    LITELLM_IMAGE_FALLBACK_MODEL: 'своя-модель',
+    COVER_IMAGE_TIMEOUT_MS: '60000'
+  })
+
+  assert.equal(config.coverProviderConfig.provider, 'litellm')
+  assert.equal(config.coverProviderConfig.baseUrl, 'https://litellm.example/v1')
+  assert.equal(config.coverProviderConfig.model, 'своя-модель')
+  assert.equal(config.coverProviderConfig.timeoutMs, 60_000)
+  // Производные величины считаются от той же конфигурации: запасная модель
+  // совпадает с основной, значит вызов на попытку один, а не два.
+  assert.equal(config.coverProviderCallsPerAttempt, 1)
+  assert.equal(config.minimumCoverAttemptTimeoutMs, 75_000)
+})
+
+test('without an image provider in the environment the default is still openrouter', () => {
+  const config = load()
+  assert.equal(config.coverProviderConfig.provider, 'openrouter')
+  assert.equal(config.coverProviderCallsPerAttempt, 2)
+})
+
+test('an unsupported image provider fails loudly instead of falling back', () => {
+  assert.throws(() => load({ COVER_IMAGE_PROVIDER: 'выдуманный' }), /Unsupported cover image provider/)
+})

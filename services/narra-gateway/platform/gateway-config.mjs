@@ -129,7 +129,12 @@ export function loadGatewayConfig(env = process.env) {
   const SCENE_JOB_MAX_ATTEMPTS = envInt('SCENE_JOB_MAX_ATTEMPTS', 3, 10)
   const SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS = envInt('SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS', 15 * 60, 60 * 60)
   const SCENE_JOB_WORKER_ENABLED = parseEnvBool(env, 'SCENE_JOB_WORKER_ENABLED', true)
-  const coverProviderConfig = coverImageConfig()
+  // env, а не process.env: всё остальное здесь читается из переданного
+  // окружения, и провайдер картинок — единственное, что читалось из чужого.
+  // Из-за этого конфигурация с COVER_IMAGE_PROVIDER=litellm возвращала
+  // openrouter вместе с его моделью и таймаутом, а проверка бюджета времени
+  // ниже считалась по этим же чужим настройкам.
+  const coverProviderConfig = coverImageConfig(env)
   const COVER_IMAGE_QUALITY = normalizeImageQuality(env.COVER_IMAGE_QUALITY)
   const CHARACTER_PORTRAIT_IMAGE_QUALITY = normalizeImageQuality(
     env.CHARACTER_PORTRAIT_IMAGE_QUALITY
