@@ -115,6 +115,9 @@ function postJson({ url, apiKey, body, timeoutMs }) {
       }
     }, (response) => {
       const chunks = []
+      // `call.setTimeout` — таймаут простоя сокета, а не всей операции: он
+      // сам сбрасывается на каждом байте, поэтому у потокового ответа ловит
+      // настоящее молчание, а не длительность запроса.
       response.on('data', (chunk) => chunks.push(chunk))
       response.on('error', fail)
       response.on('end', () => succeed({
@@ -130,6 +133,39 @@ function postJson({ url, apiKey, body, timeoutMs }) {
   })
 }
 
+/**
+ * Ответ модели из потока Server-Sent Events.
+ *
+ * Зачем поток вообще. Подтверждение roster — это ~35 000 токенов запроса, и
+ * рассуждающая модель молчит над ним минуты. За это время по соединению не идёт
+ * ни байта, и посредник провайдера его рвёт: прогон «Преступления и наказания»
+ * падал трижды подряд и тремя разными способами — HTTP 503 «connection
+ * termination», `ECONNRESET` и `socket hang up`. Поток заставляет провайдера
+ * присылать байты непрерывно, и рвать становится нечего.
+ *
+ * Рассуждение приходит в `reasoning_content`, ответ — в `content`; собирается
+ * только второе, иначе в разбор JSON уходят размышления модели.
+ */
+export function contentFromEventStream(text) {
+  let content = ''
+  for (const line of String(text).split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('data:')) continue
+    const data = trimmed.slice(5).trim()
+    if (!data || data === '[DONE]') continue
+    let event = null
+    try {
+      event = JSON.parse(data)
+    } catch {
+      continue
+    }
+    const choice = event?.choices?.[0]
+    const piece = choice?.delta?.content ?? choice?.message?.content
+    if (typeof piece === 'string') content += piece
+  }
+  return content
+}
+
 export function createModelClient(env = process.env) {
   const baseUrl = String(env.JUDGE_BASE_URL || env.LITELLM_BASE_URL || '').replace(/\/$/, '')
   const apiKey = env.JUDGE_API_KEY || env.LITELLM_API_KEY
@@ -137,6 +173,9 @@ export function createModelClient(env = process.env) {
   const timeoutMs = Number(env.MODEL_TIMEOUT_MS || 1_800_000)
   if (!baseUrl || !apiKey || !model) return null
   const attempts = Number(env.MODEL_MAX_ATTEMPTS || 5)
+  // Поток по умолчанию: без него длинный запрос рвут по простою. `MODEL_STREAM=0`
+  // оставлен для провайдера, который потока не умеет.
+  const stream = String(env.MODEL_STREAM ?? '1') !== '0'
   return async (messages) => {
     let lastError = null
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -144,10 +183,18 @@ export function createModelClient(env = process.env) {
         const response = await postJson({
           url: `${baseUrl}/chat/completions`,
           apiKey,
-          body: { model, messages, temperature: 0 },
+          body: { model, messages, temperature: 0, ...(stream ? { stream: true } : {}) },
           timeoutMs
         })
         if (response.status >= 200 && response.status < 300) {
+          if (stream) {
+            const content = contentFromEventStream(response.text)
+            if (content) return content
+            // Провайдер ответил не потоком, хотя его просили: разбираем как
+            // обычный ответ, а не молча возвращаем пустую строку.
+            const body = JSON.parse(response.text)
+            return body?.choices?.[0]?.message?.content ?? ''
+          }
           const body = JSON.parse(response.text)
           return body?.choices?.[0]?.message?.content ?? ''
         }
