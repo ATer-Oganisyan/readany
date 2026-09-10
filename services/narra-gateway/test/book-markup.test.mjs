@@ -13,7 +13,7 @@ import {
   normalizeCharacterAnchor,
   readerCharacterState,
   sectionAnchorForTextOffset
-} from '../book-markup.mjs'
+} from '../books/book-markup.mjs'
 
 function readyBundle(characterKey = 'anna-karenina') {
   return {

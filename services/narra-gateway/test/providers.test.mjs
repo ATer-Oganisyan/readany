@@ -12,7 +12,7 @@ import {
   requestCoverImage,
   requestCoverImageWithFallback,
   routeForPurpose
-} from '../providers.mjs'
+} from '../providers/providers.mjs'
 
 const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 

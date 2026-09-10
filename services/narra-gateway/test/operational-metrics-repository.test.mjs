@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createOperationalMetricsRepository } from '../operational-metrics-repository.mjs'
+import { createOperationalMetricsRepository } from '../db/operational-metrics-repository.mjs'
 
 test('operator metrics expose aggregate queue, worker, latency and sidecar state only', async () => {
   const pool = {

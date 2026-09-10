@@ -1,9 +1,9 @@
-import { normalizeBookMarkupV3 } from '../book-analysis-contracts.mjs'
+import { normalizeBookMarkupV3 } from '../analysis/book-analysis-contracts.mjs'
 import {
   BOOK_ANALYSIS_PIPELINE_EXTERNAL,
   BOOK_ANALYSIS_PIPELINE_NARRA,
   normalizeBookAnalysisPipelineId
-} from '../book-analysis-pipeline.mjs'
+} from '../analysis/book-analysis-pipeline.mjs'
 import { scoreFrozenIdentity } from './score-frozen-identity.mjs'
 
 function comparisonError(message) {

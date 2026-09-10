@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { createPostgresBookCharacterCorrectionRepository } from '../book-character-correction-repository.mjs'
+import { createPostgresBookCharacterCorrectionRepository } from '../books/book-character-correction-repository.mjs'
 
 const BOOK_ID = '11111111-1111-4111-8111-111111111111'
 const MARKUP_ID = '22222222-2222-4222-8222-222222222222'

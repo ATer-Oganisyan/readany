@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
-import { decodeBookContentCursor } from '../book-content.mjs'
-import { createBookCatalogService } from '../book-catalog-service.mjs'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
+import { decodeBookContentCursor } from '../books/book-content.mjs'
+import { createBookCatalogService } from '../catalog/book-catalog-service.mjs'
 
 const HASH = 'a'.repeat(64)
 const OVERLAY_MARKUP_ID = '11111111-1111-4111-8111-111111111111'
@@ -1444,4 +1444,104 @@ test('catalog content rejects a cursor from another content version', async () =
     () => service.contentChunk('reader-1', 'book-1', stale),
     (error) => error.code === 'CONTENT_VERSION_CHANGED' && error.status === 409
   )
+})
+
+test('a cards-pipeline book serves its cards before v3 is published', async () => {
+  // Решение D2: книга на `pipeline=cards` не публикует v3 до последнего окна,
+  // поэтому до тех пор персонажей отдают карточки. Без этого карточки не были
+  // видны клиенту вообще — манифест ждал публикации, которой по замыслу ещё
+  // нет, и читатель видел «профиль формируется» над готовой карточкой.
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: { ...EDITION, sourceStorage: 'temporary' },
+          readerTextOffset: 500,
+          readingFraction: 0.25,
+          markup: null,
+          characters: []
+        }
+      },
+      // Карточки лежат в репозитории разметки, а не анализа: в сборке
+      // приложения это разные объекты, и подделка не на том из них скрыла бы,
+      // что манифест спрашивает не у того, у кого метод есть.
+      async listPublishedCharacterCards() {
+        return [
+          {
+            characterKey: 'char:arkadiy',
+            name: 'аркадий',
+            fullName: 'Аркадий Кирсанов',
+            firstAppearanceTextOffset: 100,
+            cardStatus: 'ready',
+            role: 'сын Николая Петровича',
+            description: 'Аркадий возвращается домой из университета.',
+            traits: ['восторженный'],
+            appearancePrompt: 'молодой человек в дорожном платье',
+            greeting: 'Здравствуйте!'
+          },
+          {
+            characterKey: 'char:bazarov',
+            name: 'Базаров',
+            firstAppearanceTextOffset: 200,
+            cardStatus: 'pending'
+          },
+          {
+            characterKey: 'char:odintsova',
+            name: 'Одинцова',
+            firstAppearanceTextOffset: 9_000,
+            cardStatus: 'ready'
+          }
+        ]
+      }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() { return null },
+      async getLatestAnalysisPreview() { return null }
+    }
+  })
+
+  const manifest = await service.manifest('reader-1', EDITION.id)
+
+  // Unlock остаётся по firstAppearanceTextOffset: Одинцовой читатель ещё не достиг.
+  assert.deepEqual(
+    manifest.characters.map(({ characterKey }) => characterKey),
+    ['char:arkadiy', 'char:bazarov']
+  )
+  const [arkadiy, bazarov] = manifest.characters
+  assert.equal(arkadiy.state, 'ready')
+  assert.equal(arkadiy.provisional, false)
+  assert.equal(arkadiy.name, 'Аркадий')
+  assert.equal(arkadiy.profile.role, 'сын Николая Петровича')
+  assert.deepEqual(arkadiy.profile.traits, ['восторженный'])
+  assert.equal(arkadiy.profile.greeting, 'Здравствуйте!')
+  // Персонаж roster без карточки — прежний teaser, а не второе состояние.
+  assert.equal(bazarov.state, 'preparing')
+  assert.equal(bazarov.provisional, true)
+  assert.equal(bazarov.profile.role, 'Профиль формируется')
+  assert.deepEqual(bazarov.profile.traits, [])
+  // Есть готовые и есть незаконченные — значит превью, а не полная готовность.
+  assert.equal(manifest.charactersStatus, 'preview_ready')
+})
+
+test('without cards the manifest keeps its previous processing behaviour', async () => {
+  const service = createBookCatalogService({
+    repository: repository({
+      async getReaderBookManifest() {
+        return {
+          edition: { ...EDITION, sourceStorage: 'temporary' },
+          readerTextOffset: 500,
+          readingFraction: 0.25,
+          markup: null,
+          characters: []
+        }
+      }
+    }),
+    analysisRepository: {
+      async getLatestShadowAnalysisPublication() { return null },
+      async getLatestAnalysisPreview() { return null }
+    }
+  })
+  const manifest = await service.manifest('reader-1', EDITION.id)
+  assert.deepEqual(manifest.characters, [])
+  assert.equal(manifest.availability, 'unavailable')
 })

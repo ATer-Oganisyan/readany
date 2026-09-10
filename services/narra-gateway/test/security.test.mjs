@@ -8,7 +8,7 @@ import {
   isCorsOriginAllowed,
   isInstallationId,
   requireBasicAuth
-} from '../security.mjs'
+} from '../platform/security.mjs'
 
 const INSTALLATION_ID = '123e4567-e89b-42d3-a456-426614174000'
 

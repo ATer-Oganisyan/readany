@@ -6,7 +6,7 @@ import {
   RF_IMAGE_COMPLIANCE,
   withChatCompliance,
   withImageCompliance,
-} from "../rf-compliance.mjs";
+} from "../providers/rf-compliance.mjs";
 
 test("character_chat получает серверную правовую рамку после клиентского system", () => {
   const messages = [

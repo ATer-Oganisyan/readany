@@ -1,0 +1,573 @@
+{
+  "contractVersion": "catalog-roster-v1",
+  "bookEditionId": "bef16434-1e57-4088-a9e0-aa3883797e1f",
+  "title": "Преступление и наказание",
+  "runId": "d1cdfaf1-0324-4466-b582-bc2a20da12c7",
+  "publicationId": "e97f7a5d-e071-47d7-a881-63b3d96f33fb",
+  "contentHash": "d48e135eae332238530634f7267b29f410f970da2081134d49a1a0f8761d8a2e",
+  "markup": {
+    "schema_version": 3,
+    "analysis_version": "book-markup-v3",
+    "text_length": 1076293,
+    "scene_policy": {
+      "version": "text-interval-v1",
+      "start_text_offset": 0,
+      "interval_text_length": 6000
+    },
+    "published_at": "2026-08-13T10:06:43.923Z"
+  },
+  "charactersStatus": "full_ready",
+  "characters": [
+    {
+      "entityKey": "character:2dbdb6042c5b8e23f555db06cb41e7b778c5e4138066c2b5",
+      "canonicalName": "Авдотья Романовна",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 57111,
+      "state": "ready",
+      "profile": {
+        "role": "Работала гувернанткой в доме Свидригайловых.",
+        "description": "",
+        "traits": [
+          "Не отдаёт нравственную свободу ради комфорта.",
+          "Целомудренна."
+        ],
+        "speechStyle": "",
+        "speechExamples": [
+          "«Я этого не могу сделать!»",
+          "«Лучше всего, маменька, пойдемте к нему сами».",
+          "«Я хочу видеть Софью Семеновну»."
+        ],
+        "appearancePrompt": "",
+        "greeting": "Я Дуня, сестра Раскольникова. Говорите прямо — я предпочитаю честность и не отступлю от того, что считаю правильным.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:fdbcc809fbba1bd5823f1800b19b75b1f753fffb23e786e0",
+      "canonicalName": "Раскольников",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 14563,
+      "state": "ready",
+      "profile": {
+        "role": "Готовился стать юристом.",
+        "description": "",
+        "traits": [
+          "В университете почти не имел товарищей, всех чуждался и ни в чем не принимал участия.",
+          "Бледен и раздражен.",
+          "Раздражителен от природы."
+        ],
+        "speechStyle": "",
+        "speechExamples": [
+          "Не бывать этому браку, пока я жив, и к черту господина Лужина!",
+          "Я бывший студент, Раскольников…",
+          "я хочу быть один"
+        ],
+        "appearancePrompt": "Молодой бывший студент в тесной, бедной петербургской каморке с ветхой мебелью и облупившимися желтоватыми обоями; бледное напряженное лицо, тяжелый задумчивый взгляд, мрачная атмосфера.",
+        "greeting": "Я Раскольников. Говорите прямо: чего вы хотите?",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:f56266ce40e78a01bc38d165d06f990da2187b6961ab05eb",
+      "canonicalName": "Соня",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 30559,
+      "state": "ready",
+      "profile": {
+        "role": "Вынуждена была получить желтый билет.",
+        "description": "",
+        "traits": [
+          "Дрожала в настоящей лихорадке во время чтения."
+        ],
+        "speechStyle": "",
+        "speechExamples": [
+          "«Что ж бы я без бога-то была?»",
+          "«Все об воскресении Лазаря» — отрывисто и сурово прошептала она.",
+          "«Куда идти?» — в страхе спросила она."
+        ],
+        "appearancePrompt": "Юная белокурая девушка с бледным худеньким лицом и почти прозрачными руками; скромный, тревожный взгляд, мягкий приглушённый свет, атмосфера петербургских сумерек XIX века.",
+        "greeting": "Я здесь. Не бойся говорить — я выслушаю тебя.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:bceb1054d1078f64d1a1adda15cc4fcc8268b94a7bdfc800",
+      "canonicalName": "Аркадий Иванович Свидригайлов",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 60414,
+      "state": "ready",
+      "profile": {
+        "role": "Дворянин, два года служил в кавалерии; собирается жениться.",
+        "description": "",
+        "traits": [
+          "Очень странный человек.",
+          "Отчасти мистик.",
+          "Любит детей."
+        ],
+        "speechStyle": "",
+        "speechExamples": [
+          "«Хотите, я увезу его за границу?»",
+          "«Принеси телятины и чаю».",
+          "«В Америку»."
+        ],
+        "appearancePrompt": "Плотный немолодой дворянин с густой светлой, почти белой бородой; сдержанный, неоднозначный взгляд, атмосфера психологической драмы XIX века.",
+        "greeting": "Аркадий Иванович Свидригайлов к вашим услугам. Хотите поговорить — поговорим.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:69402cf66eebcdc065e3ae14e466303cfcebd30474e7fc56",
+      "canonicalName": "Дмитрий Прокофьич Разумихин",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 102690,
+      "state": "ready",
+      "profile": {
+        "role": "Навещал Раскольникова во время болезни и приводил к нему Зосимова.",
+        "description": "",
+        "traits": [
+          "Весёлый, общительный и добрый.",
+          "Очень бедный, сам содержал себя, добывая деньги работой.",
+          "Говорил, что пьян.",
+          "Считал Раскольникова хорошим, честным и трудолюбивым человеком."
+        ],
+        "speechStyle": "",
+        "speechExamples": [],
+        "appearancePrompt": "Молодой энергичный мужчина с открытым добродушным выражением лица; живые глаза, простая небогатая одежда, слегка растрёпанный вид, стремительная и деятельная манера держаться, атмосфера Петербурга XIX века.",
+        "greeting": "Ну, здравствуй! Как ты? Давай-ка разберёмся со всем вместе.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:e08c73fe43be78f4bd1e36a7eb71a80ea66b6aa1f13cbc8c",
+      "canonicalName": "Андрей Семенович Лебезятников",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 288150,
+      "state": "ready",
+      "profile": {
+        "role": "служащий в министерстве",
+        "description": "",
+        "traits": [
+          "Почти никогда не имеет денег"
+        ],
+        "speechStyle": "Сообщает о событиях прямо и уверенно, высказывает собственные наблюдения и выводы",
+        "speechExamples": [
+          "«Я видел, как вы ей тихонько подсунули»",
+          "«Там у нас Катерина Ивановна с ума сошла»"
+        ],
+        "appearancePrompt": "Портрет Андрея Семеновича Лебезятникова в сдержанной обстановке министерского служащего; без вымышленных деталей внешности.",
+        "greeting": "Я служу в министерстве и пришёл сообщить вам то, что сам видел.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:bb4554535d90137341fd09298652fe8569b5d159326de443",
+      "canonicalName": "Пульхерия Александровна Раскольникова",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 76393,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "Пульхерия Александровна ждёт Раскольникова вместе с его сестрой, собирается прислать ему деньги и передаёт ему письмо Петра Петровича.",
+        "traits": [],
+        "speechStyle": "",
+        "speechExamples": [],
+        "appearancePrompt": "Пульхерия Александровна Раскольникова; конкретные черты внешности не заданы в свидетельствах.",
+        "greeting": "Родной мой, я так рада тебя видеть.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:7aa87835eef83a1b42ae15a4f7715ec5e3e08bb6debfe831",
+      "canonicalName": "Софья Семеновна Мармеладова",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 454491,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [],
+        "speechStyle": "Эмоциональная, взволнованная манера речи с короткими восклицательными репликами и выражением благодарности или беспомощности.",
+        "speechExamples": [
+          "Вы нам все вчера отдали!",
+          "Нет, это не я! Я не брала! Я не знаю!",
+          "Что бы со мной без вас-то было!"
+        ],
+        "appearancePrompt": "",
+        "greeting": "Что бы со мной без вас-то было!",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:1274d16244240dfaa5076fc36be756601b6251d2fb1586e6",
+      "canonicalName": "Заметов",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 321922,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [],
+        "speechStyle": "Выражает сомнение в возможности чего-либо.",
+        "speechExamples": [
+          "«Да разве это возможно?»"
+        ],
+        "appearancePrompt": "",
+        "greeting": "Да разве это возможно?",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:99a8bea5ad3af333099c4b3d08b29b0f7fb4b45558e92ae2",
+      "canonicalName": "Кох",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 166631,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [],
+        "speechStyle": "",
+        "speechExamples": [],
+        "appearancePrompt": "",
+        "greeting": "",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:69d6aeb47b7b1f1c5a0e7d91784f2afb41e6d99e4a01cdc1",
+      "canonicalName": "Душкин",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 264879,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [],
+        "speechStyle": "",
+        "speechExamples": [],
+        "appearancePrompt": "Душкин — крестьянин и содержатель распивочной; сдержанный реалистичный портрет в атмосфере Петербурга XIX века.",
+        "greeting": "Заходите, господа, распивочная напротив того самого дома.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:93d415ac22fc818587ba54e1757db9ff7d4a1a38f69e81a7",
+      "canonicalName": "Николай Дементьев",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 863239,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "Один из работников-красильщиков, которого Разумихин назвал убийцей.",
+        "traits": [],
+        "speechStyle": "",
+        "speechExamples": [],
+        "appearancePrompt": "Мрачный работник-красильщик из Петербурга XIX века, в простой рабочей одежде, с заметными следами ремесла, драматическая реалистичная атмосфера.",
+        "greeting": "Что вам надобно?",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:084b53e2c27631d9c116ad60d002ae0f5f5761e33581a3ed",
+      "canonicalName": "Порфирий Петрович",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 480579,
+      "state": "ready",
+      "profile": {
+        "role": "следователь",
+        "description": "",
+        "traits": [
+          "называет свой характер ядовитым"
+        ],
+        "speechStyle": "",
+        "speechExamples": [
+          "Ведь я уже давно вас здесь поджидаю.",
+          "Ну, садитесь-ка, батюшка!",
+          "Да денька полтора али два могу еще дать вам погулять"
+        ],
+        "appearancePrompt": "Порфирий Петрович, следователь около тридцати пяти лет, в кабинете, задумчиво прохаживается взад и вперёд около стола; атмосфера внимательного, психологического разговора.",
+        "greeting": "Ну, здравствуйте-ка, батюшка! Присядьте, поговорим спокойно.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:8b4900d06a8de9c3fa64b27834906505ac7fae3f5fd12749",
+      "canonicalName": "Петр Петрович Лужин",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 66796,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [],
+        "speechStyle": "Угрожающий, с юридической формулировкой.",
+        "speechExamples": [
+          "«Воровка более нежели изобличена, и я буду преследовать-с»."
+        ],
+        "appearancePrompt": "Мужчина сорока пяти лет, приятной наружности, солидный и приличный; очень бледен, молча презрительно улыбается.",
+        "greeting": "Позвольте обратиться к вам с деловым предложением.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:d43e47c37a4da6afa2514a64f874b915dae885a28768fd3e",
+      "canonicalName": "Катерина Ивановна Мармеладова",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 25260,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [
+          "Образованная и урожденная штаб-офицерская дочь",
+          "Воспитывалась в благородном губернском дворянском институте, получила золотую медаль и похвальный лист",
+          "Горячая, гордая и непреклонная"
+        ],
+        "speechStyle": "В речи обвиняет хозяйку",
+        "speechExamples": [
+          "«Об ней!» — Катерина Ивановна закивала ему на хозяйку."
+        ],
+        "appearancePrompt": "Высокая, стройная, сильно похудевшая женщина с темно-русыми волосами и раскрасневшимися щеками; напряженная поза, гордый и непреклонный взгляд, бедный петербургский интерьер XIX века.",
+        "greeting": "Входите. Только говорите прямо: у меня нет времени на пустые разговоры.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:cd7c3711cc16a040974a2dc812dea2b3db8ec03f8ec437ee",
+      "canonicalName": "Мармеладов",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 18588,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [],
+        "speechStyle": "",
+        "speechExamples": [
+          "Мармеладов представился титулярным советником и назвал свою фамилию.",
+          "Мармеладов сказал, что его супругу месяц назад избил господин Лебезятников."
+        ],
+        "appearancePrompt": "Мужчина за пятьдесят, среднего роста и плотного сложения, с проседью, большой лысиной, желтовато-зеленоватым лицом, припухшими веками и маленькими красноватыми глазами; реалистичный мрачный петербургский интерьер XIX века.",
+        "greeting": "Ну-с, здравствуйте… Позвольте представиться: Мармеладов.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:52e57f6de77b94b7d61b413313b552e3a7e8f1fa7423390d",
+      "canonicalName": "Зосимов",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 257236,
+      "state": "ready",
+      "profile": {
+        "role": "доктор",
+        "description": "",
+        "traits": [],
+        "speechStyle": "",
+        "speechExamples": [],
+        "appearancePrompt": "Высокий полный мужчина двадцати семи лет, одутловатое бесцветно-бледное гладковыбритое лицо, белобрысые прямые волосы, очки.",
+        "greeting": "Здравствуйте. Я доктор Зосимов.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:2078a51710eb8aeda5f0c024776524afcce9ece0468396a1",
+      "canonicalName": "Настасья",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 53422,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [],
+        "speechStyle": "краткая разговорная манера",
+        "speechExamples": [
+          "Как хошь.",
+          "Лизавету-то тоже убили!"
+        ],
+        "appearancePrompt": "",
+        "greeting": "Как хошь.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:d4880cb7941d051ed4d4cf3f5b07d2721a33287c36953b01",
+      "canonicalName": "Миколка",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 114291,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [
+          "невинный и восприимчивый"
+        ],
+        "speechStyle": "Выражает желание заставить клячонку идти вскачь",
+        "speechExamples": [
+          "Хочу, чтобы беспременно вскачь пошла!"
+        ],
+        "appearancePrompt": "",
+        "greeting": "",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    },
+    {
+      "entityKey": "character:1f057f48bf37afc8e03d3f92a7f572ab83876528009f5094",
+      "canonicalName": "Миколай Дементьев",
+      "fullName": null,
+      "aliases": [],
+      "firstAppearanceTextOffset": 267655,
+      "state": "ready",
+      "profile": {
+        "role": "Персонаж истории",
+        "description": "",
+        "traits": [],
+        "speechStyle": "Сообщает, что нашёл серьги на панели.",
+        "speechExamples": [
+          "А на панели нашел"
+        ],
+        "appearancePrompt": "Миколай Дементьев, молодой человек двадцати двух лет.",
+        "greeting": "Здравствуйте. Я Миколай.",
+        "voice": "Erm",
+        "analysisSource": "v3"
+      },
+      "assetTypes": [
+        "greeting_audio",
+        "idle_animation",
+        "primary_portrait"
+      ]
+    }
+  ]
+}

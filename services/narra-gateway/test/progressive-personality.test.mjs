@@ -4,7 +4,7 @@ import {
   buildPersonalityCheckpoints,
   normalizePersonalityTimeline,
   overlayStablePersonalityTraits
-} from '../progressive-personality.mjs'
+} from '../analysis/progressive-personality.mjs'
 
 function evidence(index, type = 'character_action') {
   return {

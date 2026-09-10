@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import test from 'node:test'
-import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
+import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 
 function migrationPool() {
   const migrations = new Map()

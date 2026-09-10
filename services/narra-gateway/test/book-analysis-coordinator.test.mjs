@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBookAnalysisCoordinator } from '../book-analysis-coordinator.mjs'
+import { createBookAnalysisCoordinator } from '../analysis/book-analysis-coordinator.mjs'
 import {
   BOOK_ANALYSIS_PIPELINE_VERSION,
   BOOK_ANALYSIS_PROMPT_VERSION
-} from '../book-analysis-contracts.mjs'
+} from '../analysis/book-analysis-contracts.mjs'
 
 test('coordinator starts one versioned idempotent analysis run', async () => {
   let requested

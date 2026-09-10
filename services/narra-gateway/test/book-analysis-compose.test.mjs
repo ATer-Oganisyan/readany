@@ -9,6 +9,7 @@ const localCompose = await readFile(
 )
 const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8')
 const gatewaySource = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
+const gatewayConfigSource = await readFile(new URL('../platform/gateway-config.mjs', import.meta.url), 'utf8')
 const deploySource = await readFile(new URL('../deploy.sh', import.meta.url), 'utf8')
 const remoteDeploySource = await readFile(
   new URL('../deploy-remote.sh', import.meta.url),
@@ -31,7 +32,7 @@ test('canonical v3 analysis runs as one multi-stage worker in the book-backend p
     compose.indexOf('  book-analysis-worker:'),
     compose.indexOf('  book-analysis-pool:')
   )
-  assert.match(worker, /command: \["node", "book-analysis-worker\.mjs"\]/)
+  assert.match(worker, /command: \["node", "analysis\/book-analysis-worker\.mjs"\]/)
   assert.match(worker, /profiles: \["book-backend"\]/)
   assert.match(worker, /WORKER_TYPE: book-analysis$/m)
   // Единая очередь book_analysis_jobs: отдельных сервисов на стадию больше нет.
@@ -47,7 +48,7 @@ test('a hot-stage pool stays available as an explicit opt-in profile', () => {
     compose.indexOf('  book-media-worker:')
   )
   assert.match(pool, /profiles: \["book-analysis-pool"\]/)
-  assert.match(pool, /command: \["node", "book-analysis-worker\.mjs"\]/)
+  assert.match(pool, /command: \["node", "analysis\/book-analysis-worker\.mjs"\]/)
   assert.match(pool, /BOOK_ANALYSIS_STAGES: \$\{BOOK_ANALYSIS_POOL_STAGES:-scan\}/)
   assert.match(pool, /replicas: \$\{BOOK_ANALYSIS_POOL_REPLICAS:-2\}/)
   assert.match(envExample, /^BOOK_ANALYSIS_POOL_STAGES=scan$/m)
@@ -89,14 +90,14 @@ test('external research services are isolated in the local-only compose profile'
   assert.match(adapter, /profiles: \["book-analysis-external"\]/)
   assert.match(adapter, /read_only: true/)
   assert.doesNotMatch(adapter, /\n    ports:/)
-  assert.match(worker, /command: \["node", "book-analysis-worker\.mjs", "external"\]/)
+  assert.match(worker, /command: \["node", "analysis\/book-analysis-worker\.mjs", "external"\]/)
   assert.match(worker, /AUTIOBOOK_ADAPTER_BASE_URL: http:\/\/autiobook-adapter\.railway\.internal:8080/)
   assert.match(gatewaySource, /BOOK_ANALYSIS_PIPELINE/)
 })
 
 test('gateway LLM capacity is aligned with the larger scan pool', () => {
   assert.match(envExample, /^LLM_CONCURRENCY=12$/m)
-  assert.match(gatewaySource, /envInt\('LLM_CONCURRENCY', 12, 100\)/)
+  assert.match(gatewayConfigSource, /envInt\('LLM_CONCURRENCY', 12, 100\)/)
 })
 
 test('markup and synthesis start as one-replica canaries and remain explicitly scalable', () => {
@@ -117,7 +118,7 @@ test('book display identity has one separate durable worker', () => {
     compose.indexOf('  book-identity-worker:'),
     compose.indexOf('  book-analysis-worker:')
   )
-  assert.match(identity, /command: \["node", "book-identity-worker\.mjs"\]/)
+  assert.match(identity, /command: \["node", "books\/book-identity-worker\.mjs"\]/)
   assert.match(identity, /replicas: \$\{BOOK_IDENTITY_WORKER_REPLICAS:-1\}/)
   assert.match(identity, /read_only: true/)
   assert.match(deploySource, /book_worker_services=\(book-markup-worker book-identity-worker/)
@@ -128,7 +129,7 @@ test('TTS markup runs as an independently scalable hardened container', () => {
     compose.indexOf('  book-tts-markup-worker:'),
     compose.indexOf('  book-analysis-worker:')
   )
-  assert.match(worker, /command: \["node", "book-tts-markup-worker-runner\.mjs"\]/)
+  assert.match(worker, /command: \["node", "tts\/book-tts-markup-worker-runner\.mjs"\]/)
   assert.match(worker, /profiles: \["tts-markup"\]/)
   assert.match(worker, /replicas: \$\{BOOK_TTS_MARKUP_WORKER_REPLICAS:-1\}/)
   assert.match(worker, /read_only: true/)
@@ -159,7 +160,7 @@ test('shadow analysis workers keep the hardened read-only runtime', () => {
   assert.match(compose, /restart: unless-stopped/)
   assert.match(compose, /read_only: true/)
   assert.match(compose, /no-new-privileges:true/)
-  assert.match(compose, /test: \["CMD", "node", "worker-healthcheck\.mjs"\]/)
+  assert.match(compose, /test: \["CMD", "node", "platform\/worker-healthcheck\.mjs"\]/)
 })
 
 test('media, scenes, TTS and operator campaigns are isolated profiles', () => {
@@ -191,7 +192,7 @@ test('database migrations are an explicit one-shot Compose operation', () => {
   )
   assert.match(compose, /DATABASE_AUTO_MIGRATE: "false"/)
   assert.match(migration, /profiles: \["operations"\]/)
-  assert.match(migration, /command: \["node", "migrate\.mjs"\]/)
+  assert.match(migration, /command: \["node", "db\/migrate\.mjs"\]/)
   assert.match(migration, /DATABASE_AUTO_MIGRATE: "true"/)
   assert.match(migration, /restart: "no"/)
 })
@@ -202,7 +203,7 @@ test('deploy uses Docker Compose only and keeps migrations and backups separate'
   assert.match(deploySource, /--force-recreate --wait --wait-timeout/)
   assert.match(deploySource, /up_args\+=\(--no-deps\)/)
   assert.match(deploySource, /--confirm-stateful-restart/)
-  assert.match(deploySource, /migrate node migrate\.mjs --check/)
+  assert.match(deploySource, /migrate node db\/migrate\.mjs --check/)
   assert.match(deploySource, /docker compose/)
   assert.doesNotMatch(deploySource, /\bssh\b|\brsync\b|\bsystemctl\b|\bnpm\b/)
   assert.doesNotMatch(deploySource, /\bdocker (?!compose\b)/)

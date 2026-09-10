@@ -9,12 +9,12 @@ import {
   PutObjectCommand,
   S3Client
 } from '@aws-sdk/client-s3'
-import { createBookCatalogService } from '../book-catalog-service.mjs'
-import { createBookObjectStorage } from '../book-object-storage.mjs'
-import { REQUIRED_CHARACTER_MEDIA } from '../book-markup.mjs'
-import { createGenerationWorker } from '../generation-worker.mjs'
-import { createPostgresBookMarkupRepository } from '../postgres-book-markup-repository.mjs'
-import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
+import { createBookCatalogService } from '../catalog/book-catalog-service.mjs'
+import { createBookObjectStorage } from '../books/book-object-storage.mjs'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
+import { createGenerationWorker } from '../generation/generation-worker.mjs'
+import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
+import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 
 const databaseUrl = process.env.BOOK_MARKUP_E2E_DATABASE_URL
 const s3Endpoint = process.env.BOOK_MARKUP_E2E_S3_ENDPOINT

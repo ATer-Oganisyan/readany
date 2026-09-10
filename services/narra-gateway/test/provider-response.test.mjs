@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   settleProviderResponse,
   validateChatCompletionPayload
-} from '../provider-response.mjs'
+} from '../providers/provider-response.mjs'
 
 test('provider completion is emitted only after response consumption', async () => {
   const events = []

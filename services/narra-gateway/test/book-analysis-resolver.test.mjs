@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveBookAnalysisEntities } from '../book-analysis-resolver.mjs'
+import { resolveBookAnalysisEntities } from '../analysis/book-analysis-resolver.mjs'
 
 function observation({
   id,

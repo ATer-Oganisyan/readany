@@ -4,7 +4,7 @@ import {
   IMPORT_SOURCE_HOSTS,
   fetchImportSource,
   importSourceFailure
-} from '../import-source.mjs'
+} from '../platform/import-source.mjs'
 
 const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }]
 

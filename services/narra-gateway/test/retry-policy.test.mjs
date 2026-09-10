@@ -6,12 +6,12 @@ import {
   simplifiedPortraitPrompt,
   simplifiedScenePrompt,
   shouldFallbackAfterImageError
-} from '../image-policy.mjs'
+} from '../providers/image-policy.mjs'
 import {
   shouldRetryKandinsky,
   shouldRetryKandinskyStatus,
   videoRetryDelay
-} from '../retry-policy.mjs'
+} from '../providers/retry-policy.mjs'
 
 test('Kandinsky retries provider rate limits and transient 5xx network failures', () => {
   assert.equal(shouldRetryKandinsky({ code: 'RATE' }), true)

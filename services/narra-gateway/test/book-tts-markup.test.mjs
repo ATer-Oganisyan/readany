@@ -8,7 +8,7 @@ import {
   normalizeBookTtsAssignments,
   normalizeBookTtsProviderAssignments,
   normalizeBookTtsScript
-} from '../book-tts-markup.mjs'
+} from '../tts/book-tts-markup.mjs'
 
 const TEXT = 'Глава первая\n\n— Привет, — сказал Иван. — Как дела?\n\nНаступила тишина.'
 const SECTION = {

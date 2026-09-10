@@ -6,7 +6,7 @@ import {
   parseBookSearchBookScopes,
   parseBookSearchJobTypes,
   readSearchChunk
-} from '../book-search-worker.mjs'
+} from '../search/book-search-worker.mjs'
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')

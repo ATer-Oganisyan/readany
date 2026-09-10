@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildFrozenProfileRequests } from '../book-analysis-profile-replay.mjs'
+import { buildFrozenProfileRequests } from '../analysis/book-analysis-profile-replay.mjs'
 import { loadPersonalityFixture } from '../evaluation/score-frozen-personality.mjs'
 
 test('frozen profile replay selects identities but never puts personality gold in requests', async () => {

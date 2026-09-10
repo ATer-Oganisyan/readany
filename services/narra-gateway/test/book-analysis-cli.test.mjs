@@ -4,7 +4,7 @@ import {
   BOOK_ANALYSIS_CLI_USAGE,
   executeBookAnalysisCommand,
   parseBookAnalysisCommand
-} from '../book-analysis-cli.mjs'
+} from '../analysis/book-analysis-cli.mjs'
 
 const BOOK_ID = '11111111-1111-4111-8111-111111111111'
 const RUN_ID = '22222222-2222-4222-8222-222222222222'

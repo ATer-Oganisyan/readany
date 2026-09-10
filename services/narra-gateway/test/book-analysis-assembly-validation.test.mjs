@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { assembleBookMarkupV3 } from '../book-analysis-assembler.mjs'
-import { validateBookMarkupV3 } from '../book-analysis-validator.mjs'
+import { assembleBookMarkupV3 } from '../analysis/book-analysis-assembler.mjs'
+import { validateBookMarkupV3 } from '../analysis/book-analysis-validator.mjs'
 
 const mentionId = '11111111-1111-4111-8111-111111111111'
 const roleId = '22222222-2222-4222-8222-222222222222'

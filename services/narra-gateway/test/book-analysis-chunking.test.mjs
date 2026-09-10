@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   BOOK_ANALYSIS_CHUNK_DEFAULTS,
   createStableBookChunks
-} from '../book-analysis-chunking.mjs'
+} from '../analysis/book-analysis-chunking.mjs'
 
 function fixture() {
   const first = Array.from({ length: 120 }, (_, index) =>

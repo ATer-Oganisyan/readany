@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { createBookTtsMarkupWorker } from '../book-tts-markup-worker.mjs'
+import { createBookTtsMarkupWorker } from '../tts/book-tts-markup-worker.mjs'
 
 const text = '— Привет, — сказал Иван. — Как дела?'
 const hash = createHash('sha256').update(text).digest('hex')
