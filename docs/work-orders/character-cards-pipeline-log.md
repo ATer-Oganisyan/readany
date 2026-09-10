@@ -333,6 +333,132 @@ pause — карточке нужно именно это. Задание пол
 | Постановка карточек по окнам | Это P6; сейчас задание карточки ставится вручную |
 | `referenceImages[]` у провайдеров и сцены с портретами | Это P5, и work order требует спайка на день до реализации |
 
+## Итерация 4 (2026-09-10): проверка на живой инфраструктуре и прогон бенчмарка PR #87
+
+Появились PostgreSQL и MinIO в Docker и OpenAI-совместимый роут к модели, то
+есть ровно то, чего не хватало трём предыдущим итерациям.
+
+### Миграции и приёмка P4 на живой базе
+
+Все 31 миграция, включая 027 и 028, применились на чистом PostgreSQL 16.
+Ограничения проверены не обзором, а поведением, и добавлен интеграционный тест
+`test/postgres-character-card-media.integration.test.mjs`:
+
+| Проверка | Результат |
+|---|---|
+| уникальный индекс «одна включённая ревизия на персонажа» | вторая включённая карточка отвергнута |
+| CHECK «задание карточки без окна» | вставка без `card_window_index` отвергнута |
+| приоритет портрета по классу окна | окно 1 → 65, фоновое → 45 |
+| **приёмочный критерий P4** | `claimGenerationJob` отдал портрет окна 1 раньше фонового, хотя фоновая карточка была записана первой |
+| портрет читает карточку, а не разметку | опубликованной разметки в базе нет вовсе, портрет собрался |
+| гейт по включённой карточке | после выключения карточек очередь не отдаёт их медиа |
+
+Это тот самый критерий, который в итерации 3 остался непроверенным.
+
+### Полный набор на живой инфраструктуре
+
+941 тест, 940 проходят, 0 пропущено, 1 падает. Падающий —
+`local-only book flows through derived markup, warmup and temporary media
+download`: проверено worktree на коммите `f257cda7`, то есть до P1–P4, — падает
+там точно так же, значит регресс не наш.
+
+Попутно исправлен посторонний тест: `postgres-generation-cost-ledger.integration`
+не применял миграции сам и молча зависел от того, что их успел применить другой
+файл набора. Пока порядок файлов не менялся, это работало; новый файл сдвинул
+порядок, и тест упал с «relation book_editions does not exist». Теперь он
+приводит схему в порядок сам, как остальные интеграционные тесты.
+
+Свой интеграционный тест убирает за собой книгу: база общая, а
+`claimGenerationJob` без фильтра берёт задание с наибольшим приоритетом по всей
+очереди — оставленные портреты с приоритетом 65 перехватывал бы соседний тест
+разметки, и падал бы он.
+
+### Бенчмарк PR #87: детерминированная часть
+
+`score-character-cards.mjs` на замороженных ростерах каталога воспроизводит
+находки PR:
+
+| Метрика | Онегин | Верн | Гейт |
+|---|---|---|---|
+| не-персонажей в ростере | 3 | 5 | 0 |
+| точность пола | 0.882 | 1.000 | ≥ 0.90 |
+| `fullName` заполнен | 0.000 | 0.000 | ≥ 0.90 |
+| покрытие внешности | 0.529 | 0.684 | ≥ 0.90 |
+| traits в диапазоне | 0.412 | 0.895 | ≥ 0.90 |
+| нарушений спойлер-барьера D1 | 0 | 3 | 0 |
+
+### Бенчмарк PR #87: судья прогнан штатной моделью
+
+PR прямо оговаривал, что судья в нём — Opus вручную, и что до использования в
+CI нужно прогнать модельным роутом и сверить. Прогон сделан: 17 задач,
+`deepseek/deepseek-v4-pro`, тот же `character-card-judge-v1`, temperature 0,
+~8–30 с на задачу. Выдачи сохранены как
+`test/fixtures/*-v3-judge-verdicts-deepseek-v4-pro.json`.
+
+| Метрика | Онегин Opus → DeepSeek | Верн Opus → DeepSeek |
+|---|---|---|
+| appearanceCoreCoverage | 0.889 → **0.889** | 0.417 → **0.417** |
+| portraitUsableRate | 1.000 → **1.000** | 0.273 → **0.273** |
+| bioCoreCoverage | 0.343 → **0.343** | 0.457 → 0.429 |
+| appearanceMajorContradictions | 0 → 0 | 5 → 6 |
+| appearanceInventionRate | 0.000 → 0.200 | 0.000 → 0.250 |
+| bioInventionRate | 0.000 → 0.400 | 0.000 → 0.167 |
+| bioMajorContradictions | 0 → 1 | 0 → 2 |
+
+**Вывод, который стоило получить.** Покрытие внешности воспроизводится не в
+среднем, а по каждому персонажу: 5 из 5 у Пушкина и 9 из 9 у Верна, с точностью
+до совпадения `coreCovered`/`coreTotal`. `portraitUsableRate` совпал на обеих
+книгах. Оба судьи согласны, что гейт не проходит, и согласны, у кого именно
+внешность не покрыта вовсе (Талькав, Роберт, Элен — те же, что в PR).
+
+А вот метрики выдумок и противоречий между судьями расходятся на обеих книгах:
+там, где Opus видел нули, DeepSeek видит 0.17–0.40. Значит гейтом в CI могут
+быть `appearanceCoreCoverage` и `portraitUsableRate`; `*InventionRate` и
+`*MajorContradictions` остаются диагностикой при названном судье. Это
+закреплено тестом `character-card-judge-agreement.test.mjs`, который сравнивает
+две замороженные выдачи и сети не требует — в том числе утверждением о самом
+расхождении, чтобы будущее согласие судей уронило тест и заставило перечитать
+вывод, а не оставило в документе устаревшее ограничение.
+
+Биография сходится хуже: 3 из 5 и 6 из 9 персонажей, агрегат 0.343 против 0.343
+у Пушкина и 0.457 против 0.429 у Верна. Для гейта не годится, для сравнения
+пайплайнов — годится.
+
+### Как воспроизвести
+
+```bash
+docker run -d --name narra-pg -e POSTGRES_PASSWORD=narra -e POSTGRES_USER=narra \
+  -e POSTGRES_DB=narra_test -p 55433:5432 postgres:16-alpine
+docker run -d --name narra-minio -p 59000:9000 \
+  -e MINIO_ROOT_USER=narraminio -e MINIO_ROOT_PASSWORD=narraminio123 \
+  quay.io/minio/minio:latest server /data
+
+cd services/narra-gateway
+export BOOK_MARKUP_TEST_DATABASE_URL=postgres://narra:narra@127.0.0.1:55433/narra_test
+export GENERATION_COST_E2E_DATABASE_URL=$BOOK_MARKUP_TEST_DATABASE_URL
+export BOOK_MARKUP_E2E_DATABASE_URL=$BOOK_MARKUP_TEST_DATABASE_URL
+export BOOK_MARKUP_E2E_S3_ENDPOINT=http://127.0.0.1:59000
+export BOOK_MARKUP_E2E_S3_ACCESS_KEY=narraminio
+export BOOK_MARKUP_E2E_S3_SECRET_KEY=narraminio123
+export NARRA_IDENTITY_BOOK_DIR=/tmp/narra-identity-books
+node evaluation/fetch-identity-books.mjs
+node --test
+
+# судья штатной моделью
+export JUDGE_BASE_URL=https://api.vsellm.ru/v1
+export JUDGE_API_KEY=...          # ключ не в репозитории
+export JUDGE_MODEL=deepseek/deepseek-v4-pro
+node evaluation/judge-character-cards.mjs \
+  --fixture evaluation/cards/evgeniy-onegin-ru-appearance-bio-v1.json \
+  --identity-fixture evaluation/identity/evgeniy-onegin-ru-v1.json \
+  --input test/fixtures/evgeniy-onegin-v3-catalog-roster.json --pretty
+```
+
+Замечание к роуту: модель рассуждающая и складывает ход мысли в
+`reasoning_content`, а ответ — в `content`. `createEnvCompleteChat` читает
+`content` и потому работает как есть, но ограничивать `max_tokens` нельзя:
+при малом лимите весь бюджет уходит в рассуждение и `content` приходит пустым.
+
 ### Известные ограничения инвентаря
 
 1. **Однофамильцы одного пола склеиваются кластеризацией.** «Иванов» и
