@@ -962,6 +962,9 @@ export function createBookCatalogService({
         sceneKey: scene.sceneKey,
         slotIndex: scene.slotIndex,
         anchorTextOffset: scene.anchorTextOffset,
+        // Клиент перестаёт предлагать врезки до этой доли: внутри одного
+        // отрезка книгу иллюстрирует одна картинка.
+        stretchEndFraction: scene.stretchEndFraction,
         pollAfterMs: scene.status === 'ready' ? undefined : 2_000
       }
       if (scene.status !== 'ready' || !scene.asset) return result

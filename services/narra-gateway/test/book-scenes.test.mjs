@@ -9,6 +9,7 @@ import {
   BOOK_SCENE_INTERVAL_TEXT_LENGTH,
   BOOK_SCENE_POLICY_VERSION,
   bookMediaFrontier,
+  bookSceneStretchAt,
   bookReaderSceneAt,
   bookScenePolicy,
   bookSceneSlotAt,
@@ -120,4 +121,24 @@ test('the scene frontier follows the reader, and the mode says whether it moves 
     () => bookScenePregenerationMode({ BOOK_SCENE_PREGENERATION: 'да' }),
     { code: 'BOOK_SCENE_PREGENERATION_INVALID' }
   )
+})
+
+test('отрезок книги, который иллюстрирует одна картинка', () => {
+  const policy = bookScenePolicy(100_000)
+  // Любая точка внутри интервала даёт один и тот же отрезок: в этом и смысл —
+  // пока читатель в нём, следующую врезку предлагать нечего.
+  assert.deepEqual(bookSceneStretchAt(policy, 100_000, 0), {
+    startTextOffset: 0, endTextOffset: 6_000, endFraction: 0.06
+  })
+  assert.deepEqual(bookSceneStretchAt(policy, 100_000, 5_999), {
+    startTextOffset: 0, endTextOffset: 6_000, endFraction: 0.06
+  })
+  assert.deepEqual(bookSceneStretchAt(policy, 100_000, 6_000), {
+    startTextOffset: 6_000, endTextOffset: 12_000, endFraction: 0.12
+  })
+  // Хвост книги: конец последнего отрезка — ровно единица, иначе в остатке
+  // врезки предлагались бы снова и снова.
+  assert.deepEqual(bookSceneStretchAt(policy, 100_000, 99_999), {
+    startTextOffset: 96_000, endTextOffset: 100_000, endFraction: 1
+  })
 })

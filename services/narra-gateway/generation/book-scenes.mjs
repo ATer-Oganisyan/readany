@@ -80,6 +80,36 @@ export function bookSceneSlotAt(policyValue, textLengthValue, readerTextOffsetVa
   }
 }
 
+/**
+ * Отрезок книги, который иллюстрирует одна картинка.
+ *
+ * Картинка рисуется на интервал, а читатель просит её из точки внутри него.
+ * Без явной границы клиент не знает, когда предлагать следующую врезку, и
+ * предлагает по своему счёту страниц — тогда внутри одного интервала возникают
+ * две врезки с одинаковой картинкой. Границу считает тот, кто владеет сеткой.
+ */
+export function bookSceneStretchAt(policyValue, textLengthValue, readerTextOffsetValue) {
+  const textLength = positiveTextLength(textLengthValue)
+  const policy = normalizeBookScenePolicy(policyValue, textLength)
+  const readerTextOffset = textOffset(readerTextOffsetValue, textLength, 'readerTextOffset')
+  const slotIndex = Math.floor(
+    Math.max(0, readerTextOffset - policy.startTextOffset) / policy.intervalTextLength
+  )
+  const startTextOffset = Math.min(
+    textLength - 1,
+    policy.startTextOffset + slotIndex * policy.intervalTextLength
+  )
+  const endTextOffset = Math.min(textLength, startTextOffset + policy.intervalTextLength)
+  return {
+    startTextOffset,
+    endTextOffset,
+    // Доля, а не смещение: клиент живёт в долях прочитанного и в CFI, знаков он
+    // не считает. Конец последнего отрезка — ровно единица, чтобы у книги не
+    // осталось хвоста, в котором врезки предлагаются снова.
+    endFraction: endTextOffset >= textLength ? 1 : endTextOffset / textLength
+  }
+}
+
 /** A reader card owns its exact text position instead of sharing a 6k interval. */
 export function bookReaderSceneAt(textLengthValue, readerTextOffsetValue) {
   const textLength = positiveTextLength(textLengthValue)
