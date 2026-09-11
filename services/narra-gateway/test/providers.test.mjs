@@ -826,3 +826,62 @@ test('the JSON response format opt-out is per provider, like the temperature one
   assert.equal(omitsJsonResponseFormat('litellm', { LLM_OMIT_JSON_RESPONSE_FORMAT: 'true' }), false)
   assert.equal(omitsJsonResponseFormat('litellm', { LITELLM_OMIT_JSON_RESPONSE_FORMAT: 'TRUE' }), true)
 })
+
+test('roster confirmation can get its own model and inherits the structured one until it does', () => {
+  // Это единственная стадия, где решение — суждение, а не извлечение: слитые
+  // люди не разделяются обратно. Замер на «Обломове» и «Герое» со снятым
+  // запретом по со-упоминанию: deepseek-v4-flash и v4-pro при JSON-формате
+  // теряют рассуждение и штампуют все пары подряд (99 из 99, 56 кандидатов в
+  // одного человека), gemma скачет от прогона к прогону, а gpt-5.6-sol дважды
+  // подряд не сделал ни одного ложного слияния.
+  //
+  // Наследование обязательно: без него добавление назначения увело бы стадию
+  // на маршрут по умолчанию — молча и у всех сразу.
+  const structured = {
+    LLM_ROUTE_STRUCTURED_TASK: 'litellm',
+    LITELLM_BASE_URL: 'https://litellm.test/v1',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_MODEL: 'gpt-5.6-luna',
+    LITELLM_MODEL_STRUCTURED_TASK: 'deepseek/deepseek-v4-flash',
+    LLM_MAX_TOKENS_STRUCTURED_TASK: '8000'
+  }
+  assert.deepEqual(routeForPurpose('roster_confirm', structured), ['litellm'])
+  assert.equal(maxTokensFor('roster_confirm', false, structured), 8000)
+
+  const own = {
+    ...structured,
+    LITELLM_MODEL_ROSTER_CONFIRM: 'gpt-5.6-sol',
+    LLM_MAX_TOKENS_ROSTER_CONFIRM: '16000'
+  }
+  assert.equal(maxTokensFor('roster_confirm', false, own), 16000)
+  assert.equal(maxTokensFor('structured_task', false, own), 8000)
+  assert.deepEqual(llmRouteReadiness(own).purposes.roster_confirm.configured, ['litellm'])
+})
+
+test('a stage model reaches the provider request, and the general one still serves the rest', async () => {
+  const models = {}
+  const env = {
+    LLM_ROUTE_STRUCTURED_TASK: 'litellm',
+    LITELLM_BASE_URL: 'https://litellm.test/v1',
+    LITELLM_API_KEY: 'proxy-key',
+    LITELLM_MODEL_STRUCTURED_TASK: 'deepseek/deepseek-v4-flash',
+    LITELLM_MODEL_ROSTER_CONFIRM: 'gpt-5.6-sol'
+  }
+  for (const purpose of ['structured_task', 'roster_confirm']) {
+    const result = await requestChat({
+      messages: [{ role: 'user', content: 'hello' }],
+      purpose,
+      stream: false,
+      fetchImpl: async (_url, init) => {
+        models[purpose] = JSON.parse(init.body).model
+        return new Response('{"choices":[{"message":{"content":"{}"}}]}', { status: 200 })
+      },
+      env
+    })
+    await result.finalizeAttempt()
+  }
+  assert.deepEqual(models, {
+    structured_task: 'deepseek/deepseek-v4-flash',
+    roster_confirm: 'gpt-5.6-sol'
+  })
+})

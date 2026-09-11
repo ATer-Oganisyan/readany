@@ -87,7 +87,7 @@ test('the lexicon contributes the pair token overlap cannot see', () => {
 })
 
 test('a gender collision forbids the merge outright', () => {
-  const forbidden = rosterForbiddenPairs([
+  const { forbidden } = rosterForbiddenPairs([
     candidate({ candidateKey: 'name:mr-bennet', displayName: 'Mr Bennet', honorificGender: 'male' }),
     candidate({ candidateKey: 'name:mrs-bennet', displayName: 'Mrs Bennet', honorificGender: 'female' })
   ])
@@ -98,7 +98,7 @@ test('a gender collision forbids the merge outright', () => {
 test('an ambiguous diminutive does not manufacture a gender collision', () => {
   // «Женя» — и Евгений, и Евгения. Лексикон в таком случае пола не даёт вовсе,
   // поэтому запрета не возникает: угадать пол здесь было бы хуже, чем не знать.
-  const forbidden = rosterForbiddenPairs([
+  const { forbidden } = rosterForbiddenPairs([
     candidate({ candidateKey: 'name:zhenya', displayName: 'Женя' }),
     candidate({ candidateKey: 'name:evgeniya', displayName: 'Евгения' })
   ])
@@ -112,25 +112,33 @@ test('an ambiguous diminutive does not manufacture a gender collision', () => {
   )
 })
 
-test('two characters who keep appearing in the same paragraph cannot be one person', () => {
-  const forbidden = rosterForbiddenPairs(
-    [
-      candidate({ candidateKey: 'name:elinor', displayName: 'Elinor' }),
-      candidate({ candidateKey: 'name:marianne', displayName: 'Marianne' })
-    ],
-    {
-      fragments: fragmentsFor([
-        ['name:elinor', [1, 2, 3, 4, 5]],
-        ['name:marianne', [1, 2, 3, 6, 7]]
-      ])
-    }
-  )
-  assert.equal(forbidden.length, 1)
-  assert.equal(forbidden[0].reason, 'co_mentioned_participants')
+test('systematic co-mention is evidence for the model, not a veto', () => {
+  // Запретом оно быть не может, и это измерено: у пар, которые надо слить, доля
+  // со-упоминаний от 1 % до 80 %, у пар разных людей — от 3 % до 30 %.
+  // Диапазоны перекрываются целиком, и как запрет это правило теряло «Обломова»
+  // с «Ильёй» и «Печорина» с «Григорием Александровичем».
+  const rows = [
+    candidate({ candidateKey: 'name:elinor', displayName: 'Elinor' }),
+    candidate({ candidateKey: 'name:marianne', displayName: 'Marianne' })
+  ]
+  const fragments = fragmentsFor([
+    ['name:elinor', [1, 2, 3, 4, 5]],
+    ['name:marianne', [1, 2, 3, 6, 7]]
+  ])
+  const { forbidden, coMentioned } = rosterForbiddenPairs(rows, { fragments })
+  assert.deepEqual(forbidden, [])
+  assert.equal(coMentioned.length, 1)
+  assert.equal(coMentioned[0].sharedParagraphs, 3)
+
+  // Пара доходит до модели с этой уликой на руках.
+  const pairs = rosterCandidatePairs(rows, { forbiddenPairs: forbidden, coMentioned })
+  assert.equal(pairs.length, 1)
+  assert.ok(pairs[0].signals.includes('co_mentioned'))
+  assert.equal(pairs[0].sharedParagraphs, 3)
 })
 
-test('rare co-mention is not enough to forbid a merge', () => {
-  const forbidden = rosterForbiddenPairs(
+test('rare co-mention is not even reported as evidence', () => {
+  const { forbidden, coMentioned } = rosterForbiddenPairs(
     [
       candidate({ candidateKey: 'name:eliza', displayName: 'Eliza' }),
       candidate({ candidateKey: 'name:lizzy', displayName: 'Lizzy' })
@@ -143,6 +151,7 @@ test('rare co-mention is not enough to forbid a merge', () => {
     }
   )
   assert.deepEqual(forbidden, [])
+  assert.deepEqual(coMentioned, [])
 })
 
 test('forbidden pairs never appear among candidate pairs', () => {
@@ -150,7 +159,7 @@ test('forbidden pairs never appear among candidate pairs', () => {
     candidate({ candidateKey: 'name:mr-bennet', displayName: 'Mr Bennet', honorificGender: 'male' }),
     candidate({ candidateKey: 'name:mrs-bennet', displayName: 'Mrs Bennet', honorificGender: 'female' })
   ]
-  const forbidden = rosterForbiddenPairs(rows)
+  const { forbidden } = rosterForbiddenPairs(rows)
   const pairs = rosterCandidatePairs(rows, { forbiddenPairs: forbidden })
   assert.deepEqual(pairs, [])
 })
@@ -407,7 +416,7 @@ test('adjacency never overrides a forbidden pair', () => {
       adjacentNames: [{ candidateKey: 'name:mr-bennet', count: 9 }]
     })
   ]
-  const forbidden = rosterForbiddenPairs(rows)
+  const { forbidden } = rosterForbiddenPairs(rows)
   assert.equal(forbidden.length, 1)
   assert.deepEqual(rosterCandidatePairs(rows, { forbiddenPairs: forbidden }), [])
 })
@@ -576,8 +585,9 @@ test('a surname and a name-patronymic of one person merge despite sharing paragr
     candidates,
     fragments
   })
-  // Со-упоминание действительно запрещает пару — и это остаётся правдой.
-  assert.ok(request.forbiddenPairs.some(({ reason }) => reason === 'co_mentioned_participants'))
+  // Со-упоминание больше не запрет, а улика: пара доходит до модели.
+  assert.deepEqual(request.forbiddenPairs, [])
+  assert.ok(request.candidatePairs.some(({ signals }) => signals.includes('co_mentioned')))
 
   const confirmation = validateRosterConfirmation({
     request,
@@ -594,24 +604,29 @@ test('a surname and a name-patronymic of one person merge despite sharing paragr
   assert.equal(applyRosterConfirmation({ request, candidates, confirmation }).length, 1)
 })
 
-test('an explicit merge on a co-mentioned pair is still refused', () => {
-  // Перебивает запрет только одноимённость, и только по со-упоминанию. Явное
-  // слияние по запрещённой паре остаётся невозможным: модель не должна
+test('a merge on a gender-forbidden pair is still refused', () => {
+  // Запретом осталась только коллизия пола, и она абсолютна: модель не должна
   // изобретать связи там, где правила сказали «нет».
   const candidates = [
-    candidate({ candidateKey: 'name:elinor', displayName: 'Elinor', count: 100 }),
-    candidate({ candidateKey: 'name:marianne', displayName: 'Marianne', count: 90 })
+    candidate({
+      candidateKey: 'name:mr-bennet', displayName: 'Mr Bennet',
+      honorificGender: 'male', count: 100
+    }),
+    candidate({
+      candidateKey: 'name:mrs-bennet', displayName: 'Mrs Bennet',
+      honorificGender: 'female', count: 90
+    })
   ]
   const shared = [1, 2, 3, 4, 5, 6]
   const request = buildRosterConfirmationRequest({
     runId: 'run-1',
     bookEditionId: 'edition-1',
-    title: 'Sense and Sensibility',
+    title: 'Pride and Prejudice',
     author: 'Jane Austen',
     inventoryVersion: 'name-inventory-v1',
     normalizedTextHash: 'a'.repeat(64),
     candidates,
-    fragments: fragmentsFor([['name:elinor', shared], ['name:marianne', shared]])
+    fragments: fragmentsFor([['name:mr-bennet', shared], ['name:mrs-bennet', shared]])
   })
   const confirmation = validateRosterConfirmation({
     request,
@@ -621,43 +636,48 @@ test('an explicit merge on a co-mentioned pair is still refused', () => {
         kind: 'person',
         canonicalName: displayName
       })),
-      merges: [{ leftKey: 'name:elinor', rightKey: 'name:marianne', basis: 'name_variant' }]
+      merges: [{ leftKey: 'name:mr-bennet', rightKey: 'name:mrs-bennet', basis: 'name_variant' }]
     }
   })
   assert.deepEqual(confirmation.acceptedMerges, [])
   assert.equal(applyRosterConfirmation({ request, candidates, confirmation }).length, 2)
 })
 
-test('the co-mention veto stays absolute, because no share of it separates people', () => {
-  // Пробовали снимать его соседством: в диалогах имена стоят рядом постоянно
-  // («сказал Обломов Захару»), и на «Обломове» это дало склейку тридцати трёх
-  // кандидатов в одного человека — вместе с Захаром, Штольцем и Обломовкой.
-  //
-  // Сама доля со-упоминаний персонажей тоже не разделяет: у пар, которые надо
-  // слить, она от 1 % до 80 %, у пар разных людей — от 3 % до 30 %. Диапазоны
-  // перекрываются целиком.
-  const rows = [
-    candidate({
-      candidateKey: 'name:oblomov',
-      displayName: 'Обломов',
-      count: 1185,
-      adjacentNames: [{ candidateKey: 'name:zahar', count: 11 }]
-    }),
-    candidate({
-      candidateKey: 'name:zahar',
-      displayName: 'Захар',
-      count: 598,
-      adjacentNames: [{ candidateKey: 'name:oblomov', count: 11 }]
-    })
-  ]
-  const fragments = fragmentsFor([
-    ['name:oblomov', [1, 2, 3, 4, 5]],
-    ['name:zahar', [1, 2, 3, 6, 7]]
-  ])
-  const forbidden = rosterForbiddenPairs(rows, { fragments })
-  assert.equal(forbidden.length, 1)
-  assert.equal(forbidden[0].reason, 'co_mentioned_participants')
-  assert.deepEqual(rosterCandidatePairs(rows, { forbiddenPairs: forbidden }), [])
+test('a merge that would build a person out of half the book is refused', () => {
+  // Пока со-упоминание было запретом, потолок был не нужен. Теперь решает
+  // модель, и один сорвавшийся ответ уже собирал в одного человека тридцать
+  // три кандидата — вместе с Обломовкой и словом «Здравствуй». У самого
+  // богатого настоящего случая форм семь.
+  const candidates = Array.from({ length: 20 }, (_, index) => candidate({
+    candidateKey: `name:form${index}`,
+    displayName: `Форма${index}`,
+    fullName: 'Илья Ильич Обломов',
+    count: 100 - index
+  }))
+  const request = buildRosterConfirmationRequest({
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    title: 'Обломов',
+    author: 'Иван Гончаров',
+    inventoryVersion: 'name-inventory-v1',
+    normalizedTextHash: 'a'.repeat(64),
+    candidates
+  })
+  const confirmation = validateRosterConfirmation({
+    request,
+    response: {
+      classifications: candidates.map(({ candidateKey }) => ({
+        candidateKey, kind: 'person', canonicalName: 'Илья Ильич Обломов'
+      })),
+      merges: candidates.slice(1).map(({ candidateKey }) => ({
+        leftKey: 'name:form0', rightKey: candidateKey, basis: 'name_variant'
+      }))
+    }
+  })
+  assert.ok(confirmation.rejected.some(({ reason }) => reason === 'component_too_large'))
+  const roster = applyRosterConfirmation({ request, candidates, confirmation })
+  const largest = Math.max(...roster.map(({ candidateKeys }) => candidateKeys.length))
+  assert.ok(largest <= 12, `склейка выросла до ${largest}`)
 })
 
 test('adjacency does not reconcile a gender conflict', () => {
@@ -677,7 +697,7 @@ test('adjacency does not reconcile a gender conflict', () => {
       adjacentNames: [{ candidateKey: 'name:mr-bennet', count: 9 }]
     })
   ]
-  assert.equal(rosterForbiddenPairs(rows)[0].reason, 'gender_conflict')
+  assert.equal(rosterForbiddenPairs(rows).forbidden[0].reason, 'gender_conflict')
 })
 
 test('a named-but-absent person is not a character and gets no card', () => {

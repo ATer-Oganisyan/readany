@@ -541,6 +541,9 @@ export function createInternalGenerationService({
         const response = await completeChat({
           messages: rosterConfirmationMessages(input),
           signal,
+          // Единственная стадия, где решение — суждение, а не извлечение:
+          // слияние двух людей не исправить, и модель у неё своя.
+          purpose: 'roster_confirm',
           costContext: {
             bookEditionId: input.bookEditionId,
             analysisRunId: input.runId,

@@ -6,7 +6,47 @@ export { omitsJsonResponseFormat } from './model-request-config.mjs'
 import { serviceUrl } from '../platform/service-url.mjs'
 
 const RETRYABLE = new Set([408, 409, 429, 500, 502, 503, 504])
-const PURPOSES = ['assistant', 'character_chat', 'structured_task', 'summary', 'scenario', 'memory']
+const PURPOSES = [
+  'assistant', 'character_chat', 'structured_task', 'roster_confirm',
+  'summary', 'scenario', 'memory'
+]
+
+/**
+ * Назначение, у которого настройка наследуется.
+ *
+ * Подтверждение состава — структурная задача, и по умолчанию оно идёт туда же,
+ * куда все структурные. Своя запись нужна ему потому, что это единственная
+ * стадия, где решение принимается суждением, а не извлечением: там дороже
+ * ошибка и нужна другая модель. Без наследования добавление назначения увело
+ * бы его на маршрут по умолчанию — молча и у всех сразу.
+ */
+const PURPOSE_PARENT = Object.freeze({ roster_confirm: 'structured_task' })
+
+function purposeChain(purpose) {
+  const chain = [purpose]
+  let current = purpose
+  while (PURPOSE_PARENT[current]) {
+    current = PURPOSE_PARENT[current]
+    chain.push(current)
+  }
+  return chain
+}
+
+function purposeSetting(env, prefix, purpose, suffix = '') {
+  for (const name of purposeChain(purpose)) {
+    const key = `${prefix}${name.toUpperCase()}${suffix}`
+    if (Object.hasOwn(env, key) && String(env[key] ?? '').trim()) return env[key]
+  }
+  return ''
+}
+
+function purposeSettingDeclared(env, prefix, purpose) {
+  for (const name of purposeChain(purpose)) {
+    const key = `${prefix}${name.toUpperCase()}`
+    if (Object.hasOwn(env, key)) return { declared: true, value: env[key] }
+  }
+  return { declared: false, value: undefined }
+}
 const TEXT_PROVIDERS = new Set(['giga', 'litellm'])
 const MODERATION_RESPONSE = /content.?filter|moderation|safety|unsafe|censor|blocked|bad_[a-z_]*lemmas|запрещ|цензур|безопасност/i
 const IMAGE_ERROR_CODES = new Set([
@@ -46,7 +86,7 @@ function providerConfig(name, purpose, env) {
       baseUrl: openAiBaseUrl(env.LITELLM_BASE_URL),
       apiKey: String(env.LITELLM_API_KEY || '').trim(),
       model: String(
-        env[`LITELLM_MODEL_${purpose.toUpperCase()}`] || env.LITELLM_MODEL || ''
+        purposeSetting(env, 'LITELLM_MODEL_', purpose) || env.LITELLM_MODEL || ''
       ).trim(),
       headers: {}
     }
@@ -55,7 +95,9 @@ function providerConfig(name, purpose, env) {
     name: 'giga',
     baseUrl: openAiBaseUrl(env.LLM_BASE_URL),
     apiKey: String(env.LLM_API_KEY || '').trim(),
-    model: String(env[`LLM_MODEL_${purpose.toUpperCase()}`] || env.LLM_MODEL || 'gigachat-3-ultra').trim(),
+    model: String(
+      purposeSetting(env, 'LLM_MODEL_', purpose) || env.LLM_MODEL || 'gigachat-3-ultra'
+    ).trim(),
     headers: {}
   }
 }
@@ -67,7 +109,7 @@ function providerConfig(name, purpose, env) {
 export function maxTokensFor(purpose, stream, env = process.env) {
   const fallback = stream ? 4096 : 8000
   const raw =
-    env[`LLM_MAX_TOKENS_${String(purpose || '').toUpperCase()}`] ||
+    purposeSetting(env, 'LLM_MAX_TOKENS_', String(purpose || '')) ||
     env[stream ? 'LLM_MAX_TOKENS_STREAM' : 'LLM_MAX_TOKENS_COMPLETE'] ||
     ''
   const value = Number(String(raw).trim() || fallback)
@@ -76,7 +118,6 @@ export function maxTokensFor(purpose, stream, env = process.env) {
 }
 
 export function routeForPurpose(purpose, env = process.env) {
-  const suffix = purpose.toUpperCase()
   // Narra Assistant is the public mobile proxy path. When LiteLLM is configured,
   // prefer it by default so the app reaches OpenRouter through the server-owned
   // route without requiring another environment migration. An explicit
@@ -87,15 +128,15 @@ export function routeForPurpose(purpose, env = process.env) {
     ? 'litellm'
     : 'giga'
   const primary = String(
-    env[`LLM_ROUTE_${suffix}`] ||
+    purposeSetting(env, 'LLM_ROUTE_', purpose) ||
     (implicitPrimary === 'litellm' ? implicitPrimary : (env.LLM_ROUTE_DEFAULT || implicitPrimary))
   ).toLowerCase()
-  const fallbackKey = `LLM_FALLBACK_${suffix}`
   // An explicitly empty purpose fallback disables fallback for this purpose.
   // This is important for book analysis: BOOK_ANALYSIS_LLM_FALLBACK= must not
   // silently inherit a global GigaChat fallback.
+  const declaredFallback = purposeSettingDeclared(env, 'LLM_FALLBACK_', purpose)
   const fallback = String(
-    Object.hasOwn(env, fallbackKey) ? env[fallbackKey] : (env.LLM_FALLBACK_DEFAULT || '')
+    declaredFallback.declared ? declaredFallback.value : (env.LLM_FALLBACK_DEFAULT || '')
   ).toLowerCase()
   if (!TEXT_PROVIDERS.has(primary)) throw new Error(`Unsupported provider route: ${primary}`)
   if (fallback && !TEXT_PROVIDERS.has(fallback)) throw new Error(`Unsupported fallback route: ${fallback}`)

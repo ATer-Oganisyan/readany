@@ -221,7 +221,7 @@ const recordInternalGenerationCost = createBestEffortGenerationCostRecorder({
   getLedger: () => generationCostLedger
 })
 
-async function completeInternalChat({ messages, signal, costContext }) {
+async function completeInternalChat({ messages, signal, costContext, purpose = 'structured_task' }) {
   let release
   const requestId = randomUUID()
   let providerResult
@@ -230,7 +230,7 @@ async function completeInternalChat({ messages, signal, costContext }) {
     release = await llmGate.acquire(signal)
     providerResult = await requestChat({
       messages,
-      purpose: 'structured_task',
+      purpose,
       stream: false,
       requestId,
       onAttempt: recordProviderAttemptMetric,

@@ -35,7 +35,9 @@ export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
 // v3: полное русское имя, названное однажды, связывает фамилию с отчеством.
 // v4: запрет по со-упоминанию снова абсолютен — снятый по соседству, он дал
 //     склейку тридцати трёх кандидатов «Обломова» в одного человека.
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v4'
+// v5: со-упоминание стало уликой для модели, у стадии своя модель и потолок
+//     размера склейки.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v5'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'
