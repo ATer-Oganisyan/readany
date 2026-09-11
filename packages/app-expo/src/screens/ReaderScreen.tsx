@@ -1,3 +1,4 @@
+import { useReaderCopy } from "@/hooks/use-reader-copy";
 import { recordCharacterEncounters } from "@/lib/narra/character-encounters";
 import { useReaderErrorToast } from "@/hooks/use-reader-error-toast";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
@@ -73,7 +74,7 @@ import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import type { Book, ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
-import * as Clipboard from "expo-clipboard";
+import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
@@ -494,7 +495,6 @@ function ReaderContent({ route, navigation }: Props) {
   const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
-  const selectionRef = useRef<SelectionEvent | null>(null);
   const [defaultReaderFontFaceCSS, setDefaultReaderFontFaceCSS] = useState("");
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
     id: string;
@@ -1063,6 +1063,7 @@ function ReaderContent({ route, navigation }: Props) {
     setLoadAttempt((value) => value + 1);
   }, []);
 
+  const copySelection = useReaderCopy();
   const bridge = useReaderBridge({
     onDiagnosticPong: (id) => {
       if (id !== diagnosticPingRef.current) return;
@@ -1295,7 +1296,6 @@ function ReaderContent({ route, navigation }: Props) {
       setToc(items);
     },
     onSelection: (detail: SelectionEvent) => {
-      selectionRef.current = detail;
       setSelection(detail);
       // Sync selection for AI tools
       if (detail.cfi) {
@@ -1307,6 +1307,7 @@ function ReaderContent({ route, navigation }: Props) {
         });
       }
     },
+    onCopySelection: copySelection,
     onSelectionCleared: () => {
       setSelection(null);
       readingContextService.clearSelection();
@@ -1318,7 +1319,6 @@ function ReaderContent({ route, navigation }: Props) {
       }
       sendEvent({ type: "activity" });
       if (selection) {
-        selectionRef.current = null;
         setSelection(null);
         return;
       }
@@ -1534,66 +1534,9 @@ function ReaderContent({ route, navigation }: Props) {
     [book?.meta.title, bookId, bookTitle, currentChapter, navigation],
   );
 
-  const handleSelectionMenuAction = useCallback(
-    (event: { nativeEvent: { key: string; selectedText: string } }) => {
-      const activeSelection = selectionRef.current ?? selection;
-      const selectedText = (activeSelection?.text || event.nativeEvent.selectedText).trim();
-      if (!selectedText) return;
-
-      const cfi = activeSelection?.cfi ?? "";
-      selectionRef.current = null;
-      setSelection(null);
-
-      switch (event.nativeEvent.key) {
-        case "add-note":
-          navigation.navigate("ManualNote", {
-            bookId,
-            cfi,
-            text: selectedText,
-            chapterTitle: currentChapter,
-          });
-          break;
-        case "copy":
-          void Clipboard.setStringAsync(selectedText);
-          break;
-        case "translate":
-          setTranslationText(selectedText);
-          setShowTranslation(true);
-          break;
-        case "summarize":
-          navigation.navigate("NarraSummary", {
-            bookId,
-            chapter:
-              currentChapter ||
-              bookTitle ||
-              book?.meta.title ||
-              t("reader.currentExcerpt", "Текущий фрагмент"),
-            excerpt: selectedText,
-            sourceKey: `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
-          });
-          break;
-        case "generate-scene":
-          openScene(
-            selectedText,
-            `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
-          );
-          break;
-        case "speak":
-          tts.startSelectionTTS(selectedText, cfi);
-          break;
-      }
-    },
-    [
-      book?.meta.title,
-      bookId,
-      bookTitle,
-      currentChapter,
-      navigation,
-      openScene,
-      selection,
-      tts.startSelectionTTS,
-    ],
-  );
+  const handleSelectionMenuAction = useCallback(() => {
+    bridge.webViewRef.current?.injectJavaScript("window.copyReaderSelection?.(); true;");
+  }, [bridge.webViewRef]);
 
   const handleOpenCharacters = useCallback(() => {
     publishCharacterProgress();
@@ -2224,14 +2167,12 @@ function ReaderContent({ route, navigation }: Props) {
               ]}
               pointerEvents={isPanelOpen ? "none" : "auto"}
               onMessage={bridge.handleMessage}
-              menuItems={[
-                { key: "add-note", label: t("reader.addNote", "Добавить заметку") },
-                { key: "copy", label: t("reader.copySelection", "Скопировать") },
-                { key: "translate", label: t("reader.translate", "Перевести") },
-                { key: "summarize", label: t("reader.summarize", "Кратко пересказать") },
-                { key: "generate-scene", label: t("reader.drawScene", "Нарисовать сцену") },
-                { key: "speak", label: t("reader.speak", "Озвучить") },
-              ]}
+              menuItems={Platform.OS === "android"
+                ? [{ key: "copy", label: t("reader.copySelection", "Скопировать") }]
+                : undefined}
+              suppressMenuItems={Platform.OS === "ios"
+                ? ["cut", "paste", "replace", "bold", "italic", "underline", "select", "selectAll", "translate", "lookup", "share"]
+                : undefined}
               onCustomMenuSelection={handleSelectionMenuAction}
               onError={(e) => {
                 console.error("[ReaderScreen] WebView error:", e.nativeEvent);

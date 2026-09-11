@@ -80,6 +80,7 @@ export interface ReaderBridgeCallbacks {
   onTocReady?: (items: TOCItem[]) => void;
   onSelection?: (detail: SelectionEvent) => void;
   onSelectionCleared?: () => void;
+  onCopySelection?: (text: string, nativeCopied: boolean) => void;
   onTap?: () => void;
   onSearchResult?: (index: number, count: number) => void;
   onSearchComplete?: (count: number, results?: ReaderSearchResultItem[]) => void;
@@ -879,6 +880,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "selection":
           cb.onSelection?.(msg);
+          break;
+        case "copySelection":
+          if (typeof msg.text === "string" && msg.text) cb.onCopySelection?.(msg.text, msg.nativeCopied === true);
           break;
         case "selectionCleared":
           cb.onSelectionCleared?.();

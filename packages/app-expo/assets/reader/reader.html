@@ -209,11 +209,6 @@
       transform: translateY(0) scale(1);
     }
 
-    /* Suppress iOS selection callout */
-    * {
-      -webkit-touch-callout: none !important;
-    }
-
     ::selection {
       background: rgba(250, 204, 21, 0.4) !important;
     }
@@ -1688,6 +1683,7 @@
 
     // ─── Book loading ───
     async function openBook(msg) {
+      _readerCopyText = '';
       _characterReaderLoadId = msg.loadId;
       _encounteredCharacterIds = new Set();
       const container = document.getElementById('reader-container');
@@ -2688,7 +2684,7 @@ a { color: ${primary} !important; }
       const style = doc.createElement('style');
       const { bg, fg, primary } = currentThemeColors;
       style.textContent = `
-        * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
+        * { -webkit-user-select: text !important; user-select: text !important; }
         html, body { background-color: transparent !important; color: ${fg} !important; }
         img, picture, svg, image, canvas {
           -webkit-user-drag: none !important;
@@ -2709,7 +2705,6 @@ a { color: ${primary} !important; }
         );
         syncReaderOverrideStylesForDoc(doc, themedStyles);
       }
-      doc.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, true);
     }
 
     function isImageOnlyAnchor(anchor) {
@@ -3037,21 +3032,36 @@ a { color: ${primary} !important; }
     }
 
     // ─── Selection detection ───
+    var _readerCopyText = '';
+    window.copyReaderSelection = function () {
+      for (const { doc } of getRendererContents()) {
+        const selection = doc.getSelection();
+        const range = getSelectionRange(selection);
+        if (range) {
+          _readerCopyText = selection.toString();
+          break;
+        }
+      }
+      if (_readerCopyText) postToRN('copySelection', { text: _readerCopyText });
+      _readerCopyText = '';
+    };
+
     function attachSelectionListener(doc) {
       if (doc.__readany_selection) return;
       doc.__readany_selection = true;
 
+      // WKWebView owns the system Copy action, including after dragging handles.
+      // Do not prevent its default clipboard write; notify RN for the copied toast.
+      doc.addEventListener('copy', (event) => {
+        if (!event.isTrusted) return;
+        const text = doc.getSelection()?.toString();
+        setTimeout(() => {
+          if (text && !event.defaultPrevented) postToRN('copySelection', { text, nativeCopied: true });
+        }, 0);
+      });
+
       let selTimer = null;
-      let iosHackPending = false;
       let selectionClearTimer = null;
-      const isIOSLike = (() => {
-        try {
-          return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        } catch {
-          return false;
-        }
-      })();
 
       function markSelectionInteraction(active) {
         doc.__readany_selection_interaction = !!active;
@@ -3066,31 +3076,12 @@ a { color: ${primary} !important; }
         }, 120);
       }
 
-      doc.addEventListener('touchend', () => {
-        if (!isIOSLike) return;
-        setTimeout(() => {
-          if (iosHackPending) return;
-          const sel = doc.getSelection();
-          if (!sel || sel.isCollapsed || !sel.toString().trim() || !sel.rangeCount) return;
-          if (dismissSceneSelection(doc, sel)) return;
-          const range = sel.getRangeAt(0);
-          // iOS hack: remove and re-add to dismiss system menu
-          iosHackPending = true;
-          doc.__readany_isJiggling = true;
-          sel.removeAllRanges();
-          setTimeout(() => {
-            sel.addRange(range);
-            doc.__readany_isJiggling = false;
-            iosHackPending = false;
-            emitSelection(doc, sel, range);
-          }, 30);
-        }, 50);
-      }, { passive: true });
-
       doc.addEventListener('selectionchange', () => {
         if (dismissSceneSelection(doc)) return;
-        if (doc.__readany_isJiggling) return;
-        if (iosHackPending) return;
+        // Snapshot immediately: native menus may dismiss selection before RN handles Copy.
+        const currentSelection = doc.getSelection();
+        const currentRange = getSelectionRange(currentSelection);
+        if (currentRange) _readerCopyText = currentSelection.toString();
         if (selTimer) clearTimeout(selTimer);
         selTimer = setTimeout(() => {
           const sel = doc.getSelection();
