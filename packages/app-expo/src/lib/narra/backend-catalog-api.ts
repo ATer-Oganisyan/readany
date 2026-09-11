@@ -1,5 +1,6 @@
 import { readGatewayResponseText } from "@/lib/ai/narra-gateway-consumer";
 import { consumeNarraGatewayResponse } from "@/lib/ai/narra-gateway-fetch";
+import type { TOCItem } from "@readany/core/types";
 import {
   BOOK_CATALOG_LANGUAGE_CONTRACT,
   type CatalogLanguage,
@@ -291,4 +292,68 @@ export async function requestBackendDownloadUrl(
     throw new NarraServiceError("SERVICE", "Backend не вернул ссылку на файл");
   }
   return payload.download_url;
+}
+
+/** Server links are relative to the EPUB archive root, ready for the reader. */
+export function parseBackendBookToc(
+  value: unknown,
+  bookEditionId: string,
+  sourceContentHash: string,
+): TOCItem[] {
+  const payload = value as JsonRecord | null;
+  if (
+    !payload ||
+    payload.contract_version !== "book-content-toc-v1" ||
+    payload.book_edition_id !== bookEditionId ||
+    payload.source_content_hash !== sourceContentHash ||
+    !Array.isArray(payload.items)
+  )
+    throw new NarraServiceError("SERVICE", "Оглавление не соответствует файлу книги");
+
+  const roots: TOCItem[] = [];
+  const byKey = new Map<string, TOCItem>();
+  for (const value of payload.items) {
+    const item = value as JsonRecord | null;
+    if (
+      !item ||
+      typeof item.key !== "string" ||
+      byKey.has(item.key) ||
+      typeof item.title !== "string" ||
+      !Number.isSafeInteger(item.level) ||
+      Number(item.level) < 0 ||
+      (item.parent_key !== null && typeof item.parent_key !== "string") ||
+      typeof item.reader_href !== "string" ||
+      !item.reader_href ||
+      /^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(item.reader_href) ||
+      item.reader_href.split("#")[0].split("/").includes("..")
+    )
+      throw new NarraServiceError("SERVICE", "Backend вернул некорректное оглавление");
+    const parent = typeof item.parent_key === "string" ? byKey.get(item.parent_key) : null;
+    if (item.parent_key !== null && !parent)
+      throw new NarraServiceError("SERVICE", "Backend вернул некорректную структуру оглавления");
+    const node: TOCItem = {
+      id: item.key,
+      title: item.title,
+      level: parent ? parent.level + 1 : 0,
+      href: item.reader_href,
+    };
+    byKey.set(node.id, node);
+    if (parent) {
+      parent.subitems ??= [];
+      parent.subitems.push(node);
+    } else roots.push(node);
+  }
+  return roots;
+}
+
+export async function fetchBackendBookToc(
+  bookEditionId: string,
+  sourceContentHash: string,
+  signal?: AbortSignal,
+): Promise<{ payload: JsonRecord; items: TOCItem[] }> {
+  const payload = await gatewayJson(
+    `/v2/books/${encodeURIComponent(bookEditionId)}/content/toc`,
+    signal,
+  );
+  return { payload, items: parseBackendBookToc(payload, bookEditionId, sourceContentHash) };
 }

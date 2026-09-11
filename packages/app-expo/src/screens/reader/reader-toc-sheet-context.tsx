@@ -6,6 +6,7 @@ export interface ReaderTOCSheetSession {
   bookId: string;
   toc: TOCItem[];
   currentChapter: string;
+  currentChapterHref: string;
   onClose: () => void;
   onSelectTocItem: (href: string) => void;
 }

@@ -431,6 +431,9 @@ function buildEpubNavigation({
       level: item.level,
       parentIndex: item.parentIndex,
       href: item.href,
+      // Match the reader's decoded archive paths and fragment IDs.
+      readerHref: document.name.replace(/#/g, '%23') +
+        (target.fragment ? `#${target.fragment}` : ''),
       anchorResolved: resolvedAnchorOffset !== null,
       startOffset: document.section.startOffset + localOffset
     })
@@ -479,6 +482,7 @@ function buildEpubNavigation({
       parentKey: item.parentKey,
       sectionKey: segmentKeyByStart.get(item.startOffset),
       href: item.href,
+      readerHref: item.readerHref,
       anchorResolved: item.anchorResolved
     })),
     segments
@@ -514,9 +518,7 @@ function epubStructuredText(bytes) {
   const orderedNames = []
   let opf = ''
   let manifestItems = []
-  let navigationBase = ''
-  let rawNavigationItems = []
-  let navigationSource = 'spine'
+  const navigationCandidates = []
   if (opfName) {
     opf = strFromU8(entries[opfName])
     const manifest = new Map()
@@ -542,12 +544,13 @@ function epubStructuredText(bytes) {
       const target = safeZipPath(path.posix.dirname(opfName), navItem.href.split('#')[0])
       const actual = byLowerName.get(target.toLowerCase())
       if (actual) {
-        rawNavigationItems = epub3Navigation(strFromU8(entries[actual]))
-        navigationBase = actual
-        if (rawNavigationItems.length) navigationSource = 'nav'
+        navigationCandidates.push({
+          rawItems: epub3Navigation(strFromU8(entries[actual])),
+          navigationBase: actual, source: 'nav'
+        })
       }
     }
-    if (!rawNavigationItems.length) {
+    {
       const spineTocId = parseAttributes(opf.match(/<(?:[\w.-]+:)?spine\b([^>]*)>/i)?.[1] || '').toc
       const ncxItem = manifestItems.find(item =>
         (spineTocId && item.id === spineTocId) ||
@@ -556,9 +559,10 @@ function epubStructuredText(bytes) {
         const target = safeZipPath(path.posix.dirname(opfName), ncxItem.href.split('#')[0])
         const actual = byLowerName.get(target.toLowerCase())
         if (actual) {
-          rawNavigationItems = epub2Navigation(strFromU8(entries[actual]))
-          navigationBase = actual
-          if (rawNavigationItems.length) navigationSource = 'ncx'
+          navigationCandidates.push({
+            rawItems: epub2Navigation(strFromU8(entries[actual])),
+            navigationBase: actual, source: 'ncx'
+          })
         }
       }
     }
@@ -578,17 +582,23 @@ function epubStructuredText(bytes) {
   })
   const result = joinStructuredSections(rawSections)
   if (!result.text) throw generationError('BOOK_PARSE_FAILED', 'EPUB contains no readable text')
-  return {
-    ...result,
-    navigation: buildEpubNavigation({
-      text: result.text,
-      sections: result.sections,
-      rawSections,
-      rawItems: rawNavigationItems,
-      navigationBase,
-      source: navigationSource
-    })
+  // Prefer EPUB 3 unless NCX provides more valid destinations and preserves
+  // every existing chapter boundary. Duplicates and broken anchors do not win.
+  const candidates = navigationCandidates.map(candidate => buildEpubNavigation({
+    text: result.text, sections: result.sections, rawSections, ...candidate
+  }))
+  const destinations = navigation => new Set(navigation.items
+    .filter(item => item.anchorResolved && item.readerHref)
+    .map(item => item.readerHref))
+  let navigation = candidates[0] || fixedNavigation(result.text)
+  for (const candidate of candidates.slice(1)) {
+    const current = destinations(navigation)
+    const next = destinations(candidate)
+    if (next.size > current.size && [...current].every(href => next.has(href))) {
+      navigation = candidate
+    }
   }
+  return { ...result, navigation: { ...navigation, selectionVersion: 2 } }
 }
 
 function processOutput(command, args, input, signal) {

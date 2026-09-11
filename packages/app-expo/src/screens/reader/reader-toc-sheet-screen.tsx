@@ -1,10 +1,9 @@
-import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useCallback, useLayoutEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, PlatformColor, StyleSheet, View } from "react-native";
 import { ReaderTOCPanel } from "./ReaderTOCPanel";
 import { ReaderTOCSheetCloseButton } from "./ReaderTOCSheetCloseButton";
 import { useReaderTOCSheet } from "./reader-toc-sheet-context";
@@ -25,7 +24,9 @@ export function ReaderTOCSheetScreen({ navigation }: Props) {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      contentStyle: { backgroundColor: colors.card },
+      contentStyle: {
+        backgroundColor: Platform.OS === "ios" ? PlatformColor("systemBackground") : colors.card,
+      },
       headerShown: true,
       headerBackVisible: false,
       headerTitle: t("reader.toc", "Оглавление"),
@@ -39,8 +40,8 @@ export function ReaderTOCSheetScreen({ navigation }: Props) {
                 label: t("common.close", "Закрыть"),
                 accessibilityLabel: t("common.close", "Закрыть"),
                 icon: {
-                  type: "image" as const,
-                  source: getStrokeIconImageSource("x"),
+                  type: "sfSymbol" as const,
+                  name: "xmark",
                 },
                 onPress: handleClose,
               },
@@ -65,13 +66,12 @@ export function ReaderTOCSheetScreen({ navigation }: Props) {
   }
 
   return (
-    <View collapsable={false} style={[styles.container, { backgroundColor: colors.card }]}>
-      <ReaderTOCPanel
-        toc={session.toc}
-        currentChapter={session.currentChapter}
-        onSelectTocItem={session.onSelectTocItem}
-      />
-    </View>
+    <ReaderTOCPanel
+      toc={session.toc}
+      currentChapter={session.currentChapter}
+      currentChapterHref={session.currentChapterHref}
+      onSelectTocItem={session.onSelectTocItem}
+    />
   );
 }
 

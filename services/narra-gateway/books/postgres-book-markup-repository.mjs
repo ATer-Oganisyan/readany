@@ -1520,7 +1520,7 @@ export function createPostgresBookMarkupRepository(pool, {
 
     async getReaderBookContent({ bookEditionId }) {
       const result = await pool.query(
-         `SELECT edition.id AS book_edition_id,
+         `SELECT edition.id AS book_edition_id, edition.content_sha256,
                 prepared.normalized_text_object_key, prepared.normalized_text_hash,
                 prepared.text_length, prepared.normalization_version,
                 prepared.content_navigation
@@ -1547,6 +1547,7 @@ export function createPostgresBookMarkupRepository(pool, {
       if (!row) return null
       return {
         bookEditionId: row.book_edition_id,
+        sourceContentHash: row.content_sha256,
         objectKey: row.normalized_text_object_key,
         contentHash: row.normalized_text_hash,
         textLength: Number(row.text_length),

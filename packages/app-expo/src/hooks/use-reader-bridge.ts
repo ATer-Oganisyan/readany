@@ -205,6 +205,13 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     [inject],
   );
 
+  const setBackendTOC = useCallback(
+    (items: TOCItem[], loadId: string) => {
+      inject(`window.setBackendTOC(${JSON.stringify(items)}, ${JSON.stringify(loadId)})`);
+    },
+    [inject],
+  );
+
   const goToHref = useCallback(
     (href: string) => {
       inject(`window.goToHref(${JSON.stringify(href)})`);
@@ -883,7 +890,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           cb.onSelection?.(msg);
           break;
         case "copySelection":
-          if (typeof msg.text === "string" && msg.text) cb.onCopySelection?.(msg.text, msg.nativeCopied === true);
+          if (typeof msg.text === "string" && msg.text)
+            cb.onCopySelection?.(msg.text, msg.nativeCopied === true);
           break;
         case "selectionCleared":
           cb.onSelectionCleared?.();
@@ -1138,6 +1146,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       goRight,
       goToFraction,
       goToHref,
+      setBackendTOC,
       goToSection,
       goToCFI,
       followTTSLocation,
@@ -1182,6 +1191,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       goRight,
       goToFraction,
       goToHref,
+      setBackendTOC,
       goToSection,
       goToCFI,
       followTTSLocation,

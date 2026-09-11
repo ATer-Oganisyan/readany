@@ -206,14 +206,11 @@ export function RootNavigator() {
             headerTransparent: false,
             headerTitle: t("reader.toc", "Оглавление"),
             headerShadowVisible: false,
-            headerStyle: { backgroundColor: colors.card },
-            contentStyle: { backgroundColor: colors.card },
-            sheetAllowedDetents: [0.55, 1],
+            sheetAllowedDetents: [0.5, 1],
             sheetInitialDetentIndex: 0,
             sheetGrabberVisible: true,
             sheetExpandsWhenScrolledToEdge: true,
             sheetResizeAnimationEnabled: true,
-            sheetCornerRadius: 24,
           }}
         />
         <Stack.Screen

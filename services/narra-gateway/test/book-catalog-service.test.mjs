@@ -1450,7 +1450,7 @@ test('catalog reader chunks stop at chapters and split only an oversized chapter
     version: 'book-navigation-v1',
     source: 'nav',
     items: [
-      { key: 'toc-1', title: 'One', level: 0, parentKey: null, sectionKey: 'one' },
+      { key: 'toc-1', title: 'One', level: 0, parentKey: null, sectionKey: 'one', readerHref: 'OPS/one.xhtml' },
       { key: 'toc-2', title: 'Two', level: 0, parentKey: null, sectionKey: 'two' }
     ],
     segments: [
@@ -1463,7 +1463,7 @@ test('catalog reader chunks stop at chapters and split only an oversized chapter
       async getReaderBookContent() {
         return {
           bookEditionId: 'book-1', objectKey: 'analysis/run-1/text.txt',
-          contentHash: HASH, textLength: bytes.length,
+          contentHash: HASH, sourceContentHash: 'b'.repeat(64), textLength: bytes.length,
           normalizationVersion: 'normalized-text-v1', navigation
         }
       }
@@ -1495,6 +1495,8 @@ test('catalog reader chunks stop at chapters and split only an oversized chapter
 
   const toc = await service.contentToc('reader-1', 'book-1')
   assert.equal(toc.source, 'nav')
+  assert.equal(toc.sourceContentHash, 'b'.repeat(64))
+  assert.equal(toc.items[0].readerHref, 'OPS/one.xhtml')
   assert.deepEqual(toc.items.map(({ title, startByte, endByte }) =>
     [title, startByte, endByte]), [
     ['One', 0, 5],
