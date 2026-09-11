@@ -18,6 +18,7 @@ import {
   characterCardMediaPriority,
   finalizeCharacterCard
 } from './book-character-card.mjs'
+import { createCardPublicationRunner } from './book-card-publication-runner.mjs'
 import { createOperationalLogger } from '../platform/operational-log.mjs'
 
 const MAX_NORMALIZED_TEXT_BYTES = 64 * 1024 * 1024
@@ -63,6 +64,12 @@ export function createCharacterCardRunner({
     }
     return text
   }
+
+  // Публикация умеет только собрать и записать: модель ей не нужна, поэтому
+  // она живёт рядом с карточкой, а не отдельным заданием очереди.
+  const publicationRunner = typeof repository.getCardPublicationInput === 'function'
+    ? createCardPublicationRunner({ repository, storage, maxTextBytes, logger })
+    : null
 
   return {
     jobType: CHARACTER_CARD_JOB_TYPE,
@@ -149,7 +156,7 @@ export function createCharacterCardRunner({
         media_status: published?.media?.status ?? 'unknown',
         duration_ms: Date.now() - startedAt
       })
-      await advanceWindows(input)
+      await advanceWindows(input, text)
       return {
         characterKey: input.characterKey,
         cardRevision: finalized.cardRevision,
@@ -159,7 +166,7 @@ export function createCharacterCardRunner({
       }
   }
 
-  async function advanceWindows(input) {
+  async function advanceWindows(input, normalizedText = null) {
     const advanced = await repository.advanceCardWindows({
       runId: input.runId,
       bookEditionId: input.bookEditionId
@@ -172,6 +179,19 @@ export function createCharacterCardRunner({
         enqueued_window: advanced.enqueued?.windowIndex ?? null,
         enqueued_cards: advanced.enqueued?.created ?? 0
       })
+    }
+    // Закрытое окно — момент, когда состав карточек перестал меняться. Раньше
+    // публиковать нечего, позже — значит держать книгу закрытой для читателя.
+    if (advanced?.closed?.length && publicationRunner) {
+      await publicationRunner
+        .publish({ runId: input.runId, normalizedText })
+        .catch((error) => {
+          log.error('card.publication_failed', 'Разметку из карточек опубликовать не удалось', {
+            run: input.runId,
+            edition: input.bookEditionId,
+            error_code: error?.code ?? 'UNKNOWN'
+          })
+        })
     }
     return advanced
   }

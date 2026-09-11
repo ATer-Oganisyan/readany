@@ -28,8 +28,16 @@ import {
   bookSceneSlotsThrough,
   normalizeBookScenePolicy
 } from '../generation/book-scenes.mjs'
-import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from '../analysis/book-analysis-pipeline.mjs'
-import { BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION } from '../analysis/book-analysis-contracts.mjs'
+import {
+  BOOK_ANALYSIS_NORMALIZATION_VERSION,
+  bookAnalysisPublicationProvenance
+} from '../analysis/book-analysis-pipeline.mjs'
+import {
+  BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
+  BOOK_ANALYSIS_MARKUP_VERSION,
+  BOOK_ANALYSIS_SCHEMA_VERSION
+} from '../analysis/book-analysis-contracts.mjs'
+import { materializeMarkupVersion } from '../analysis/book-markup-materialization.mjs'
 import {
   CARD_MEDIA_PRIORITY,
   CHARACTER_CARD_TARGET_VERSION
@@ -3516,6 +3524,223 @@ export function createPostgresBookMarkupRepository(pool, {
           status: inserted.rows[0] ? 'published' : 'existing',
           cardId: inserted.rows[0]?.id ?? null,
           media
+        }
+      })
+    },
+
+    /**
+     * Всё, из чего собирается публикация карточек: карточки и координаты цитат.
+     *
+     * Текст книги здесь не читается — только его адрес и хэш. Цитаты
+     * восстанавливает вызывающий, у которого есть хранилище, и по тем же
+     * правилам, что и карточка: в `book_character_fragments` текст намеренно не
+     * дублируется, иначе у evidence появился бы второй источник истины.
+     */
+    async getCardPublicationInput({ runId }) {
+      if (!UUID.test(String(runId))) throw new TypeError('runId must be a UUID')
+      const run = await pool.query(
+        `SELECT run.book_edition_id, run.normalized_text_object_key,
+                run.normalized_text_hash, inventory.text_length
+         FROM book_analysis_runs AS run
+         LEFT JOIN book_name_inventory AS inventory ON inventory.run_id = run.id
+         WHERE run.id = $1 AND run.pipeline_id = 'cards'`,
+        [runId]
+      )
+      if (!run.rows[0]) return null
+      const cards = await pool.query(
+        `SELECT document FROM book_character_cards
+         WHERE run_id = $1 AND enabled
+         ORDER BY first_mention_text_offset, character_key`,
+        [runId]
+      )
+      const fragments = await pool.query(
+        `SELECT fragment_id, character_key, chapter_index, start_offset, end_offset
+         FROM book_character_fragments
+         WHERE run_id = $1
+         ORDER BY character_key, start_offset`,
+        [runId]
+      )
+      return {
+        runId,
+        bookEditionId: run.rows[0].book_edition_id,
+        normalizedTextObjectKey: run.rows[0].normalized_text_object_key,
+        normalizedTextHash: run.rows[0].normalized_text_hash,
+        textLength: run.rows[0].text_length == null ? null : Number(run.rows[0].text_length),
+        cards: cards.rows.map(({ document }) => document),
+        fragments: fragments.rows.map((row) => ({
+          fragmentId: row.fragment_id,
+          characterKey: row.character_key,
+          chapterIndex: Number(row.chapter_index),
+          startOffset: Number(row.start_offset),
+          endOffset: Number(row.end_offset)
+        }))
+      }
+    },
+
+    /**
+     * Публикация разметки, собранной из карточек.
+     *
+     * Конвейер карточек до сих пор ничего не публиковал: книге каталога
+     * разметку уже дал narra, и надстройки хватало. Свежая приватная книга
+     * оставалась в статусе marking_up навсегда — читатель видит книгу через
+     * `book_markup_versions`, а их заполняет только публикация.
+     *
+     * Публикуется то, что готово сейчас, и публикуется снова, когда окна
+     * открылись дальше. Неизменившийся снимок отбивается уникальностью
+     * `(run_id, content_hash)` и no-op'ом возвращается вызывающему: повторная
+     * публикация того же самого не должна ни плодить ревизии разметки, ни
+     * трогать медиа.
+     *
+     * Медиа здесь не заказывается намеренно. Карточный путь ставит его сам, по
+     * ревизии карточки; общий заказ выдал бы тем же персонажам вторую пачку по
+     * ключам старой разметки.
+     */
+    async publishCardsMarkup({
+      runId,
+      bookEditionId,
+      snapshot,
+      markup,
+      markupContentHash,
+      validation
+    }) {
+      if (!UUID.test(String(runId))) throw new TypeError('runId must be a UUID')
+      if (!UUID.test(String(bookEditionId))) throw new TypeError('bookEditionId must be a UUID')
+      if (validation?.valid !== true) {
+        throw Object.assign(
+          new Error('card markup did not pass validation'),
+          { code: 'CARD_PUBLICATION_INVALID', errors: validation?.errors ?? [] }
+        )
+      }
+      return transaction(pool, async (client) => {
+        const run = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE id = $1 AND book_edition_id = $2 AND pipeline_id = 'cards'
+             AND status = 'running'
+           FOR UPDATE`,
+          [runId, bookEditionId]
+        )
+        if (!run.rows[0]) {
+          throw Object.assign(new Error('cards run is not running'), { code: 'RUN_STATE_CHANGED' })
+        }
+        if (!['synthesize', 'publish'].includes(run.rows[0].stage)) {
+          throw Object.assign(
+            new Error(`cards run cannot publish from ${run.rows[0].stage}`),
+            { code: 'RUN_STATE_CHANGED' }
+          )
+        }
+        const version = await client.query(
+          `SELECT COALESCE(MAX(snapshot_version), 0) + 1 AS version
+           FROM book_analysis_snapshots WHERE run_id = $1`,
+          [runId]
+        )
+        const frozen = await client.query(
+          `INSERT INTO book_analysis_snapshots (
+             id, run_id, snapshot_version, content_hash, evidence_count, data
+           ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+           ON CONFLICT (run_id, content_hash) DO NOTHING
+           RETURNING id`,
+          [
+            snapshot.id, runId, Number(version.rows[0].version), snapshot.contentHash,
+            snapshot.evidenceCount, JSON.stringify(snapshot.data)
+          ]
+        )
+        // Снимок тот же — публиковать нечего. Это обычный случай: окно
+        // закрылось, не добавив ни одной карточки.
+        if (!frozen.rows[0]) return { published: false, reason: 'unchanged' }
+
+        const artifactKey = `cards:${markupContentHash.slice(0, 16)}`
+        const markupArtifactId = idFactory()
+        await client.query(
+          `INSERT INTO book_analysis_artifacts (
+             id, run_id, snapshot_id, artifact_kind, artifact_key,
+             schema_version, status, content_hash, data
+           ) VALUES ($1, $2, $3, 'book_markup', $4, $5, 'valid', $6, $7::jsonb)`,
+          [
+            markupArtifactId, runId, snapshot.id, artifactKey,
+            BOOK_ANALYSIS_SCHEMA_VERSION, markupContentHash, JSON.stringify(markup)
+          ]
+        )
+        const report = {
+          valid: true,
+          checks: validation.checks ?? {},
+          errors: [],
+          bindings: {
+            snapshotId: snapshot.id,
+            snapshotContentHash: snapshot.contentHash,
+            normalizedTextHash: run.rows[0].normalized_text_hash,
+            markupArtifactId,
+            markupContentHash
+          }
+        }
+        await client.query(
+          `INSERT INTO book_analysis_artifacts (
+             id, run_id, snapshot_id, artifact_kind, artifact_key,
+             schema_version, status, content_hash, data
+           ) VALUES ($1, $2, $3, 'validation_report', $4, $5, 'valid', $6, $7::jsonb)`,
+          [
+            idFactory(), runId, snapshot.id, artifactKey, BOOK_ANALYSIS_SCHEMA_VERSION,
+            createHash('sha256').update(JSON.stringify(report)).digest('hex'),
+            JSON.stringify(report)
+          ]
+        )
+        if (run.rows[0].stage === 'synthesize') {
+          await client.query(
+            "UPDATE book_analysis_runs SET stage = 'publish' WHERE id = $1",
+            [runId]
+          )
+        }
+        const publicationId = idFactory()
+        await client.query(
+          `INSERT INTO book_analysis_publications (
+             id, run_id, book_edition_id, artifact_id, channel,
+             analysis_version, content_hash, data
+           ) VALUES ($1, $2, $3, $4, 'shadow', $5, $6, $7::jsonb)`,
+          [
+            publicationId, runId, bookEditionId, markupArtifactId,
+            BOOK_ANALYSIS_MARKUP_VERSION, markupContentHash,
+            JSON.stringify({
+              schemaVersion: BOOK_ANALYSIS_SCHEMA_VERSION,
+              analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION,
+              artifactId: markupArtifactId,
+              snapshotId: snapshot.id,
+              provenance: bookAnalysisPublicationProvenance({
+                pipelineId: 'cards',
+                pipelineImplementationVersion: run.rows[0].pipeline_implementation_version,
+                pipelineVersion: run.rows[0].pipeline_version,
+                promptVersion: run.rows[0].prompt_version,
+                normalizationVersion: run.rows[0].normalization_version,
+                outputSchemaVersion: run.rows[0].output_schema_version,
+                inputHash: run.rows[0].input_hash,
+                normalizedTextHash: run.rows[0].normalized_text_hash
+              }),
+              markup
+            })
+          ]
+        )
+        const materialized = await materializeMarkupVersion(client, {
+          bookEditionId,
+          contentHash: markupContentHash,
+          markup,
+          idFactory,
+          notFound: () => Object.assign(
+            new Error('book edition is unavailable'),
+            { code: 'BOOK_NOT_FOUND' }
+          ),
+          schemaVersion: BOOK_ANALYSIS_SCHEMA_VERSION,
+          analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION
+        })
+        await client.query(
+          `UPDATE book_analysis_artifacts
+           SET status = 'published', published_at = now() WHERE id = $1`,
+          [markupArtifactId]
+        )
+        return {
+          published: true,
+          publicationId,
+          snapshotId: snapshot.id,
+          markupVersionId: materialized.markupId,
+          revision: materialized.revision,
+          characterCount: markup.characters.length
         }
       })
     },
