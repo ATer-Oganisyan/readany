@@ -1638,8 +1638,13 @@ export function createPostgresBookMarkupRepository(pool, {
       subjectId,
       bookEditionId,
       readerTextOffset,
-      priority = 45
+      priority = 45,
+      // Режим решает вызывающий, а не окружение процесса: операторская команда
+      // просит пачку осознанно и должна работать даже там, где фоновый подогрев
+      // выключен. Настройку читает тот, кто ходит за читателем.
+      mode = bookScenePregenerationMode()
     }) {
+      if (mode === 'none') return { requested: 0, ready: 0, pending: 0, failed: 0 }
       return transaction(pool, async (client) => {
         const context = await loadSceneContext(client, { subjectId, bookEditionId })
         if (!context) return { requested: 0, ready: 0, pending: 0, failed: 0 }
@@ -1651,7 +1656,7 @@ export function createPostgresBookMarkupRepository(pool, {
           scope: context.scope,
           textLength: context.textLength,
           readerTextOffset,
-          mode: bookScenePregenerationMode()
+          mode
         })
         const slots = bookSceneSlotsThrough(context.policy, context.textLength, frontier)
         const scenes = []
