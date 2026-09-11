@@ -27,7 +27,19 @@ export const EXTERNAL_UPSTREAM_REVISION = 'd532bdd0a15f2948fd0c99f5e11b92677cb5c
 export const EXTERNAL_PIPELINE_IMPLEMENTATION_VERSION =
   'external-autiobook-v1.d532bdd0'
 export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v1'
+// Версия меняется всякий раз, когда меняется поведение конвейера: по ней
+// считается ключ прогона, и прогоны разных версий не переиспользуются.
+//
+// v2: `mentioned` отделяет названное лицо от действующего, карточка требует
+//     утверждений вместо строк.
+// v3: полное русское имя, названное однажды, связывает фамилию с отчеством.
+// v4: запрет по со-упоминанию снова абсолютен — снятый по соседству, он дал
+//     склейку тридцати трёх кандидатов «Обломова» в одного человека.
+// v5: со-упоминание стало уликой для модели, у стадии своя модель и потолок
+//     размера склейки.
+// v6: абзац принадлежит окну, в котором начинается, — одинаково при постановке
+//     задания и при сборке карточки.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v6'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'
@@ -92,12 +104,37 @@ export function bookAnalysisCardsEditionsFromEnv(env = process.env) {
  * книга, уже разобранная старым конвейером, останется на нём навсегда.
  * Настройка по умолчанию, наоборот, слабее наследования — поэтому её тут нет.
  */
-export function bookAnalysisAssignedPipelineForEdition(bookEditionId, env = process.env) {
+export function bookAnalysisAssignedPipelineForEdition(
+  bookEditionId,
+  env = process.env,
+  scope = null
+) {
   const editions = bookAnalysisCardsEditionsFromEnv(env)
   if (bookEditionId && editions.has(String(bookEditionId).toLowerCase())) {
     return BOOK_ANALYSIS_PIPELINE_CARDS
   }
-  return null
+  return bookAnalysisPipelineForScope(scope, env)
+}
+
+/**
+ * Конвейер по области видимости книги.
+ *
+ * Приватная книга — это загрузка живого человека, и ей нужен разбор, который
+ * доходит до читателя быстро и стоит ровно столько, сколько человек прочитал:
+ * окна карточек открываются за ним, а разметка публикуется по мере их
+ * готовности. Каталог живёт по другим правилам — книга там разбирается один раз
+ * на всех и целиком, — поэтому правило именно про область видимости, а не про
+ * «новые книги».
+ *
+ * `BOOK_ANALYSIS_PIPELINE_PRIVATE=none` возвращает приватные книги к общей
+ * настройке по умолчанию. Это путь отката, и он не требует выкладки кода.
+ */
+export function bookAnalysisPipelineForScope(scope, env = process.env) {
+  if (scope !== 'private') return null
+  const raw = String(env.BOOK_ANALYSIS_PIPELINE_PRIVATE || '').trim().toLowerCase()
+  if (raw === 'none') return null
+  if (!raw) return BOOK_ANALYSIS_PIPELINE_CARDS
+  return normalizeBookAnalysisPipelineId(raw, 'BOOK_ANALYSIS_PIPELINE_PRIVATE')
 }
 
 /**

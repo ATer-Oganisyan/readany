@@ -4,7 +4,11 @@ export const CHARACTER_BUNDLE_VERSION = 'character-bundle-v1'
 export const LOCAL_MARKUP_ANALYSIS_VERSION = 'local-character-v1'
 export const LOCAL_MARKUP_PROGRESS_SCALE = 1_000_000
 
-export const REQUIRED_CHARACTER_MEDIA = Object.freeze([
+/**
+ * Всё, что система умеет сделать персонажу. Список закрытый: по нему проверяются
+ * задания, в том числе старые, поставленные при другом составе медиа.
+ */
+export const CHARACTER_MEDIA_ASSET_TYPES = Object.freeze([
   'primary_portrait',
   'greeting_audio',
   'idle_animation'
@@ -15,6 +19,41 @@ export const CHARACTER_MEDIA_JOB_TYPES = Object.freeze({
   greeting_audio: 'character_audio',
   idle_animation: 'character_animation'
 })
+
+/**
+ * Что карточка заказывает себе на самом деле.
+ *
+ * По умолчанию портрет и приветственное аудио. Idle-анимация — оживший портрет
+ * в mp4 — в набор не входит: продукт её не показывает, а стоит она отдельного
+ * вызова видеогенерации на каждого персонажа. На «Обломове» это 212 роликов за
+ * сутки, которые никто не открывал.
+ *
+ * Список закрытый: незнакомый тип — ошибка настройки, а не повод молча взять
+ * меньше. Пустое значение тоже ошибка: карточка без единого медиа не нужна.
+ */
+export function parseRequiredCharacterMedia(raw, { name = 'BOOK_CHARACTER_MEDIA' } = {}) {
+  const text = String(raw ?? '').trim()
+  if (!text) return Object.freeze(['primary_portrait', 'greeting_audio'])
+  const values = [...new Set(text.split(/[,\s]+/).filter(Boolean))]
+  const unknown = values.filter((value) => !CHARACTER_MEDIA_ASSET_TYPES.includes(value))
+  if (unknown.length) {
+    throw Object.assign(
+      new TypeError(`${name} has unknown media types: ${unknown.join(', ')}`),
+      { code: 'CHARACTER_MEDIA_INVALID' }
+    )
+  }
+  if (!values.length) {
+    throw Object.assign(
+      new TypeError(`${name} must name at least one media type`),
+      { code: 'CHARACTER_MEDIA_INVALID' }
+    )
+  }
+  // Порядок хранится один — тот, в котором типы объявлены.
+  return Object.freeze(CHARACTER_MEDIA_ASSET_TYPES.filter((type) => values.includes(type)))
+}
+
+export const REQUIRED_CHARACTER_MEDIA =
+  parseRequiredCharacterMedia(process.env.BOOK_CHARACTER_MEDIA)
 
 const IDENTIFIER = /^[a-z0-9][a-z0-9._:-]{0,255}$/i
 const JOB_STATUSES = new Set(['queued', 'running', 'ready', 'failed'])

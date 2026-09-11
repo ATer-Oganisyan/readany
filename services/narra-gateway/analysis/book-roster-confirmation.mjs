@@ -21,7 +21,7 @@ import { NAME_HONORIFICS } from './book-name-inventory.mjs'
 import { splitHonorificNames } from './book-character-fragments.mjs'
 
 export const ROSTER_CONFIRMATION_VERSION = 'roster-confirm-v1'
-export const ROSTER_CONFIRMATION_PROMPT_VERSION = 'roster-confirm-prompt-v1'
+export const ROSTER_CONFIRMATION_PROMPT_VERSION = 'roster-confirm-prompt-v3'
 
 export const MAX_CONFIRMATION_CANDIDATES = 128
 export const MAX_FRAGMENTS_PER_CANDIDATE = 2
@@ -29,7 +29,13 @@ export const MAX_CANDIDATE_PAIRS = 128
 export const MAX_REQUEST_BYTES = 96 * 1024
 const MAX_FRAGMENT_QUOTE_CHARS = 240
 
-export const ROSTER_CANDIDATE_KINDS = Object.freeze(['person', 'place', 'group', 'other'])
+// `mentioned` отделяет названное лицо от действующего. Байрон, Цицерон и
+// Пушкин — люди, и как `person` они получали карточку наравне с Печориным,
+// хотя в книге не действуют, а помянуты для сравнения. Карточку получает
+// только `person`, поэтому различие тут и живёт.
+export const ROSTER_CANDIDATE_KINDS = Object.freeze([
+  'person', 'mentioned', 'place', 'group', 'other'
+])
 export const ROSTER_MERGE_BASES = Object.freeze([
   'name_variant',
   'nickname',
@@ -48,6 +54,10 @@ const CO_MENTION_SHARE = 0.2
  * держит от случайного соседства двух разных людей в одной фразе.
  */
 const ADJACENT_NAME_MIN = 2
+// Формы одного имени: «Обломов», «Илья», «Ильич» и падежные варианты — семь
+// у самого богатого случая из трёх проверенных книг. Двенадцать оставляет
+// запас и всё равно ловит склейку, в которой человек собран из полкниги.
+const MAX_MERGED_SURFACES = 12
 
 const KINDS = new Set(ROSTER_CANDIDATE_KINDS)
 const BASES = new Set(ROSTER_MERGE_BASES)
@@ -160,12 +170,28 @@ function coMentionParagraphs(fragments) {
  * `co_mentioned_participants` — кандидаты систематически встречаются в одном
  * абзаце, то есть текст показывает их как двух участников сцены, а не как два
  * имени одного человека.
+ *
+ * Запретом остаётся только коллизия пола. Со-упоминание запретом быть не может,
+ * и это измерено: у пар, которые надо слить, его доля от 1 % (Илья/Обломов) до
+ * 80 % (Андрей/Иваныч), у пар разных людей — от 3 % (Обломов/Захар) до 30 %
+ * (Максим Максимыч/Печорин). Диапазоны перекрываются целиком, порога между ними
+ * нет, и как запрет он терял «Обломова» с «Ильёй», «Штольца» с «Андреем» и
+ * «Печорина» с «Григорием Александровичем».
+ *
+ * Поэтому со-упоминание уходит к модели уликой: пара показывается вместе с
+ * цитатами и признаком `co_mentioned`, и решает подтверждение. Это работает
+ * ровно настолько, насколько хорош судья, и судья у стадии теперь свой —
+ * назначение `roster_confirm` с собственной моделью. Замер на «Обломове» и
+ * «Герое»: со снятым запретом судья не сделал ни одного ложного слияния из
+ * тринадцати размеченных пар разных людей, крупнейшая склейка — семь форм
+ * одного имени.
  */
 export function rosterForbiddenPairs(candidates, { fragments = null } = {}) {
   const paragraphs = coMentionParagraphs(fragments)
   const genders = new Map(candidates.map((candidate) =>
     [candidate.candidateKey, candidateGenderSignals(candidate)]))
   const values = new Map()
+  const coMentioned = new Map()
   for (const [index, left] of candidates.entries()) {
     for (const right of candidates.slice(index + 1)) {
       const [leftKey, rightKey] = [left.candidateKey, right.candidateKey].sort(compareText)
@@ -188,12 +214,17 @@ export function rosterForbiddenPairs(candidates, { fragments = null } = {}) {
         : [rightParagraphs, leftParagraphs]
       for (const paragraph of smaller) if (larger.has(paragraph)) shared += 1
       if (shared >= CO_MENTION_MIN && shared >= CO_MENTION_SHARE * smaller.size) {
-        values.set(key, { leftKey, rightKey, reason: 'co_mentioned_participants' })
+        coMentioned.set(key, { leftKey, rightKey, sharedParagraphs: shared })
       }
     }
   }
-  return [...values.values()].sort((left, right) =>
-    compareText(left.leftKey, right.leftKey) || compareText(left.rightKey, right.rightKey))
+  const byKey = (left, right) =>
+    compareText(left.leftKey, right.leftKey) || compareText(left.rightKey, right.rightKey)
+  return {
+    forbidden: [...values.values()].sort(byKey),
+    coMentioned: [...coMentioned.values()].filter(({ leftKey, rightKey }) =>
+      !values.has(pairKey(leftKey, rightKey))).sort(byKey)
+  }
 }
 
 /**
@@ -203,8 +234,10 @@ export function rosterForbiddenPairs(candidates, { fragments = null } = {}) {
  * них нет, но и слить их автоматически нельзя — у Остин это две разные
  * Кэтрин, и решает вызов вместе с запретами.
  */
-export function rosterCandidatePairs(candidates, { forbiddenPairs = [] } = {}) {
+export function rosterCandidatePairs(candidates, { forbiddenPairs = [], coMentioned = [] } = {}) {
   const blocked = new Set(forbiddenPairs.map(({ leftKey, rightKey }) => pairKey(leftKey, rightKey)))
+  const shared = new Map(coMentioned.map((pair) =>
+    [pairKey(pair.leftKey, pair.rightKey), pair.sharedParagraphs ?? 0]))
   const lexiconPairs = new Map(
     nicknameCandidatePairs(candidates.map((candidate) => ({
       key: candidate.candidateKey,
@@ -218,12 +251,10 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [] } = {}) {
       if (blocked.has(key)) continue
       const nameSignal = namePairSignal(left, right)
       const lexicon = lexiconPairs.get(key)
-      const adjacency = Math.max(
-        adjacentCount(left, right.candidateKey),
-        adjacentCount(right, left.candidateKey)
-      )
-      const adjacent = adjacency >= ADJACENT_NAME_MIN
-      if (!nameSignal && !lexicon && !adjacent) continue
+      const adjacency = adjacentAsOneName(left, right)
+      const adjacent = adjacency > 0
+      const sharedParagraphs = shared.get(key) ?? 0
+      if (!nameSignal && !lexicon && !adjacent && !sharedParagraphs) continue
       const [leftKey, rightKey] = [left.candidateKey, right.candidateKey].sort(compareText)
       rows.push({
         leftKey,
@@ -231,9 +262,11 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [] } = {}) {
         signals: [
           ...(nameSignal ? [nameSignal] : []),
           ...(lexicon ? ['nickname_lexicon'] : []),
-          ...(adjacent ? ['adjacent_full_name'] : [])
+          ...(adjacent ? ['adjacent_full_name'] : []),
+          ...(sharedParagraphs ? ['co_mentioned'] : [])
         ],
         adjacentCount: adjacent ? adjacency : 0,
+        sharedParagraphs,
         lexiconCanonical: lexicon?.canonical ?? ''
       })
     }
@@ -253,6 +286,48 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [] } = {}) {
 function adjacentCount(candidate, otherKey) {
   return (candidate.adjacentNames ?? [])
     .find(({ candidateKey }) => candidateKey === otherKey)?.count ?? 0
+}
+
+const RUSSIAN_PATRONYMIC = /(?:ович|евич|ич|овна|евна|ична|инична|оглы|кызы)$/u
+
+function hasGivenAndPatronymic(candidate) {
+  return candidateNames(candidate).some((name) => {
+    const tokens = identityTokens(name)
+    return tokens.length === 2 && RUSSIAN_PATRONYMIC.test(tokens[1])
+  })
+}
+
+function hasBareSurname(candidate) {
+  return candidateNames(candidate).some((name) => {
+    const tokens = identityTokens(name)
+    return tokens.length === 1 && !RUSSIAN_PATRONYMIC.test(tokens[0])
+  })
+}
+
+/**
+ * Стоят ли эти два имени в тексте как одно имя одного человека.
+ *
+ * Обычному соседству нужен повтор: рядом оказываются и «Ольга» с «Лариным», и
+ * это ничего не значит. Но «Григорий Александрович» рядом с «Печориным» — не
+ * соседство двух имён, а канонический полный русский формат, названный
+ * целиком. В «Герое нашего времени» он назван ровно один раз на весь роман, и
+ * порога в два повтора для него взяться неоткуда: Печорин и «Григорий
+ * Александрович» так и остались двумя людьми.
+ *
+ * Поэтому имя с отчеством рядом с голой фамилией засчитывается с первого раза.
+ * Это только повод показать пару модели: запрет по со-упоминанию она не
+ * отменяет, и сама пара ничего не сливает.
+ */
+function adjacentAsOneName(left, right) {
+  const adjacency = Math.max(
+    adjacentCount(left, right.candidateKey),
+    adjacentCount(right, left.candidateKey)
+  )
+  if (adjacency >= ADJACENT_NAME_MIN) return adjacency
+  const fullNameShape =
+    (hasGivenAndPatronymic(left) && hasBareSurname(right)) ||
+    (hasGivenAndPatronymic(right) && hasBareSurname(left))
+  return adjacency >= 1 && fullNameShape ? adjacency : 0
 }
 
 function candidateFragments(fragments, characterKey, limit) {
@@ -346,8 +421,8 @@ export function buildRosterConfirmationRequest({
   // без карточки — либо, если довериться подсказке, карточку получило бы место.
   if (!ordered.length) return null
 
-  const forbiddenPairs = rosterForbiddenPairs(ordered, { fragments })
-  const candidatePairs = rosterCandidatePairs(ordered, { forbiddenPairs })
+  const { forbidden: forbiddenPairs, coMentioned } = rosterForbiddenPairs(ordered, { fragments })
+  const candidatePairs = rosterCandidatePairs(ordered, { forbiddenPairs, coMentioned })
   const included = new Set(ordered.map(({ candidateKey }) => candidateKey))
   const common = {
     runId,
@@ -488,6 +563,16 @@ export function validateRosterConfirmation({ request, response }) {
       rejected.push({ kind: 'merge', leftKey, rightKey, reason: 'forbidden_across_components' })
       continue
     }
+    // Потолок склейки. У человека много форм имени, но не десятки: у «Обломова»
+    // их семь — Обломов, Илья, Ильич и четыре падежных. Когда со-упоминание
+    // было запретом, потолок был не нужен; теперь решает модель, и один
+    // сорвавшийся ответ мог бы собрать в одного человека полкниги. Это ровно
+    // тот случай, который уже случался: тридцать три кандидата, включая
+    // Обломовку и слово «Здравствуй».
+    if (sets.members(leftKey).length + sets.members(rightKey).length > MAX_MERGED_SURFACES) {
+      rejected.push({ kind: 'merge', leftKey, rightKey, reason: 'component_too_large' })
+      continue
+    }
     if (!sets.union(leftKey, rightKey)) continue
     seenEdges.add(edge)
     acceptedMerges.push({ leftKey, rightKey, basis })
@@ -554,6 +639,12 @@ export function validateRosterConfirmation({ request, response }) {
           rightKey: candidateKey,
           reason: 'same_canonical_name_but_gender_conflict'
         })
+        continue
+      }
+      // Потолок общий с явными слияниями: одинаковое имя — такой же способ
+      // заявить тождество, и сорваться он может так же.
+      if (sets.members(anchor).length + sets.members(candidateKey).length > MAX_MERGED_SURFACES) {
+        rejected.push({ kind: 'merge', leftKey: anchor, rightKey: candidateKey, reason: 'component_too_large' })
         continue
       }
       if (!sets.union(anchor, candidateKey)) continue

@@ -503,7 +503,8 @@ export async function runCardPipeline({
       })
       const normalizedCard = normalizeCharacterCardRequest({
         idempotencyKey:
-          `${runId}:character-card:${character.characterKey}:${cardRequest.promptVersion}`,
+          `${runId}:character-card:${character.characterKey}:${cardRequest.promptVersion}`
+            + `:rev-${cardRequest.cardRevision ?? 1}`,
         ...cardRequest
       })
       const raw = await complete(characterCardMessages(normalizedCard))

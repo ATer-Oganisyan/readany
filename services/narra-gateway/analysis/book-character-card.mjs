@@ -20,6 +20,7 @@ import {
   findCharacterNameMatches
 } from './character-name-matcher.mjs'
 import {
+  fragmentBelongsToWindow,
   CARD_TRAIT_CANDIDATE_TARGET,
   CHARACTER_CARD_CONTRACT_VERSION,
   CHARACTER_CARD_PROMPT_VERSION,
@@ -118,6 +119,7 @@ function selectRequestFragments(fragments, { maxBytes, maxFragments }) {
  * модель не увидит, а не то, что она обещает не использовать.
  */
 export function buildCharacterCardRequest({
+  cardRevision = 1,
   runId,
   bookEditionId,
   characterKey,
@@ -143,7 +145,9 @@ export function buildCharacterCardRequest({
     throw cardError('CARD_FRAGMENTS_MISSING', `character ${characterKey} has no fragments in its window`)
   }
   for (const fragment of list) {
-    if (fragment.startOffset < window.startOffset || fragment.endOffset > window.endOffset) {
+    // Проверяется начало абзаца, а не его конец: абзац принадлежит окну, в
+    // котором начался, и барьер отсекает главы, а не режет абзацы посередине.
+    if (!fragmentBelongsToWindow(fragment, window)) {
       throw cardError(
         'CARD_FRAGMENT_OUT_OF_WINDOW',
         `fragment ${fragment.fragmentId} lies outside the card window`
@@ -165,6 +169,10 @@ export function buildCharacterCardRequest({
     bookEditionId,
     characterKey,
     promptVersion,
+    // Ревизия — часть запроса, а не только результата: полный заход по книге
+    // переиздаёт карточки тех, чей состав имён изменился, и по прежнему ключу
+    // под тем же промптом лежал ответ на прежние имена.
+    cardRevision,
     contractVersion: CHARACTER_CARD_CONTRACT_VERSION,
     inventoryVersion,
     normalizedTextHash,
@@ -296,9 +304,12 @@ export function finalizeCharacterCard({
   createdAt = new Date().toISOString()
 }) {
   if (!input) throw cardError('CARD_REQUEST_INVALID', 'input is required')
-  const windowFragments = (Array.isArray(fragments) ? fragments : []).filter((fragment) =>
-    fragment.startOffset >= input.cardWindow.startOffset &&
-    fragment.endOffset <= input.cardWindow.endOffset)
+  const windowFragments = (Array.isArray(fragments) ? fragments : [])
+    .filter((fragment) => fragmentBelongsToWindow(fragment, input.cardWindow))
+  const mentionCountInWindow = windowFragments.reduce(
+    (sum, fragment) => sum + (fragment.mentionOffsets?.length ?? fragment.mentionCount ?? 1),
+    0
+  )
   if (!windowFragments.length) {
     throw cardError('CARD_FRAGMENTS_MISSING', 'no fragments available for the card window')
   }
@@ -340,11 +351,13 @@ export function finalizeCharacterCard({
       : input.character.aliases,
     firstMentionTextOffset: input.character.firstMentionTextOffset,
     cardWindow: input.cardWindow,
-    mentionCount: input.character.mentionCount,
-    mentionCountInWindow: windowFragments.reduce(
-      (sum, fragment) => sum + (fragment.mentionOffsets?.length ?? fragment.mentionCount ?? 1),
-      0
-    ),
+    // Два счётчика из разных проходов: в ростере — вхождения поверхностей имени
+    // по инвентарю, в окне — упоминания по фрагментам. Обычно первый больше, но
+    // не всегда, и тогда карточка падала на собственном инварианте
+    // «в окне не больше, чем в книге». Инвариант верен, а меньшее из двух
+    // чисел — нет: если окно насчитало больше, значит недосчитал ростер.
+    mentionCount: Math.max(input.character.mentionCount ?? 0, mentionCountInWindow),
+    mentionCountInWindow,
     traits,
     bio,
     role,

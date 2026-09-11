@@ -4,7 +4,10 @@ import { buildBookCardWindows } from './book-card-windows.mjs'
 import { collectBookCharacterFragments } from './book-character-fragments.mjs'
 import { inventoryRoster } from './book-name-inventory.mjs'
 import { createStableBookChunks } from './book-analysis-chunking.mjs'
-import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
+import {
+  bookAnalysisLogContext,
+  unexpectedErrorMessage
+} from './book-analysis-observability.mjs'
 import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from './book-analysis-pipeline.mjs'
 import { extractStructuredBookText } from '../books/book-source-text.mjs'
 import { createOperationalLogger } from '../platform/operational-log.mjs'
@@ -191,6 +194,7 @@ export function createBookAnalysisPrepareWorker({
           job: job.id,
           run: job.runId,
           error_code: errorCode,
+          error_message: unexpectedErrorMessage(error),
           retry_status: failure.status,
           ...bookAnalysisLogContext(job, {
             startedAt,

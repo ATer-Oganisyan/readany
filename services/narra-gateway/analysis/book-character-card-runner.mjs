@@ -18,6 +18,7 @@ import {
   characterCardMediaPriority,
   finalizeCharacterCard
 } from './book-character-card.mjs'
+import { createCardPublicationRunner } from './book-card-publication-runner.mjs'
 import { createOperationalLogger } from '../platform/operational-log.mjs'
 
 const MAX_NORMALIZED_TEXT_BYTES = 64 * 1024 * 1024
@@ -41,6 +42,12 @@ export function createCharacterCardRunner({
   if (!repository || !storage || !generator) {
     throw new TypeError('repository, storage and generator are required')
   }
+  // Цепочка окон — часть контракта воркера, а не необязательное украшение:
+  // без неё книга получит карточки только первых глав, и заметить это можно
+  // будет лишь по тому, что остальные окна навсегда остались `queued`.
+  if (typeof repository.advanceCardWindows !== 'function') {
+    throw new TypeError('repository must advance card windows')
+  }
   const log = createOperationalLogger({ component: 'character-card', logger })
 
   async function readNormalizedText(input) {
@@ -58,12 +65,32 @@ export function createCharacterCardRunner({
     return text
   }
 
+  // Публикация умеет только собрать и записать: модель ей не нужна, поэтому
+  // она живёт рядом с карточкой, а не отдельным заданием очереди.
+  const publicationRunner = typeof repository.getCardPublicationInput === 'function'
+    ? createCardPublicationRunner({ repository, storage, maxTextBytes, logger })
+    : null
+
   return {
     jobType: CHARACTER_CARD_JOB_TYPE,
 
     async run(job) {
       const startedAt = Date.now()
       const input = await repository.getCharacterCardInput(job)
+      // Цепочку окон двигает завершение карточки, а не её успех. Пока
+      // двигало только успешное, одна упавшая карточка останавливала книгу
+      // навсегда: окно оставалось `running`, следующее не ставил никто.
+      // «Обломов» встал так на восемнадцати готовых карточках второго окна.
+      try {
+        return await build(job, input, startedAt)
+      } catch (error) {
+        await advanceWindows(input).catch(() => {})
+        throw error
+      }
+    }
+  }
+
+  async function build(job, input, startedAt) {
       const text = await readNormalizedText(input)
       const fragments = input.fragments.map((fragment) => ({
         ...fragment,
@@ -78,6 +105,7 @@ export function createCharacterCardRunner({
         fragment_count: fragments.length
       })
       const request = buildCharacterCardRequest({
+        cardRevision: input.cardRevision ?? 1,
         runId: input.runId,
         bookEditionId: input.bookEditionId,
         characterKey: input.characterKey,
@@ -128,6 +156,7 @@ export function createCharacterCardRunner({
         media_status: published?.media?.status ?? 'unknown',
         duration_ms: Date.now() - startedAt
       })
+      await advanceWindows(input, text)
       return {
         characterKey: input.characterKey,
         cardRevision: finalized.cardRevision,
@@ -135,6 +164,35 @@ export function createCharacterCardRunner({
         bioSource: finalized.audit.bioSource,
         mediaPriority
       }
+  }
+
+  async function advanceWindows(input, normalizedText = null) {
+    const advanced = await repository.advanceCardWindows({
+      runId: input.runId,
+      bookEditionId: input.bookEditionId
+    })
+    if (advanced?.closed?.length || advanced?.enqueued?.created) {
+      log.info('card.window_advanced', 'Окно карточек продвинуто', {
+        run: input.runId,
+        edition: input.bookEditionId,
+        closed: advanced.closed,
+        enqueued_window: advanced.enqueued?.windowIndex ?? null,
+        enqueued_cards: advanced.enqueued?.created ?? 0
+      })
     }
+    // Закрытое окно — момент, когда состав карточек перестал меняться. Раньше
+    // публиковать нечего, позже — значит держать книгу закрытой для читателя.
+    if (advanced?.closed?.length && publicationRunner) {
+      await publicationRunner
+        .publish({ runId: input.runId, normalizedText })
+        .catch((error) => {
+          log.error('card.publication_failed', 'Разметку из карточек опубликовать не удалось', {
+            run: input.runId,
+            edition: input.bookEditionId,
+            error_code: error?.code ?? 'UNKNOWN'
+          })
+        })
+    }
+    return advanced
   }
 }

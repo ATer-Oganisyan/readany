@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  bookSceneFrontier,
+  bookScenePregenerationMode,
   BOOK_MEDIA_LOOKAHEAD_FRACTION,
   BOOK_READER_SCENE_CONTEXT_TEXT_LENGTH,
   BOOK_READER_SCENE_VERSION,
   BOOK_SCENE_INTERVAL_TEXT_LENGTH,
   BOOK_SCENE_POLICY_VERSION,
   bookMediaFrontier,
+  bookSceneStretchAt,
   bookReaderSceneAt,
   bookScenePolicy,
   bookSceneSlotAt,
@@ -84,4 +87,58 @@ test('prefetch selects scene anchors inside the media frontier without per-place
       { slotIndex: 1, anchorTextOffset: 9_000 }
     ]
   )
+})
+
+test('the scene frontier follows the reader, and the mode says whether it moves at all', () => {
+  // Инцидент 31 августа был не в подогреве самом по себе: у каталожной книги
+  // фронтир равен всей книге, и 45 слотов «Героя нашего времени» вставали в
+  // очередь разом — 10 639 заданий по установке. Пачка за читателем это 4–14.
+  const textLength = 267_759
+  const policy = bookScenePolicy(textLength)
+  const pack = (readerTextOffset) => bookSceneSlotsThrough(
+    policy,
+    textLength,
+    bookSceneFrontier({ scope: 'catalog', textLength, readerTextOffset })
+  ).length
+  assert.equal(pack(0), 4)
+  assert.equal(pack(5_754), 5)
+  assert.equal(pack(60_000), 14)
+
+  // Прежнее поведение остаётся доступным, но только по явному запросу.
+  assert.equal(
+    bookSceneFrontier({ scope: 'catalog', textLength, mode: 'book' }),
+    textLength
+  )
+  assert.throws(
+    () => bookSceneFrontier({ scope: 'catalog', textLength, mode: 'всё' }),
+    /mode/
+  )
+
+  assert.equal(bookScenePregenerationMode({}), 'none')
+  assert.equal(bookScenePregenerationMode({ BOOK_SCENE_PREGENERATION: 'reader' }), 'reader')
+  assert.equal(bookScenePregenerationMode({ BOOK_SCENE_PREGENERATION: ' BOOK ' }), 'book')
+  assert.throws(
+    () => bookScenePregenerationMode({ BOOK_SCENE_PREGENERATION: 'да' }),
+    { code: 'BOOK_SCENE_PREGENERATION_INVALID' }
+  )
+})
+
+test('отрезок книги, который иллюстрирует одна картинка', () => {
+  const policy = bookScenePolicy(100_000)
+  // Любая точка внутри интервала даёт один и тот же отрезок: в этом и смысл —
+  // пока читатель в нём, следующую врезку предлагать нечего.
+  assert.deepEqual(bookSceneStretchAt(policy, 100_000, 0), {
+    startTextOffset: 0, endTextOffset: 6_000, endFraction: 0.06
+  })
+  assert.deepEqual(bookSceneStretchAt(policy, 100_000, 5_999), {
+    startTextOffset: 0, endTextOffset: 6_000, endFraction: 0.06
+  })
+  assert.deepEqual(bookSceneStretchAt(policy, 100_000, 6_000), {
+    startTextOffset: 6_000, endTextOffset: 12_000, endFraction: 0.12
+  })
+  // Хвост книги: конец последнего отрезка — ровно единица, иначе в остатке
+  // врезки предлагались бы снова и снова.
+  assert.deepEqual(bookSceneStretchAt(policy, 100_000, 99_999), {
+    startTextOffset: 96_000, endTextOffset: 100_000, endFraction: 1
+  })
 })

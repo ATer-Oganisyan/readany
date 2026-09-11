@@ -31,7 +31,14 @@ function hash(value) {
 const CHAPTER = 10_000
 
 /** Книга из `chapterCount` глав: окно 0 — первые две главы, дальше по одной. */
-async function seedBook(pool, { chapterCount = 6, charactersPerWindow = 2 } = {}) {
+async function seedBook(pool, {
+  chapterCount = 6,
+  charactersPerWindow = 2,
+  // Цепочка окон в проде трогается только после полного захода: до него roster
+  // знает лишь героев первых глав. Фикстура повторяет это, иначе тест
+  // проверял бы механику, которой в жизни не бывает.
+  bookRosterConfirmed = true
+} = {}) {
   const bookEditionId = randomUUID()
   const runId = randomUUID()
   const textLength = chapterCount * CHAPTER
@@ -110,6 +117,15 @@ async function seedBook(pool, { chapterCount = 6, charactersPerWindow = 2 } = {}
         [runId, characterKey, `Герой ${chapter.index}-${index}`, offset]
       )
     }
+  }
+  if (bookRosterConfirmed) {
+    await pool.query(
+      `INSERT INTO generation_jobs (
+         id, idempotency_key, job_type, book_edition_id, target_version,
+         status, priority, payload, analysis_run_id
+       ) VALUES ($1, $2, 'roster_confirm', $3, 'roster-confirm-v1', 'ready', 45, '{}'::jsonb, $4)`,
+      [randomUUID(), `${runId}:roster-confirm:book`, bookEditionId, runId]
+    )
   }
   return {
     bookEditionId,
@@ -588,6 +604,81 @@ test('the first window of every book outranks the background windows of all othe
       )
       assert.equal(windowIndex, 0, 'выдано не окно первых глав')
     }
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('the window chain waits for the whole-book roster before it moves on', {
+  skip: !connectionString
+}, async () => {
+  // До полного захода roster знает только героев первых глав. Двинувшись
+  // раньше, цепочка выбрала бы пустоту: каждое следующее окно вставало бы
+  // `ready` без единой карточки, и она добежала бы до конца книги вхолостую —
+  // а книга осталась бы с карточками одних первых глав.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const { bookEditionId, runId } = await seedBook(pool, {
+      chapterCount: 4,
+      charactersPerWindow: 1,
+      bookRosterConfirmed: false
+    })
+    await repository.enqueueCardWindow({ runId, bookEditionId, windowIndex: 0, priority: 60 })
+    await finishCardJobs(pool, runId, 0)
+
+    const held = await repository.advanceCardWindows({ runId, bookEditionId })
+    assert.equal(held.enqueued, null, 'цепочка ушла вперёд подтверждения состава')
+    assert.equal(held.waitingForBookRoster, true)
+
+    await pool.query(
+      `INSERT INTO generation_jobs (
+         id, idempotency_key, job_type, book_edition_id, target_version,
+         status, priority, payload, analysis_run_id
+       ) VALUES ($1, $2, 'roster_confirm', $3, 'roster-confirm-v1', 'ready', 45, '{}'::jsonb, $4)`,
+      [randomUUID(), `${runId}:roster-confirm:book`, bookEditionId, runId]
+    )
+    const moved = await repository.advanceCardWindows({ runId, bookEditionId })
+    assert.notEqual(moved.enqueued, null, 'цепочка не пошла после полного захода')
+    assert.equal(moved.waitingForBookRoster, undefined)
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('an empty window does not stop the chain', {
+  skip: !connectionString
+}, async () => {
+  // Окно, в котором не оказалось ни одного персонажа, закрывается сразу и
+  // карточек не даёт — а цепочку двигает именно завершённая карточка. На
+  // «Герое» и «Дубровском» это останавливало книгу на третьем окне: второе
+  // пустое, и дальше не шёл никто, хотя в следующем персонажи были.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const { bookEditionId, runId } = await seedBook(pool, { chapterCount: 6, charactersPerWindow: 1 })
+    await repository.enqueueCardWindow({ runId, bookEditionId, windowIndex: 0, priority: 60 })
+    await finishCardJobs(pool, runId, 0)
+
+    // Второе окно остаётся без героев: их фрагменты убраны.
+    const [, second] = await assignmentRanges(pool, runId)
+    await pool.query(
+      `DELETE FROM book_character_fragments
+        WHERE run_id = $1 AND start_offset >= $2 AND start_offset < $3`,
+      [runId, second[0], second[1]]
+    )
+
+    const advanced = await repository.advanceCardWindows({ runId, bookEditionId })
+    // Пустое окно пройдено насквозь, карточки поставлены в следующее за ним.
+    assert.ok(advanced.closed.includes(1), 'пустое окно не закрыто')
+    assert.ok(advanced.enqueued, 'цепочка встала на пустом окне')
+    assert.ok(advanced.enqueued.created > 0, 'следующее окно осталось без карточек')
+    assert.ok(Number(advanced.enqueued.windowIndex) > 1)
+
+    const statuses = await windowStatuses(pool, runId)
+    assert.equal(statuses[1], 'ready')
   } finally {
     await isolated.release()
   }

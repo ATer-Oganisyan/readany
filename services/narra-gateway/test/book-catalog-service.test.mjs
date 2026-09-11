@@ -991,6 +991,85 @@ test('canonical v3 progress queues media for characters behind the warmup fronti
   assert.deepEqual(result.warmup, { requested: 1, ready: 0, pending: 1, failed: 0 })
 })
 
+test('scene packs follow the reader only when pregeneration is switched on', async () => {
+  // Подогрев выключен по умолчанию не из осторожности вообще, а по следам
+  // инцидента: 31 августа очередь сцен чистили руками (10 639 заданий по 148
+  // книгам), и на следующий день автоподогрев выключили. Причина была в том,
+  // что у каталожной книги фронтир равен всей книге — 45 слотов «Героя нашего
+  // времени» вставали в очередь разом. Пачка за читателем это 4–14 сцен, и
+  // включается она явно.
+  const calls = []
+  const service = createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          scope: 'catalog',
+          analysisVersion: 'book-markup-v3',
+          readerTextOffset: 36_000,
+          readingFraction: 0.36,
+          chapterKey: 'chapter-4',
+          charactersDue: []
+        }
+      },
+      async ensureBookScenesThrough(input) {
+        calls.push(input)
+        return { requested: 5, ready: 1, pending: 4, failed: 0 }
+      }
+    }),
+    analysisRepository: { async ensureLatestMediaProjection() { return { projected: true } } }
+  })
+
+  const previous = process.env.BOOK_SCENE_PREGENERATION
+  process.env.BOOK_SCENE_PREGENERATION = 'reader'
+  try {
+    const result = await service.advanceProgress('reader-1', 'book-1', {
+      progressFraction: 0.36, textOffset: null, chapterKey: 'chapter-4'
+    })
+    assert.deepEqual(calls, [{
+      subjectId: 'reader-1', bookEditionId: 'book-1', readerTextOffset: 36_000
+    }])
+    assert.deepEqual(result.sceneWarmup, { requested: 5, ready: 1, pending: 4, failed: 0 })
+  } finally {
+    if (previous === undefined) delete process.env.BOOK_SCENE_PREGENERATION
+    else process.env.BOOK_SCENE_PREGENERATION = previous
+  }
+})
+
+test('a failed scene pack does not lose the reader position', async () => {
+  // Читатель дочитал до этого места независимо от того, получилось ли сделать
+  // ему картинки: подогрев не вправе ронять запись позиции.
+  const service = createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          scope: 'catalog',
+          analysisVersion: 'book-markup-v3',
+          readerTextOffset: 36_000,
+          readingFraction: 0.36,
+          chapterKey: 'chapter-4',
+          charactersDue: []
+        }
+      },
+      async ensureBookScenesThrough() {
+        throw Object.assign(new Error('очередь на паузе'), { code: 'OPERATOR_PAUSED' })
+      }
+    }),
+    analysisRepository: { async ensureLatestMediaProjection() { return { projected: true } } }
+  })
+  const previous = process.env.BOOK_SCENE_PREGENERATION
+  process.env.BOOK_SCENE_PREGENERATION = 'reader'
+  try {
+    const result = await service.advanceProgress('reader-1', 'book-1', {
+      progressFraction: 0.36, textOffset: null, chapterKey: 'chapter-4'
+    })
+    assert.equal(result.readerTextOffset, 36_000)
+    assert.equal(result.sceneWarmup.error, 'OPERATOR_PAUSED')
+  } finally {
+    if (previous === undefined) delete process.env.BOOK_SCENE_PREGENERATION
+    else process.env.BOOK_SCENE_PREGENERATION = previous
+  }
+})
+
 test('canonical progress never prefetches scenes automatically', async () => {
   const calls = []
   const service = createBookCatalogService({

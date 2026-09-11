@@ -27,15 +27,52 @@ export const MODEL_REQUEST_CAPABILITIES = Object.freeze({
   })
 })
 
-export function requestOptionsForModel({ provider, model, purpose }) {
+// Задачи, ответ которых разбирается как JSON-объект, а не читается человеком.
+// Для них формат — часть контракта, а не пожелание.
+const JSON_OBJECT_PURPOSES = new Set(['structured_task'])
+
+/**
+ * Отключение JSON-формата для провайдера, который его не принимает.
+ *
+ * Зеркало `*_OMIT_TEMPERATURE`: там же, где провайдер отвергает явную
+ * температуру, он может отвергнуть и `response_format`. Ответ на это —
+ * настройка, а не молчаливый отказ от формата: без неё непонятно, почему
+ * запросы вдруг стали падать с 400.
+ */
+export function omitsJsonResponseFormat(providerName, env = process.env) {
+  const raw = providerName === 'litellm'
+    ? env.LITELLM_OMIT_JSON_RESPONSE_FORMAT
+    : env.LLM_OMIT_JSON_RESPONSE_FORMAT
+  return String(raw ?? '').trim().toLowerCase() === 'true'
+}
+
+/**
+ * Форма запроса под конкретную пару провайдер/модель.
+ *
+ * `response_format` для структурных задач запрашивается по умолчанию, в
+ * отличие от температуры, которую включает только явная запись о модели.
+ * Причина в цене ошибки. Неподдержанный `response_format` — это 400: громко,
+ * сразу и с подсказкой в логе. Незапрошенный — это reasoning-модель, которая
+ * тратит весь `max_tokens` на рассуждение и возвращает пустой или обрезанный
+ * `content`; вызов при этом «успешен», стоит денег и минуту времени, а
+ * разбор падает на «LLM did not return a JSON object».
+ *
+ * Замер на deepseek-v4-flash с промптом карточки: без формата — 6367
+ * reasoning-токенов и 58 секунд, с форматом — ноль и 2 секунды.
+ */
+export function requestOptionsForModel({ provider, model, purpose, env = process.env }) {
+  const options = JSON_OBJECT_PURPOSES.has(purpose) && !omitsJsonResponseFormat(provider, env)
+    ? { response_format: { type: 'json_object' } }
+    : {}
+
   const desired = PURPOSE_REQUEST_CONFIG[purpose] || {}
   const capabilities = MODEL_REQUEST_CAPABILITIES[`${provider}:${model}`]
-  if (desired.temperature === undefined || !capabilities?.temperature) return {}
+  if (desired.temperature === undefined || !capabilities?.temperature) return options
 
   const temperature = Number(desired.temperature)
   const supported = capabilities.temperature
   if (!Number.isFinite(temperature) || temperature < supported.min || temperature > supported.max) {
-    return {}
+    return options
   }
-  return { temperature, ...supported.requires }
+  return { ...options, temperature, ...supported.requires }
 }

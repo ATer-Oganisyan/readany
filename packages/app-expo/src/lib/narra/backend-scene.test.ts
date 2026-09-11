@@ -46,6 +46,18 @@ describe("backend scene contract", () => {
     expect(isBackendSceneReady(undefined, "ready")).toBe(false);
     expect(isBackendSceneReady("edition", "ready")).toBe(true);
   });
+  it("reads the stretch the picture illustrates, and ignores a nonsensical one", () => {
+    // Сервер владеет сеткой: внутри отрезка книгу иллюстрирует одна картинка,
+    // и читателю нужна его граница, чтобы не предложить вторую врезку рядом.
+    expect(parseBackendScene({ ...wire(), stretch_end_fraction: 0.48 }).stretchEndFraction).toBe(
+      0.48,
+    );
+    expect(parseBackendScene(wire()).stretchEndFraction).toBeUndefined();
+    for (const value of [0, -0.1, 1.5, Number.NaN, "0.5", null])
+      expect(
+        parseBackendScene({ ...wire(), stretch_end_fraction: value }).stretchEndFraction,
+      ).toBeUndefined();
+  });
   it("sends only the captured fraction using the shared authenticated API", async () => {
     network.request.mockResolvedValue(wire());
     const signal = new AbortController().signal;

@@ -19,14 +19,25 @@ import {
 } from './book-markup.mjs'
 import {
   bookMediaFrontier,
+  bookSceneFrontier,
+  bookScenePregenerationMode,
   bookReaderSceneAt,
   bookSceneIdempotencyKey,
   bookSceneSlotAt,
+  bookSceneStretchAt,
   bookSceneSlotsThrough,
   normalizeBookScenePolicy
 } from '../generation/book-scenes.mjs'
-import { BOOK_ANALYSIS_NORMALIZATION_VERSION } from '../analysis/book-analysis-pipeline.mjs'
-import { BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION } from '../analysis/book-analysis-contracts.mjs'
+import {
+  BOOK_ANALYSIS_NORMALIZATION_VERSION,
+  bookAnalysisPublicationProvenance
+} from '../analysis/book-analysis-pipeline.mjs'
+import {
+  BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
+  BOOK_ANALYSIS_MARKUP_VERSION,
+  BOOK_ANALYSIS_SCHEMA_VERSION
+} from '../analysis/book-analysis-contracts.mjs'
+import { materializeMarkupVersion } from '../analysis/book-markup-materialization.mjs'
 import {
   CARD_MEDIA_PRIORITY,
   CHARACTER_CARD_TARGET_VERSION
@@ -462,6 +473,53 @@ export function createPostgresBookMarkupRepository(pool, {
     }
   }
 
+  /**
+   * Готовая сцена интервала, в который попал читатель, — если она есть.
+   *
+   * Предгенерация рисует одну картинку на интервал книги, чтение просит
+   * картинку к точной позиции, и ключи у них разные по построению. Без этой
+   * проверки заранее оплаченная картинка не достаётся никому: читатель всегда
+   * запускал рисование заново и ждал его двадцать секунд. Берём прогретую
+   * только когда она действительно готова — незаконченная ничем не лучше
+   * собственной, а ждать чужую очередь читателю незачем.
+   */
+  async function warmSceneAt(client, context, readerTextOffset) {
+    const slot = bookSceneSlotAt(context.policy, context.textLength, readerTextOffset)
+    const result = await client.query(
+      `SELECT scene.scene_key, scene.slot_index, scene.anchor_text_offset,
+              job.id AS job_id, job.status,
+              asset.id AS asset_id, asset.object_key, asset.type,
+              asset.content_hash, asset.mime_type, asset.byte_size
+       FROM book_scene_slots AS scene
+       JOIN generation_jobs AS job ON job.id = scene.job_id
+       JOIN media_assets AS asset
+         ON asset.id = scene.asset_id AND asset.status = 'ready'
+       WHERE scene.markup_version_id = $1 AND scene.slot_index = $2
+         AND scene.policy_version = $3`,
+      [context.markupVersionId, slot.slotIndex, context.policy.version]
+    )
+    const row = result.rows[0]
+    if (!row) return null
+    return {
+      sceneKey: row.scene_key,
+      jobId: row.job_id,
+      slotIndex: Number(row.slot_index),
+      anchorTextOffset: Number(row.anchor_text_offset),
+      stretchEndFraction: bookSceneStretchAt(
+        context.policy, context.textLength, readerTextOffset
+      ).endFraction,
+      status: 'ready',
+      asset: {
+        assetId: row.asset_id,
+        objectKey: row.object_key,
+        type: row.type,
+        contentHash: row.content_hash,
+        mimeType: row.mime_type,
+        byteSize: Number(row.byte_size)
+      }
+    }
+  }
+
   function identityJobSpec(edition) {
     const targetVersion = bookIdentityTargetVersion({
       contentSha256: edition.content_sha256,
@@ -543,6 +601,12 @@ export function createPostgresBookMarkupRepository(pool, {
            LEFT JOIN book_character_fragments AS fragment
              ON fragment.run_id = roster.run_id
             AND fragment.character_key = ANY(roster.candidate_keys)
+            -- Абзац принадлежит окну, в котором он начинается. Предикат тот же,
+            -- что у сборки карточки, и это важнее самой границы: пока они
+            -- расходились, персонаж с единственным абзацем на границе окна
+            -- сначала падал на CARD_FRAGMENTS_MISSING, а после «целиком внутри»
+            -- стал пропадать молча — «Александр Троекуров» с четырнадцатью
+            -- фрагментами остался без карточки вовсе.
             AND fragment.start_offset < $2
            WHERE roster.run_id = $1
              AND roster.first_mention_text_offset >= $3
@@ -1601,10 +1665,17 @@ export function createPostgresBookMarkupRepository(pool, {
         const canonicalOffset = progressFraction != null
           ? Math.round(context.textLength * Math.min(1, Math.max(0, progressFraction)))
           : readerTextOffset
-        const slot = bookReaderSceneAt(
-          context.textLength,
-          Math.min(context.textLength - 1, Math.max(0, canonicalOffset ?? 0))
+        const anchorTextOffset = Math.min(
+          context.textLength - 1,
+          Math.max(0, canonicalOffset ?? 0)
         )
+        const warm = await warmSceneAt(client, context, anchorTextOffset)
+        if (warm) {
+          if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
+          return warm
+        }
+        const stretch = bookSceneStretchAt(context.policy, context.textLength, anchorTextOffset)
+        const slot = bookReaderSceneAt(context.textLength, anchorTextOffset)
         const scene = await ensureSceneSlot(
           client,
           context,
@@ -1613,7 +1684,7 @@ export function createPostgresBookMarkupRepository(pool, {
           () => beforeCreateReaderScene(subjectId)
         )
         if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
-        return scene
+        return { ...scene, stretchEndFraction: stretch.endFraction }
       })
     },
 
@@ -1631,8 +1702,13 @@ export function createPostgresBookMarkupRepository(pool, {
       subjectId,
       bookEditionId,
       readerTextOffset,
-      priority = 45
+      priority = 45,
+      // Режим решает вызывающий, а не окружение процесса: операторская команда
+      // просит пачку осознанно и должна работать даже там, где фоновый подогрев
+      // выключен. Настройку читает тот, кто ходит за читателем.
+      mode = bookScenePregenerationMode()
     }) {
+      if (mode === 'none') return { requested: 0, ready: 0, pending: 0, failed: 0 }
       return transaction(pool, async (client) => {
         const context = await loadSceneContext(client, { subjectId, bookEditionId })
         if (!context) return { requested: 0, ready: 0, pending: 0, failed: 0 }
@@ -1640,10 +1716,11 @@ export function createPostgresBookMarkupRepository(pool, {
           if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
           return { requested: 0, ready: 0, pending: 0, failed: 0 }
         }
-        const frontier = bookMediaFrontier({
+        const frontier = bookSceneFrontier({
           scope: context.scope,
           textLength: context.textLength,
-          readerTextOffset
+          readerTextOffset,
+          mode
         })
         const slots = bookSceneSlotsThrough(context.policy, context.textLength, frontier)
         const scenes = []
@@ -2436,15 +2513,39 @@ export function createPostgresBookMarkupRepository(pool, {
       return results
     },
 
-    async retryFailedGenerationJobs({ limit = 100 } = {}) {
+    /**
+     * Повтор провалившихся заданий генерации, с необязательным сужением.
+     *
+     * Без сужения повтор берёт самые старые провалы очереди. На установке, где
+     * их десятки тысяч, это значит «повторить чужое»: адресно вернуть в работу
+     * три задания конкретной книги было нечем, и оставался ручной UPDATE по
+     * продовой базе. Фильтры и добавлены под это — операторская задача, а не
+     * запрос в psql.
+     */
+    async retryFailedGenerationJobs({ limit = 100, jobTypes = null, bookEditionIds = null } = {}) {
       if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000) {
         throw new RangeError('retry limit must be between 1 and 1000')
+      }
+      const safeJobTypes = jobTypes === null ? null : [...new Set(jobTypes)]
+      if (safeJobTypes !== null && !safeJobTypes.length) {
+        throw new RangeError('jobTypes must name at least one job type')
+      }
+      const safeEditionIds = bookEditionIds === null
+        ? null
+        : [...new Set(bookEditionIds)].map((value) => {
+          if (!UUID.test(String(value))) throw new TypeError('bookEditionId must be a UUID')
+          return String(value)
+        })
+      if (safeEditionIds !== null && !safeEditionIds.length) {
+        throw new RangeError('bookEditionIds must name at least one edition')
       }
       return transaction(pool, async (client) => {
         const retried = await client.query(
           `WITH candidates AS (
              SELECT id FROM generation_jobs
              WHERE status = 'failed' AND operator_pause_id IS NULL
+               AND ($2::text[] IS NULL OR job_type = ANY($2::text[]))
+               AND ($3::uuid[] IS NULL OR book_edition_id = ANY($3::uuid[]))
              ORDER BY updated_at, created_at
              FOR UPDATE SKIP LOCKED
              LIMIT $1
@@ -2456,7 +2557,7 @@ export function createPostgresBookMarkupRepository(pool, {
            FROM candidates
            WHERE job.id = candidates.id
            RETURNING job.*`,
-          [limit]
+          [limit, safeJobTypes, safeEditionIds]
         )
         const characterJobs = retried.rows.filter((row) => row.character_key)
         for (const row of characterJobs) {
@@ -2704,6 +2805,14 @@ export function createPostgresBookMarkupRepository(pool, {
         [runId]
       )
       if (!windows.rows.length) return { closed: [], enqueued: null }
+      // Область видимости — свойство книги, а не аргумент вызывающего:
+      // воркер карточки о ней не знает, а ошибиться здесь значит либо
+      // остановить каталог, либо раскатать приватную книгу вперёд читателя.
+      const bookScope = scope ?? (await pool.query(
+        'SELECT scope FROM book_editions WHERE id = $1',
+        [bookEditionId]
+      )).rows[0]?.scope
+      if (!bookScope) return { closed: [], enqueued: null }
       const closed = []
       for (const row of windows.rows) {
         if (row.status !== 'running') continue
@@ -2739,18 +2848,49 @@ export function createPostgresBookMarkupRepository(pool, {
         status: row.status
       }))
       const maxChapterIndex = cardWindowChapterFrontier({
-        scope,
+        scope: bookScope,
         windows: scheduleWindows,
         readerTextOffset
       })
       const next = nextCardWindow({ windows: scheduleWindows, maxChapterIndex })
       if (!next) return { closed, enqueued: null, maxChapterIndex }
-      const enqueued = await this.enqueueCardWindow({
-        runId,
-        bookEditionId,
-        windowIndex: next.windowIndex,
-        priority: next.priority
-      })
+      // Дальше первого окна цепочка не идёт, пока состав книги не подтверждён
+      // целиком. До полного захода roster знает только героев первых глав, и
+      // остальные окна выбрали бы пустоту: каждое встало бы `ready` без единой
+      // карточки, и цепочка добежала бы до конца книги вхолостую.
+      const bookPass = await pool.query(
+        `SELECT 1 FROM generation_jobs
+          WHERE analysis_run_id = $1 AND job_type = 'roster_confirm'
+            AND card_window_index IS NULL AND status = 'ready'
+          LIMIT 1`,
+        [runId]
+      )
+      if (!bookPass.rows.length) {
+        return { closed, enqueued: null, maxChapterIndex, waitingForBookRoster: true }
+      }
+      // Пустое окно проходится насквозь. Окно, в котором не оказалось ни
+      // одного персонажа, закрывается сразу и карточек не даёт — а цепочку
+      // двигает именно завершённая карточка. На «Герое» и «Дубровском» это
+      // останавливало книгу на третьем окне: второе пустое, и дальше не шёл
+      // никто, хотя в следующем персонажи были.
+      let enqueued = null
+      let cursor = next
+      for (let step = 0; step < scheduleWindows.length && cursor; step += 1) {
+        enqueued = await this.enqueueCardWindow({
+          runId,
+          bookEditionId,
+          windowIndex: cursor.windowIndex,
+          priority: cursor.priority
+        })
+        if (enqueued.created > 0) break
+        closed.push(cursor.windowIndex)
+        const passed = scheduleWindows.map((window) => window.windowIndex === cursor.windowIndex
+          ? { ...window, status: 'ready' }
+          : window)
+        scheduleWindows.length = 0
+        scheduleWindows.push(...passed)
+        cursor = nextCardWindow({ windows: scheduleWindows, maxChapterIndex })
+      }
       return { closed, enqueued, maxChapterIndex }
     },
 
@@ -2880,6 +3020,29 @@ export function createPostgresBookMarkupRepository(pool, {
         // другой исполнитель; без проверки прежний записал бы свой результат
         // поверх чужой работы и сбросил бы новую аренду.
         await requireLeasedJob(client, job)
+        // Кандидат принадлежит ровно одному персонажу прогона — это держит
+        // `book_character_roster_candidate_unique`. Но подтверждение как раз и
+        // перегруппировывает кандидатов: полный заход по книге собирает
+        // «Дубровского» из тех же имён, из которых окно собрало «Дубровском», и
+        // под другим ключом. Upsert идёт по (run_id, character_key) и такую
+        // строку не видит — заход падал на нарушении уникальности и не мог
+        // завершиться никогда.
+        //
+        // Снимаются только строки, чьих кандидатов забрал другой персонаж
+        // нового состава. Всё остальное остаётся: подтверждение уточняет
+        // состав, а не переписывает историю прогона.
+        const claimedCandidates = roster
+          .map((character) => (character.candidateKeys ?? [])[0])
+          .filter(Boolean)
+        if (claimedCandidates.length) {
+          await client.query(
+            `DELETE FROM book_character_roster
+              WHERE run_id = $1
+                AND candidate_keys[1] = ANY($2::text[])
+                AND character_key <> ALL($3::text[])`,
+            [runId, claimedCandidates, roster.map((character) => character.characterKey)]
+          )
+        }
         for (const character of roster) {
           await client.query(
             `INSERT INTO book_character_roster (
@@ -3362,6 +3525,223 @@ export function createPostgresBookMarkupRepository(pool, {
           status: inserted.rows[0] ? 'published' : 'existing',
           cardId: inserted.rows[0]?.id ?? null,
           media
+        }
+      })
+    },
+
+    /**
+     * Всё, из чего собирается публикация карточек: карточки и координаты цитат.
+     *
+     * Текст книги здесь не читается — только его адрес и хэш. Цитаты
+     * восстанавливает вызывающий, у которого есть хранилище, и по тем же
+     * правилам, что и карточка: в `book_character_fragments` текст намеренно не
+     * дублируется, иначе у evidence появился бы второй источник истины.
+     */
+    async getCardPublicationInput({ runId }) {
+      if (!UUID.test(String(runId))) throw new TypeError('runId must be a UUID')
+      const run = await pool.query(
+        `SELECT run.book_edition_id, run.normalized_text_object_key,
+                run.normalized_text_hash, inventory.text_length
+         FROM book_analysis_runs AS run
+         LEFT JOIN book_name_inventory AS inventory ON inventory.run_id = run.id
+         WHERE run.id = $1 AND run.pipeline_id = 'cards'`,
+        [runId]
+      )
+      if (!run.rows[0]) return null
+      const cards = await pool.query(
+        `SELECT document FROM book_character_cards
+         WHERE run_id = $1 AND enabled
+         ORDER BY first_mention_text_offset, character_key`,
+        [runId]
+      )
+      const fragments = await pool.query(
+        `SELECT fragment_id, character_key, chapter_index, start_offset, end_offset
+         FROM book_character_fragments
+         WHERE run_id = $1
+         ORDER BY character_key, start_offset`,
+        [runId]
+      )
+      return {
+        runId,
+        bookEditionId: run.rows[0].book_edition_id,
+        normalizedTextObjectKey: run.rows[0].normalized_text_object_key,
+        normalizedTextHash: run.rows[0].normalized_text_hash,
+        textLength: run.rows[0].text_length == null ? null : Number(run.rows[0].text_length),
+        cards: cards.rows.map(({ document }) => document),
+        fragments: fragments.rows.map((row) => ({
+          fragmentId: row.fragment_id,
+          characterKey: row.character_key,
+          chapterIndex: Number(row.chapter_index),
+          startOffset: Number(row.start_offset),
+          endOffset: Number(row.end_offset)
+        }))
+      }
+    },
+
+    /**
+     * Публикация разметки, собранной из карточек.
+     *
+     * Конвейер карточек до сих пор ничего не публиковал: книге каталога
+     * разметку уже дал narra, и надстройки хватало. Свежая приватная книга
+     * оставалась в статусе marking_up навсегда — читатель видит книгу через
+     * `book_markup_versions`, а их заполняет только публикация.
+     *
+     * Публикуется то, что готово сейчас, и публикуется снова, когда окна
+     * открылись дальше. Неизменившийся снимок отбивается уникальностью
+     * `(run_id, content_hash)` и no-op'ом возвращается вызывающему: повторная
+     * публикация того же самого не должна ни плодить ревизии разметки, ни
+     * трогать медиа.
+     *
+     * Медиа здесь не заказывается намеренно. Карточный путь ставит его сам, по
+     * ревизии карточки; общий заказ выдал бы тем же персонажам вторую пачку по
+     * ключам старой разметки.
+     */
+    async publishCardsMarkup({
+      runId,
+      bookEditionId,
+      snapshot,
+      markup,
+      markupContentHash,
+      validation
+    }) {
+      if (!UUID.test(String(runId))) throw new TypeError('runId must be a UUID')
+      if (!UUID.test(String(bookEditionId))) throw new TypeError('bookEditionId must be a UUID')
+      if (validation?.valid !== true) {
+        throw Object.assign(
+          new Error('card markup did not pass validation'),
+          { code: 'CARD_PUBLICATION_INVALID', errors: validation?.errors ?? [] }
+        )
+      }
+      return transaction(pool, async (client) => {
+        const run = await client.query(
+          `SELECT * FROM book_analysis_runs
+           WHERE id = $1 AND book_edition_id = $2 AND pipeline_id = 'cards'
+             AND status = 'running'
+           FOR UPDATE`,
+          [runId, bookEditionId]
+        )
+        if (!run.rows[0]) {
+          throw Object.assign(new Error('cards run is not running'), { code: 'RUN_STATE_CHANGED' })
+        }
+        if (!['synthesize', 'publish'].includes(run.rows[0].stage)) {
+          throw Object.assign(
+            new Error(`cards run cannot publish from ${run.rows[0].stage}`),
+            { code: 'RUN_STATE_CHANGED' }
+          )
+        }
+        const version = await client.query(
+          `SELECT COALESCE(MAX(snapshot_version), 0) + 1 AS version
+           FROM book_analysis_snapshots WHERE run_id = $1`,
+          [runId]
+        )
+        const frozen = await client.query(
+          `INSERT INTO book_analysis_snapshots (
+             id, run_id, snapshot_version, content_hash, evidence_count, data
+           ) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+           ON CONFLICT (run_id, content_hash) DO NOTHING
+           RETURNING id`,
+          [
+            snapshot.id, runId, Number(version.rows[0].version), snapshot.contentHash,
+            snapshot.evidenceCount, JSON.stringify(snapshot.data)
+          ]
+        )
+        // Снимок тот же — публиковать нечего. Это обычный случай: окно
+        // закрылось, не добавив ни одной карточки.
+        if (!frozen.rows[0]) return { published: false, reason: 'unchanged' }
+
+        const artifactKey = `cards:${markupContentHash.slice(0, 16)}`
+        const markupArtifactId = idFactory()
+        await client.query(
+          `INSERT INTO book_analysis_artifacts (
+             id, run_id, snapshot_id, artifact_kind, artifact_key,
+             schema_version, status, content_hash, data
+           ) VALUES ($1, $2, $3, 'book_markup', $4, $5, 'valid', $6, $7::jsonb)`,
+          [
+            markupArtifactId, runId, snapshot.id, artifactKey,
+            BOOK_ANALYSIS_SCHEMA_VERSION, markupContentHash, JSON.stringify(markup)
+          ]
+        )
+        const report = {
+          valid: true,
+          checks: validation.checks ?? {},
+          errors: [],
+          bindings: {
+            snapshotId: snapshot.id,
+            snapshotContentHash: snapshot.contentHash,
+            normalizedTextHash: run.rows[0].normalized_text_hash,
+            markupArtifactId,
+            markupContentHash
+          }
+        }
+        await client.query(
+          `INSERT INTO book_analysis_artifacts (
+             id, run_id, snapshot_id, artifact_kind, artifact_key,
+             schema_version, status, content_hash, data
+           ) VALUES ($1, $2, $3, 'validation_report', $4, $5, 'valid', $6, $7::jsonb)`,
+          [
+            idFactory(), runId, snapshot.id, artifactKey, BOOK_ANALYSIS_SCHEMA_VERSION,
+            createHash('sha256').update(JSON.stringify(report)).digest('hex'),
+            JSON.stringify(report)
+          ]
+        )
+        if (run.rows[0].stage === 'synthesize') {
+          await client.query(
+            "UPDATE book_analysis_runs SET stage = 'publish' WHERE id = $1",
+            [runId]
+          )
+        }
+        const publicationId = idFactory()
+        await client.query(
+          `INSERT INTO book_analysis_publications (
+             id, run_id, book_edition_id, artifact_id, channel,
+             analysis_version, content_hash, data
+           ) VALUES ($1, $2, $3, $4, 'shadow', $5, $6, $7::jsonb)`,
+          [
+            publicationId, runId, bookEditionId, markupArtifactId,
+            BOOK_ANALYSIS_MARKUP_VERSION, markupContentHash,
+            JSON.stringify({
+              schemaVersion: BOOK_ANALYSIS_SCHEMA_VERSION,
+              analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION,
+              artifactId: markupArtifactId,
+              snapshotId: snapshot.id,
+              provenance: bookAnalysisPublicationProvenance({
+                pipelineId: 'cards',
+                pipelineImplementationVersion: run.rows[0].pipeline_implementation_version,
+                pipelineVersion: run.rows[0].pipeline_version,
+                promptVersion: run.rows[0].prompt_version,
+                normalizationVersion: run.rows[0].normalization_version,
+                outputSchemaVersion: run.rows[0].output_schema_version,
+                inputHash: run.rows[0].input_hash,
+                normalizedTextHash: run.rows[0].normalized_text_hash
+              }),
+              markup
+            })
+          ]
+        )
+        const materialized = await materializeMarkupVersion(client, {
+          bookEditionId,
+          contentHash: markupContentHash,
+          markup,
+          idFactory,
+          notFound: () => Object.assign(
+            new Error('book edition is unavailable'),
+            { code: 'BOOK_NOT_FOUND' }
+          ),
+          schemaVersion: BOOK_ANALYSIS_SCHEMA_VERSION,
+          analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION
+        })
+        await client.query(
+          `UPDATE book_analysis_artifacts
+           SET status = 'published', published_at = now() WHERE id = $1`,
+          [markupArtifactId]
+        )
+        return {
+          published: true,
+          publicationId,
+          snapshotId: snapshot.id,
+          markupVersionId: materialized.markupId,
+          revision: materialized.revision,
+          characterCount: markup.characters.length
         }
       })
     },

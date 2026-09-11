@@ -280,3 +280,52 @@ test('finalization refuses a window with no fragments at all', () => {
     { code: 'CARD_FRAGMENTS_MISSING' }
   )
 })
+
+test('a window that counted more mentions than the roster raises the book count', () => {
+  // Два счётчика из разных проходов: в ростере — вхождения поверхностей имени
+  // по инвентарю, в окне — упоминания по фрагментам. Обычно первый больше, но
+  // на «Обломове» у двух персонажей вышло наоборот, и карточка падала на
+  // собственном инварианте «в окне не больше, чем в книге». Инвариант верен, а
+  // меньшее из двух чисел — нет: если окно насчитало больше, недосчитал ростер.
+  const built = request({ character: {
+    canonicalName: 'Элизабет',
+    names: ['Элизабет'],
+    mentionCount: 2,
+    firstMentionTextOffset: 0
+  } })
+  const counted = FRAGMENTS.map((item) => ({ ...item, mentionCount: 4 }))
+  const finalized = finalizeCharacterCard({
+    input: built,
+    result: { card: modelCard() },
+    fragments: counted,
+    createdAt: '2026-09-10T10:00:00Z'
+  })
+  assert.ok(finalized.card.mentionCountInWindow > 2)
+  assert.equal(finalized.card.mentionCount, finalized.card.mentionCountInWindow)
+})
+
+test('a paragraph that straddles the window belongs to the window it starts in', () => {
+  // Барьер отсекает главы, а не разрезает абзацы. Пока постановка задания и
+  // сборка карточки расходились в этом, персонаж с единственным абзацем на
+  // границе сначала падал на CARD_FRAGMENTS_MISSING, а потом стал пропадать
+  // молча: «Александр Троекуров» с четырнадцатью фрагментами остался без
+  // карточки вовсе.
+  const straddling = {
+    ...fragment(99, 'Элизабет вышла, и глава кончилась на полуслове.', WINDOW.endOffset - 10),
+    endOffset: WINDOW.endOffset + 500
+  }
+  const built = request({ fragments: [straddling] })
+  assert.equal(built.fragments.length, 1)
+  const finalized = finalizeCharacterCard({
+    input: built,
+    result: {
+      card: {
+        bio: { value: 'Элизабет уходит.', fragmentIds: [built.fragments[0].id], confidence: 0.9 },
+        traits: []
+      }
+    },
+    fragments: [straddling],
+    createdAt: '2026-09-11T10:00:00Z'
+  })
+  assert.equal(finalized.card.bio.value, 'Элизабет уходит.')
+})

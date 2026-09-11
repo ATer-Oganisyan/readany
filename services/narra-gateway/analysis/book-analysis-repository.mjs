@@ -15,6 +15,7 @@ import {
   normalizeBookMarkupV3,
   normalizeBookAnalysisResolvedEntity
 } from './book-analysis-contracts.mjs'
+import { materializeMarkupVersion } from './book-markup-materialization.mjs'
 import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
 import { resolveBookAnalysisEntities } from './book-analysis-resolver.mjs'
 import {
@@ -426,9 +427,21 @@ export function createPostgresBookAnalysisRepository(pool, {
   if (typeof pipelineForEdition !== 'function') {
     throw new TypeError('pipelineForEdition must be a function')
   }
-  function assignedPipelineId(bookEditionId) {
-    const assigned = pipelineForEdition(bookEditionId)
+  function assignedPipelineId(bookEditionId, scope = null) {
+    const assigned = pipelineForEdition(bookEditionId, scope)
     return assigned ? normalizeBookAnalysisPipelineId(assigned, 'pipelineForEdition') : null
+  }
+  /**
+   * Область видимости книги нужна до выбора конвейера, а выбор случается до
+   * транзакции: от него зависит ключ идемпотентности прогона. Поэтому отдельный
+   * короткий запрос, а не чтение внутри — иначе ключ пришлось бы считать дважды.
+   */
+  async function editionScope(bookEditionId) {
+    const result = await pool.query(
+      'SELECT scope FROM book_editions WHERE id = $1',
+      [bookEditionId]
+    )
+    return result.rows[0]?.scope ?? null
   }
   if (typeof mediaGenerationEnabled !== 'boolean') {
     throw new TypeError('mediaGenerationEnabled must be a boolean')
@@ -439,117 +452,29 @@ export function createPostgresBookAnalysisRepository(pool, {
     contentHash: markupContentHash,
     markup: rawMarkup,
     publishedAt = null,
-    retryFailedBundles = false
+    retryFailedBundles = false,
+    // Конвейер карточек ставит медиа сам, по ревизии карточки. Пустить сюда
+    // общий заказ значило бы выдать тем же персонажам вторую пачку по ключам
+    // старой разметки — ровно ту, что однажды дала книге 226 портретов.
+    enqueueMedia = true
   }) {
-    let markup = normalizeBookMarkupV3(rawMarkup)
-    const editionResult = await client.query(
-      `SELECT id, scope, expires_at
-       FROM book_editions WHERE id = $1 FOR UPDATE`,
-      [bookEditionId]
-    )
-    const edition = editionResult.rows[0]
-    if (!edition) throw repositoryError('BOOK_NOT_FOUND', 'book edition is unavailable')
-    const existing = await client.query(
-      `SELECT id, revision, status
-       FROM book_markup_versions
-       WHERE book_edition_id = $1 AND analysis_version = $2 AND input_hash = $3
-       LIMIT 1 FOR UPDATE`,
-      [bookEditionId, BOOK_ANALYSIS_MARKUP_VERSION, markupContentHash]
-    )
-    let markupId = existing.rows[0]?.id
-    let revision = existing.rows[0] ? Number(existing.rows[0].revision) : null
-    let created = false
-    if (!markupId) {
-      const revisionResult = await client.query(
-        `SELECT COALESCE(MAX(revision), 0) + 1 AS revision
-         FROM book_markup_versions WHERE book_edition_id = $1`,
-        [bookEditionId]
-      )
-      revision = Number(revisionResult.rows[0].revision)
-      markupId = idFactory()
-      await client.query(
-        `UPDATE book_markup_versions SET status = 'ready'
-         WHERE book_edition_id = $1 AND status = 'published'`,
-        [bookEditionId]
-      )
-      await client.query(
-        `INSERT INTO book_markup_versions (
-           id, book_edition_id, schema_version, analysis_version, revision,
-           status, input_hash, text_length, published_at, expires_at
-         ) VALUES ($1, $2, $3, $4, $5, 'published', $6, $7,
-           COALESCE($8::timestamptz, now()), $9)`,
-        [
-          markupId, bookEditionId, BOOK_ANALYSIS_SCHEMA_VERSION,
-          BOOK_ANALYSIS_MARKUP_VERSION, revision, markupContentHash,
-          markup.textLength, publishedAt, edition.scope === 'private' ? edition.expires_at : null
-        ]
-      )
-      for (const [index, character] of markup.characters.entries()) {
-        await client.query(
-          `INSERT INTO book_characters (
-             id, markup_version_id, character_key, sort_order, name, full_name,
-             first_appearance_text_offset, warmup_text_offset, data
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
-          [
-            idFactory(), markupId, character.characterKey, index,
-            character.name, character.fullName, character.firstAppearanceTextOffset,
-            character.warmupTextOffset,
-            JSON.stringify({ ...character, analysisSource: BOOK_ANALYSIS_MARKUP_VERSION })
-          ]
-        )
-      }
-      created = true
-    } else if (existing.rows[0].status !== 'published') {
-      await client.query(
-        `UPDATE book_markup_versions SET status = 'ready'
-         WHERE book_edition_id = $1 AND status = 'published' AND id <> $2`,
-        [bookEditionId, markupId]
-      )
-      await client.query(
-        `UPDATE book_markup_versions
-         SET status = 'published', published_at = COALESCE($2::timestamptz, now())
-         WHERE id = $1`,
-        [markupId, publishedAt]
-      )
-    }
-    if (!created) {
-      const canonicalCharacters = await client.query(
-        `SELECT character_key
-         FROM book_characters
-         WHERE markup_version_id = $1
-         ORDER BY sort_order, character_key`,
-        [markupId]
-      )
-      const profileByKey = new Map(markup.characters.map((character) => [
-        character.characterKey,
-        character
-      ]))
-      markup = {
-        ...markup,
-        characters: canonicalCharacters.rows
-          .map(({ character_key: characterKey }) => profileByKey.get(characterKey))
-          .filter(Boolean)
-      }
-    }
-    await client.query(
-      `UPDATE reader_book_positions
-       SET text_offset = ROUND(reading_fraction * $2)::bigint,
-           updated_at = now()
-       WHERE book_edition_id = $1 AND reading_fraction IS NOT NULL`,
-      [bookEditionId, markup.textLength]
-    )
-    const frontier = await client.query(
-      `SELECT COALESCE(MAX(text_offset), 0)::bigint AS text_offset
-       FROM reader_book_positions WHERE book_edition_id = $1`,
-      [bookEditionId]
-    )
-    const readerTextOffset = Number(frontier.rows[0]?.text_offset ?? 0)
+    const materialized = await materializeMarkupVersion(client, {
+      bookEditionId,
+      contentHash: markupContentHash,
+      markup: rawMarkup,
+      publishedAt,
+      idFactory,
+      notFound: () => repositoryError('BOOK_NOT_FOUND', 'book edition is unavailable'),
+      schemaVersion: BOOK_ANALYSIS_SCHEMA_VERSION,
+      analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION
+    })
+    const { edition, markup, markupId, revision, created, readerTextOffset } = materialized
     const mediaFrontier = bookMediaFrontier({
       scope: edition.scope,
       textLength: markup.textLength,
       readerTextOffset
     })
-    const eligibleCharacters = mediaGenerationEnabled
+    const eligibleCharacters = mediaGenerationEnabled && enqueueMedia
       ? markup.characters.filter((character) => character.warmupTextOffset <= mediaFrontier)
       : []
     for (const character of eligibleCharacters) {
@@ -670,11 +595,6 @@ export function createPostgresBookAnalysisRepository(pool, {
       )
     }
     const queuedScenes = 0
-    await client.query(
-      `UPDATE book_editions SET status = 'base_ready', updated_at = now()
-       WHERE id = $1 AND status IN ('marking_up', 'generating_portraits', 'failed')`,
-      [bookEditionId]
-    )
     return {
       projected: true,
       created,
@@ -715,7 +635,9 @@ export function createPostgresBookAnalysisRepository(pool, {
       priority = 50
     }) {
       const strategy = getBookAnalysisPipeline(
-        pipelineId ?? assignedPipelineId(bookEditionId) ?? repositoryDefaultPipelineId
+        pipelineId
+          ?? assignedPipelineId(bookEditionId, await editionScope(bookEditionId))
+          ?? repositoryDefaultPipelineId
       )
       const selectedPipelineVersion = validateIdentifier(
         pipelineVersion ?? strategy.orchestrationVersion,
@@ -833,7 +755,7 @@ export function createPostgresBookAnalysisRepository(pool, {
       const safePriority = validatePriority(priority)
       return transaction(pool, async (client) => {
         const source = await client.query(
-          `SELECT edition.id, edition.content_sha256
+          `SELECT edition.id, edition.scope, edition.content_sha256
            FROM book_editions AS edition
            JOIN book_files AS file
              ON file.book_edition_id = edition.id
@@ -861,7 +783,7 @@ export function createPostgresBookAnalysisRepository(pool, {
         const previous = previousResult.rows[0]
         const strategy = getBookAnalysisPipeline(
           pipelineId
-            ?? assignedPipelineId(safeBookEditionId)
+            ?? assignedPipelineId(safeBookEditionId, edition.scope)
             ?? previous?.pipeline_id
             ?? repositoryDefaultPipelineId
         )

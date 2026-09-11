@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
 import { bookIdentityTargetVersion } from '../books/book-identity.mjs'
 import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
 
@@ -51,8 +52,6 @@ test('durable character ensure returns existing independent media jobs', async (
     () => ({ rows: [job('job-portrait', 'character_portrait', 'primary_portrait')] }),
     () => ({ rows: [] }),
     () => ({ rows: [job('job-audio', 'character_audio', 'greeting_audio')] }),
-    () => ({ rows: [] }),
-    () => ({ rows: [job('job-animation', 'character_animation', 'idle_animation')] }),
     () => ({ rows: [] })
   ])
   const repository = createPostgresBookMarkupRepository(pool, {
@@ -65,7 +64,7 @@ test('durable character ensure returns existing independent media jobs', async (
   assert.equal(result.created, false)
   assert.equal(result.id, 'job-portrait')
   assert.equal(result.status, 'queued')
-  assert.equal(result.jobs.length, 3)
+  assert.equal(result.jobs.length, REQUIRED_CHARACTER_MEDIA.length)
   assert.equal(
     result.idempotencyKey,
     'book-42:anna:character-bundle-v1:r1:primary_portrait'
@@ -312,6 +311,11 @@ test('reader scene request persists the exact card position instead of a shared 
       normalized_text_object_key: 'normalized/book-1.txt',
       normalized_text_hash: 'b'.repeat(64)
     }] }),
+    // Прогретой сцены для этого интервала нет — читатель рисует свою.
+    (sql) => {
+      assert.match(sql, /JOIN media_assets AS asset/)
+      return { rows: [] }
+    },
     (sql, params) => {
       assert.match(sql, /INSERT INTO generation_jobs/)
       assert.equal(params[1], `book-1:scene:${markupHash}:reader-card-v1:33000`)
@@ -359,6 +363,8 @@ test('reader scene request persists the exact card position instead of a shared 
     sceneKey: 'reader-card-v1:8000',
     jobId: 'job-1',
     slotIndex: 33_000,
+    // Отрезок 6000..12000 при длине 25000 — врезки не предлагаются до 0.48.
+    stretchEndFraction: 0.48,
     anchorTextOffset: 8_000,
     status: 'queued',
     asset: null
@@ -377,6 +383,11 @@ test('reader scene request does not spend image budget for an existing generatio
       normalized_text_object_key: 'normalized/book-1.txt',
       normalized_text_hash: 'b'.repeat(64)
     }] }),
+    // Прогретой сцены для этого интервала нет — читатель рисует свою.
+    (sql) => {
+      assert.match(sql, /JOIN media_assets AS asset/)
+      return { rows: [] }
+    },
     () => ({ rows: [] }),
     () => ({ rows: [{ id: 'job-1', status: 'running' }] }),
     () => ({ rows: [] }),
@@ -559,6 +570,41 @@ test('failed generation retry preserves the idempotent job and resets its bundle
   const jobs = await repository.retryFailedGenerationJobs({ limit: 10 })
   assert.equal(jobs[0].id, 'job-failed')
   assert.equal(jobs[0].status, 'queued')
+})
+
+test('a scoped retry names its job types and editions instead of taking the oldest failures', async () => {
+  // На установке с десятками тысяч старых провалов повтор без сужения берёт
+  // чужие задания. Вернуть в работу три подтверждения состава конкретной книги
+  // было нечем — оставался ручной UPDATE по продовой базе.
+  const EDITION = '11111111-1111-4111-8111-111111111111'
+  let captured = null
+  const record = (sql, params) => {
+    captured = { sql, params }
+    return { rows: [] }
+  }
+  const pool = scriptedPool([record, record])
+  const repository = createPostgresBookMarkupRepository(pool)
+  await repository.retryFailedGenerationJobs({
+    limit: 10,
+    jobTypes: ['roster_confirm'],
+    bookEditionIds: [EDITION]
+  })
+  assert.match(captured.sql, /job_type = ANY/)
+  assert.match(captured.sql, /book_edition_id = ANY/)
+  assert.deepEqual(captured.params, [10, ['roster_confirm'], [EDITION]])
+
+  // Без сужения запрос обязан остаться прежним: NULL отключает оба фильтра.
+  await repository.retryFailedGenerationJobs({ limit: 10 })
+  assert.deepEqual(captured.params, [10, null, null])
+
+  await assert.rejects(
+    () => repository.retryFailedGenerationJobs({ limit: 10, bookEditionIds: ['not-a-uuid'] }),
+    /bookEditionId must be a UUID/
+  )
+  await assert.rejects(
+    () => repository.retryFailedGenerationJobs({ limit: 10, jobTypes: [] }),
+    RangeError
+  )
 })
 
 test('migration enforces durable idempotency and bundle uniqueness', async () => {
@@ -856,6 +902,62 @@ test('operational controls use explicit pause state, heartbeats and scene latenc
   assert.match(migration, /ADD COLUMN first_download_at TIMESTAMPTZ/)
   assert.match(migration, /CREATE TABLE worker_heartbeats/)
   assert.doesNotMatch(migration, /2027|infinity/i)
+})
+
+test('a reader inside a warmed interval gets the picture that is already paid for', async () => {
+  // Предгенерация рисует одну картинку на интервал в 6000 знаков, чтение
+  // просит картинку к точной позиции, и ключи у них разные по построению.
+  // Читатель на 8000-м знаке попадает в интервал №1, нарисованный заранее:
+  // он должен получить его, а не запустить двадцатисекундное рисование своей.
+  const markupHash = 'a'.repeat(64)
+  let reservations = 0
+  const pool = scriptedPool([
+    () => ({ rows: [{
+      id: 'book-1', scope: 'catalog', title: 'Книга', author: 'Автор',
+      markup_version_id: 'markup-1', text_length: '25000', input_hash: markupHash,
+      publication_content_hash: markupHash, scene_policy: null,
+      normalized_text_object_key: 'normalized/book-1.txt',
+      normalized_text_hash: 'b'.repeat(64)
+    }] }),
+    (sql, params) => {
+      assert.match(sql, /JOIN media_assets AS asset/)
+      assert.deepEqual(params, ['markup-1', 1, 'text-interval-v1'])
+      return { rows: [{
+        scene_key: 'text-interval-v1:1', slot_index: 1, anchor_text_offset: 9_000,
+        job_id: 'job-warm', status: 'ready', asset_id: 'asset-warm',
+        object_key: 'scenes/warm.png', type: 'scene_image',
+        content_hash: 'c'.repeat(64), mime_type: 'image/png', byte_size: '2048'
+      }] }
+    }
+  ])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174000',
+    beforeCreateReaderScene: async () => { reservations += 1 }
+  })
+
+  assert.deepEqual(await repository.ensureReaderBookScene({
+    subjectId: '123e4567-e89b-42d3-a456-426614174001',
+    bookEditionId: 'book-1',
+    readerTextOffset: 8_000
+  }), {
+    sceneKey: 'text-interval-v1:1',
+    jobId: 'job-warm',
+    slotIndex: 1,
+    anchorTextOffset: 9_000,
+    stretchEndFraction: 0.48,
+    status: 'ready',
+    asset: {
+      assetId: 'asset-warm',
+      objectKey: 'scenes/warm.png',
+      type: 'scene_image',
+      contentHash: 'c'.repeat(64),
+      mimeType: 'image/png',
+      byteSize: 2_048
+    }
+  })
+  // Ни задания, ни бюджета картинок: всё уже нарисовано.
+  assert.equal(pool.queries.some(({ sql }) => /INSERT INTO generation_jobs/.test(sql)), false)
+  assert.equal(reservations, 0)
 })
 
 test('FBZ uploads keep checksum and MIME validation before staging source bytes', async () => {

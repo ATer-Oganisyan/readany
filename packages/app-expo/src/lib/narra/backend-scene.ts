@@ -17,6 +17,12 @@ export interface BackendSceneSnapshot {
   sceneKey: string;
   slotIndex: number;
   anchorTextOffset: number;
+  /**
+   * Доля прочитанного, до которой книгу иллюстрирует эта же картинка.
+   * Пока читатель не перешёл границу, новую врезку предлагать нечего:
+   * внутри отрезка картинка одна, и вторая врезка показала бы её копию.
+   */
+  stretchEndFraction?: number;
   pollAfterMs: number;
   imageUrl?: string;
   mimeType?: "image/png" | "image/jpeg" | "image/webp";
@@ -71,6 +77,13 @@ export function parseBackendScene(value: unknown): BackendSceneSnapshot {
     sceneKey: raw.scene_key,
     slotIndex: Number(raw.slot_index),
     anchorTextOffset: Number(raw.anchor_text_offset),
+    stretchEndFraction:
+      typeof raw.stretch_end_fraction === "number" &&
+      Number.isFinite(raw.stretch_end_fraction) &&
+      raw.stretch_end_fraction > 0 &&
+      raw.stretch_end_fraction <= 1
+        ? raw.stretch_end_fraction
+        : undefined,
     pollAfterMs:
       typeof raw.poll_after_ms === "number" && Number.isFinite(raw.poll_after_ms)
         ? Math.max(250, raw.poll_after_ms)

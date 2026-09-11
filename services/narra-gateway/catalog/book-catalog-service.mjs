@@ -1,3 +1,4 @@
+import { bookScenePregenerationMode } from '../generation/book-scenes.mjs'
 import {
   CHARACTER_BUNDLE_VERSION,
   LOCAL_MARKUP_ANALYSIS_VERSION,
@@ -961,6 +962,9 @@ export function createBookCatalogService({
         sceneKey: scene.sceneKey,
         slotIndex: scene.slotIndex,
         anchorTextOffset: scene.anchorTextOffset,
+        // Клиент перестаёт предлагать врезки до этой доли: внутри одного
+        // отрезка книгу иллюстрирует одна картинка.
+        stretchEndFraction: scene.stretchEndFraction,
         pollAfterMs: scene.status === 'ready' ? undefined : 2_000
       }
       if (scene.status !== 'ready' || !scene.asset) return result
@@ -1078,6 +1082,27 @@ export function createBookCatalogService({
         else if (request.value.status === 'ready') warmed.ready += 1
         else warmed.pending += 1
       }
+
+      // Сцены догоняют читателя пачками. Раньше здесь стояли нули, а сцены
+      // ставились все разом при публикации разметки: у «Героя нашего времени»
+      // 45 слотов вставали в очередь в тот же миг, и по установке так набралось
+      // 10 639 заданий, которые 31 августа чистили руками.
+      //
+      // Сбой подогрева не должен ронять запись позиции: читатель дочитал до
+      // этого места независимо от того, получилось ли сделать ему картинки.
+      let sceneWarmup = { requested: 0, ready: 0, pending: 0, failed: 0 }
+      if (bookScenePregenerationMode() !== 'none' &&
+          typeof store.ensureBookScenesThrough === 'function') {
+        try {
+          sceneWarmup = await store.ensureBookScenesThrough({
+            subjectId,
+            bookEditionId,
+            readerTextOffset: progress.readerTextOffset
+          })
+        } catch (error) {
+          sceneWarmup = { requested: 0, ready: 0, pending: 0, failed: 0, error: error.code ?? 'UNKNOWN' }
+        }
+      }
       return {
         bookEditionId,
         readerTextOffset: progress.readerTextOffset,
@@ -1089,7 +1114,7 @@ export function createBookCatalogService({
           requested: requests.length,
           ...warmed
         },
-        sceneWarmup: { requested: 0, ready: 0, pending: 0, failed: 0 }
+        sceneWarmup
       }
     }
   }

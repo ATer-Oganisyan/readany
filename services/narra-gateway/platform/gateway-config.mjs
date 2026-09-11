@@ -25,8 +25,8 @@ export function loadGatewayConfig(env = process.env) {
   // Список разбирается на старте, а не при создании прогона: оператор,
   // опечатавшийся в идентификаторе книги, узнаёт об этом сразу.
   bookAnalysisCardsEditionsFromEnv(env)
-  const BOOK_ANALYSIS_PIPELINE_FOR_EDITION = (bookEditionId) => (
-    bookAnalysisAssignedPipelineForEdition(bookEditionId, env)
+  const BOOK_ANALYSIS_PIPELINE_FOR_EDITION = (bookEditionId, scope = null) => (
+    bookAnalysisAssignedPipelineForEdition(bookEditionId, env, scope)
   )
   const BOOK_ANALYSIS_SCAN_POLICY = createBookAnalysisScanPolicyFromEnv(env)
   const INSECURE = env.ALLOW_INSECURE_TLS === 'true'
@@ -46,6 +46,15 @@ export function loadGatewayConfig(env = process.env) {
     env,
     'BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED',
     true
+  )
+  // Подогрев медиа по старту раньше был безусловным: каждый перезапуск шлюза
+  // брал тысячу персонажей с неготовым бандлом и дозаказывал им недостающее.
+  // На проде, где такие бандлы висят неготовыми неделями, это значит «платить
+  // за картинки за каждый деплой», причём молча. Теперь это явная просьба.
+  const BOOK_CHARACTER_MEDIA_BACKFILL = parseEnvBool(
+    env,
+    'BOOK_CHARACTER_MEDIA_BACKFILL',
+    false
   )
   const BOOK_SHADOW_PREVIEW_ENABLED = parseEnvBool(
     env,
@@ -266,6 +275,7 @@ export function loadGatewayConfig(env = process.env) {
     BOOK_BACKEND_REQUIRED,
     BOOK_SEARCH_ENABLED,
     BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED,
+    BOOK_CHARACTER_MEDIA_BACKFILL,
     BOOK_SHADOW_PREVIEW_ENABLED,
     ALLOW_INSECURE_VIDEO_HTTP,
     INSECURE_VIDEO_ENV_ALLOWED,

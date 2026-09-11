@@ -862,6 +862,7 @@ export function createBookCatalogRouter({
         scene_key: result.sceneKey,
         slot_index: result.slotIndex,
         anchor_text_offset: result.anchorTextOffset,
+        stretch_end_fraction: result.stretchEndFraction,
         image_url: result.imageUrl,
         mime_type: result.mimeType,
         expires_at: result.expiresAt,

@@ -1,4 +1,5 @@
 import {
+  CHARACTER_MEDIA_ASSET_TYPES,
   CHARACTER_MEDIA_JOB_TYPES,
   REQUIRED_CHARACTER_MEDIA,
   normalizeCharacterAnchor
@@ -12,6 +13,7 @@ import {
   ROSTER_CONFIRM_JOB_TYPE,
   createRosterConfirmRunner
 } from '../analysis/book-roster-confirm-runner.mjs'
+import { unexpectedErrorMessage } from '../analysis/book-analysis-observability.mjs'
 
 export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   'book_markup',
@@ -247,8 +249,11 @@ export function normalizeCharacterBundleResult(value, requiredMedia = REQUIRED_C
     }
     byType.set(asset.type, { ...asset })
   }
+  // Сверка с полным списком умений, а не с текущим составом: в очереди лежат
+  // задания, поставленные когда состав был другим, и отвергать их незачем —
+  // сделать такой артефакт система по-прежнему умеет.
   if (!Array.isArray(requiredMedia) || !requiredMedia.length ||
-      requiredMedia.some((type) => !REQUIRED_CHARACTER_MEDIA.includes(type))) {
+      requiredMedia.some((type) => !CHARACTER_MEDIA_ASSET_TYPES.includes(type))) {
     throw invalidResult('required character media contract is invalid')
   }
   for (const type of requiredMedia) {
@@ -556,6 +561,7 @@ export function createGenerationWorker({
           edition: job.bookEditionId,
           character_key: job.characterKey,
           error_code: errorCode,
+          error_message: unexpectedErrorMessage(error),
           duration_ms: Date.now() - startedAt
         }
         if (failure?.status === 'queued') {

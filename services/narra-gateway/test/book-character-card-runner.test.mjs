@@ -34,8 +34,8 @@ const FRAGMENTS = [
   fragmentAt(3, 'Элизабет снова заметила эту привычку и промолчала.')
 ]
 
-function harness({ generatorResult, storageBytes = TEXT_BYTES, input = {} } = {}) {
-  const calls = { requests: [], published: [] }
+function harness({ generatorResult, generatorError, storageBytes = TEXT_BYTES, input = {} } = {}) {
+  const calls = { advanced: [], requests: [], published: [] }
   const repository = {
     async getCharacterCardInput() {
       return {
@@ -65,6 +65,10 @@ function harness({ generatorResult, storageBytes = TEXT_BYTES, input = {} } = {}
     async publishCharacterCard(job, payload) {
       calls.published.push(payload)
       return { status: 'published', cardId: 'card-1' }
+    },
+    async advanceCardWindows(input) {
+      calls.advanced.push(input)
+      return { closed: [0], enqueued: { windowIndex: 1, created: 2 } }
     }
   }
   const storage = {
@@ -73,6 +77,7 @@ function harness({ generatorResult, storageBytes = TEXT_BYTES, input = {} } = {}
   const generator = {
     async generateCharacterCard(request) {
       calls.requests.push(request)
+      if (generatorError) throw generatorError
       return generatorResult ?? {
         card: {
           name: 'Элизабет',
@@ -130,7 +135,10 @@ test('the runner rebuilds quotes from the normalized text and publishes the card
   assert.equal(published.card.contractVersion, 'character-card-v1')
   assert.equal(published.card.source.fragmentSetHash, published.fragmentSetHash)
   assert.match(published.fragmentSetHash, /^[0-9a-f]{64}$/)
+  // Карточка закончена — цепочка окон должна пойти дальше.
+  assert.deepEqual(calls.advanced, [{ runId: 'run-1', bookEditionId: 'edition-1' }])
 })
+
 
 test('a normalized text that does not match its hash stops the job', async () => {
   const { runner, calls } = harness({ storageBytes: Buffer.from('другой текст', 'utf8') })
@@ -190,4 +198,31 @@ test('a window with no priority class does not get the foreground priority', asy
   const { runner, calls } = harness({ input: { priorityClass: undefined } })
   await runner.run(JOB)
   assert.equal(calls.published[0].mediaPriority, CARD_MEDIA_PRIORITY.background)
+})
+
+test('the runner moves the window chain on, so the book does not stop after its first chapters', () => {
+  // Цепочку окон в проде не двигал никто: `advanceCardWindows` жил только в
+  // тестах. Окно закрывается, когда его карточки кончились, и закрыть его
+  // может лишь тот, кто закончил последнюю, — воркер карточки.
+  assert.throws(
+    () => createCharacterCardRunner({
+      repository: { async getCharacterCardInput() {}, async publishCharacterCard() {} },
+      storage: {},
+      generator: {}
+    }),
+    /advance card windows/
+  )
+})
+
+test('a failed card still moves the window chain on', async () => {
+  // Пока цепочку двигала только успешная карточка, одна упавшая
+  // останавливала книгу навсегда: окно оставалось `running`, следующее не
+  // ставил никто. «Обломов» встал так на восемнадцати готовых карточках
+  // второго окна — последняя в нём не собралась.
+  const { runner, calls } = harness({
+    generatorError: Object.assign(new Error('модель не ответила'), { code: 'TIMEOUT' })
+  })
+  await assert.rejects(() => runner.run(JOB))
+  assert.deepEqual(calls.advanced, [{ runId: 'run-1', bookEditionId: 'edition-1' }])
+  assert.deepEqual(calls.published, [])
 })

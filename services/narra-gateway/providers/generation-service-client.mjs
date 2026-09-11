@@ -118,11 +118,16 @@ export function createGenerationServiceClient({
     },
     generateCharacterCard(input) {
       return post('internal/v1/book-analysis/synthesize-character-card', {
+        // Ревизия — часть ключа. Подтверждение состава по всей книге
+        // переиздаёт карточки тех, чей состав имён изменился, и это уже другой
+        // запрос: те же ключ и версия промпта давали HTTP 409, потому что под
+        // ключом лежал ответ на прежний набор имён и фрагментов.
         idempotencyKey: [
           input.runId,
           'character-card',
           input.characterKey,
-          input.promptVersion
+          input.promptVersion,
+          `rev-${input.cardRevision ?? 1}`
         ].join(':'),
         ...input
       })

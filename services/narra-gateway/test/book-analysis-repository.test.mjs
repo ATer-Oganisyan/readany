@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { CARDS_PIPELINE_IMPLEMENTATION_VERSION } from '../analysis/book-analysis-pipeline.mjs'
 import {
   buildProvisionalAnalysisCharacters,
   bookAnalysisRunIdempotencyKey,
@@ -476,7 +477,7 @@ test('a cards run prepares without scan jobs and waits at synthesize', async () 
     () => ({ rows: [{ id: 'prepare-1', max_attempts: 5, attempts: 1 }] }),
     () => ({ rows: [{
       id: 'run-1', text_length: '100', pipeline_id: 'cards',
-      pipeline_implementation_version: 'cards-v1'
+      pipeline_implementation_version: CARDS_PIPELINE_IMPLEMENTATION_VERSION
     }] }),
     // update run, insert chunk, insert card window, insert fragment —
     // и ни одного scan-задания.

@@ -24,6 +24,7 @@ import {
   requestCoverImageWithFallback
 } from './providers/providers.mjs'
 import {
+  completionText,
   settleProviderResponse,
   validateChatCompletionPayload
 } from './providers/provider-response.mjs'
@@ -77,6 +78,7 @@ import { createCatalogIngestService } from './catalog/catalog-ingest-service.mjs
 import { createPostgresBookAnalysisRepository } from './analysis/book-analysis-repository.mjs'
 import { createBookOperatorRouter } from './books/book-operator-api.mjs'
 import { createPostgresBookOperatorRepository } from './books/book-operator-repository.mjs'
+import { createBookProgressRepository } from './books/book-progress-repository.mjs'
 import { createPostgresBookCharacterCorrectionRepository } from './books/book-character-correction-repository.mjs'
 import { createPostgresBookMarkupRepository } from './books/postgres-book-markup-repository.mjs'
 import { createPostgresBookTtsMarkupRepository } from './tts/book-tts-markup-repository.mjs'
@@ -102,7 +104,8 @@ import { withChatLanguage } from './providers/chat-language.mjs'
 const {
   PORT, BOOK_ANALYSIS_PIPELINE, BOOK_ANALYSIS_PIPELINE_FOR_EDITION, BOOK_ANALYSIS_SCAN_POLICY, INSECURE,
   PRODUCTION, BUILD_VERSION, ANALYTICS_ENV, VIDEO_REQUIRED,
-  BOOK_BACKEND_REQUIRED, BOOK_SEARCH_ENABLED, BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED, BOOK_SHADOW_PREVIEW_ENABLED,
+  BOOK_BACKEND_REQUIRED, BOOK_SEARCH_ENABLED, BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED,
+  BOOK_CHARACTER_MEDIA_BACKFILL, BOOK_SHADOW_PREVIEW_ENABLED,
   ALLOW_INSECURE_VIDEO_HTTP, INSECURE_VIDEO_ENV_ALLOWED, VIDEO_INSECURE_HTTP_HOSTS, ALLOW_INSECURE_LLM_HTTP,
   LLM_INSECURE_HTTP_HOSTS, REGISTRATION_LIMIT, REGISTRATION_GLOBAL_LIMIT, REGISTRATION_GLOBAL_DAILY_LIMIT,
   INSTALLATION_REGISTRY_MAX, INSTALLATION_INACTIVE_RETENTION_DAYS, INSTALLATION_TOKEN_TTL_SECONDS, REFRESH_LIMIT,
@@ -220,7 +223,7 @@ const recordInternalGenerationCost = createBestEffortGenerationCostRecorder({
   getLedger: () => generationCostLedger
 })
 
-async function completeInternalChat({ messages, signal, costContext }) {
+async function completeInternalChat({ messages, signal, costContext, purpose = 'structured_task' }) {
   let release
   const requestId = randomUUID()
   let providerResult
@@ -229,7 +232,7 @@ async function completeInternalChat({ messages, signal, costContext }) {
     release = await llmGate.acquire(signal)
     providerResult = await requestChat({
       messages,
-      purpose: 'structured_task',
+      purpose,
       stream: false,
       requestId,
       onAttempt: recordProviderAttemptMetric,
@@ -258,7 +261,7 @@ async function completeInternalChat({ messages, signal, costContext }) {
       responseCost: providerResult.responseCost
     })
     recorded = true
-    return payload?.choices?.[0]?.message?.content || ''
+    return completionText(payload)
   } catch (error) {
     const attempts = providerResult?.attempts || error?.attempts
     if (!recorded && Array.isArray(attempts) && attempts.length) {
@@ -759,6 +762,7 @@ let bookTtsMarkupRepository = null
 let bookOperatorRepository = null
 let bookCharacterCorrectionRepository = null
 let operationalMetricsRepository = null
+let bookProgressRepository = null
 let generationCostLedger = null
 let bookSearchRepository = null
 let bookSearchService = null
@@ -799,6 +803,7 @@ if (process.env.DATABASE_URL) {
   })
   bookTtsMarkupRepository = createPostgresBookTtsMarkupRepository(bookMarkupPool)
   bookOperatorRepository = createPostgresBookOperatorRepository(bookMarkupPool)
+  bookProgressRepository = createBookProgressRepository(bookMarkupPool)
   bookCharacterCorrectionRepository = createPostgresBookCharacterCorrectionRepository(bookMarkupPool)
   operationalMetricsRepository = createOperationalMetricsRepository(bookMarkupPool)
   if (BOOK_SEARCH_ENABLED) {
@@ -812,7 +817,6 @@ if (process.env.DATABASE_URL) {
   if (internalGenerationService && BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED) {
     const identityJobs = await bookMarkupRepository.enqueueMissingBookIdentities()
     const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()
-    const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
     console.info('[book-identity] durable backfill checked', {
       jobs: identityJobs.length,
       created: identityJobs.filter((job) => job.created).length
@@ -821,10 +825,19 @@ if (process.env.DATABASE_URL) {
       jobs: coverJobs.length,
       created: coverJobs.filter((job) => job.created).length
     })
-    console.info('[character-media] independent backfill checked', {
-      jobs: characterMediaJobs.length,
-      created: characterMediaJobs.filter((job) => job.created).length
-    })
+    // Бандл, который не собрался, остаётся незавершённым навсегда, и подогрев
+    // по старту заказывает ему недостающее заново при каждом перезапуске. На
+    // проде это вышло тысячей портретов за три деплоя подряд — поэтому теперь
+    // подогрев зовут руками: `node books/backfill-character-media.mjs`.
+    if (BOOK_CHARACTER_MEDIA_BACKFILL) {
+      const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
+      console.info('[character-media] independent backfill checked', {
+        jobs: characterMediaJobs.length,
+        created: characterMediaJobs.filter((job) => job.created).length
+      })
+    } else {
+      console.info('[character-media] startup backfill disabled; on-demand only')
+    }
     console.info('[book-scenes] automatic backfill disabled; on-demand only')
   } else if (internalGenerationService) {
     console.info('[book-media] generation and startup backfills are disabled')
@@ -1256,6 +1269,7 @@ if (bookMarkupRepository && bookObjectStorage) {
       dashboardRepository: bookOperatorRepository,
       analysisRepository: bookAnalysisRepository,
       correctionRepository: bookCharacterCorrectionRepository,
+      progressRepository: bookProgressRepository,
       catalogService: catalogIngestService,
       uploadMaxBytes: BOOK_UPLOAD_MAX_BYTES
     }))

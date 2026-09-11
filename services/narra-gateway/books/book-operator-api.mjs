@@ -87,6 +87,7 @@ export function createBookOperatorRouter({
   repository,
   analysisRepository,
   correctionRepository,
+  progressRepository,
   storage,
   uploadMaxBytes = 50 * 1024 * 1024,
   uiDirectory = new URL('../operator-ui/', import.meta.url).pathname
@@ -137,6 +138,16 @@ export function createBookOperatorRouter({
   router.get('/api/books', asyncRoute(async (_req, res) => {
     res.json({ books: await dashboardRepository.listBooks() })
   }))
+
+  // Дашборд прогресса живёт отдельным маршрутом и отдельным репозиторием:
+  // страница книги отвечает на «что с этой книгой», а этот снимок — на «что
+  // сейчас происходит вообще», и опрашивается он раз в несколько секунд.
+  if (progressRepository) {
+    router.get('/api/progress', asyncRoute(async (_req, res) => {
+      res.json(await progressRepository.snapshot())
+    }))
+    router.get('/status', (_req, res) => res.sendFile('status.html', { root: uiDirectory }))
+  }
 
   router.get('/api/books/:bookEditionId', asyncRoute(async (req, res) => {
     res.json(missingBook(await dashboardRepository.getBookDetails(uuid(req.params.bookEditionId))))

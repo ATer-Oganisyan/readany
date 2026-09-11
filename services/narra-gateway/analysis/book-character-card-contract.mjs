@@ -15,8 +15,22 @@
  * главы 1, потому что фрагмента из главы 8 в проверке не окажется.
  */
 
+/**
+ * Абзац принадлежит окну, в котором он начинается.
+ *
+ * Барьер отсекает главы, а не режет абзацы посередине. Предикат жил в четырёх
+ * местах — постановка задания, сборка запроса, сборка карточки, проверка
+ * контракта — и разошёлся: персонаж с единственным абзацем на границе окна
+ * сначала падал на CARD_FRAGMENTS_MISSING, а после «целиком внутри» стал
+ * пропадать молча. «Александр Троекуров» с четырнадцатью фрагментами остался
+ * без карточки вовсе. Теперь он один на всех.
+ */
+export function fragmentBelongsToWindow(fragment, window) {
+  return fragment.startOffset >= window.startOffset && fragment.startOffset < window.endOffset
+}
+
 export const CHARACTER_CARD_CONTRACT_VERSION = 'character-card-v1'
-export const CHARACTER_CARD_PROMPT_VERSION = 'character-card-prompt-v1'
+export const CHARACTER_CARD_PROMPT_VERSION = 'character-card-prompt-v2'
 
 /**
  * Сколько черт просить у модели. Просим с запасом: аудит стабильности черт
@@ -254,8 +268,7 @@ export function validateCharacterCard(card, { fragments = null } = {}) {
         invalid(`card: fragment ${fragmentId} belongs to ${fragment.characterKey}`)
       }
       if (
-        fragment.startOffset < window.startOffset ||
-        fragment.endOffset > window.endOffset
+        !fragmentBelongsToWindow(fragment, window)
       ) {
         invalid(`card: fragment ${fragmentId} lies outside the card window`)
       }

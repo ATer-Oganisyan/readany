@@ -300,6 +300,44 @@ test('the book pass sees the whole inventory and re-issues nothing it did not ch
       roster.rows.map(({ canonical_name: name }) => name),
       ['Аркадий Кирсанов', 'Евгений Базаров']
     )
+
+    // Пока карточки первого окна не закончились, цепочка стоит: окно N+1 не
+    // ставится поверх работающего окна N.
+    const heldWindows = await pool.query(
+      `SELECT window_index, status FROM book_card_windows
+        WHERE run_id = $1 ORDER BY window_index`,
+      [runId]
+    )
+    assert.deepEqual(
+      heldWindows.rows.map(({ status }) => status),
+      ['running', 'queued']
+    )
+
+    // Карточки первого окна закончились — цепочка идёт дальше, и второе окно
+    // получает своих героев. Раньше её не двигал никто: окна после первого не
+    // ставились вовсе, и книга получала карточки только первых глав.
+    await pool.query(
+      `UPDATE generation_jobs SET status = 'ready'
+        WHERE analysis_run_id = $1 AND job_type = 'character_card'`,
+      [runId]
+    )
+    const advanced = await repository.advanceCardWindows({ runId, bookEditionId })
+    assert.deepEqual(advanced.closed, [0])
+    assert.equal(Number(advanced.enqueued.windowIndex), 1)
+    assert.ok(advanced.enqueued.created > 0, 'второе окно осталось без карточек')
+
+    const cards = await pool.query(
+      `SELECT character_key, card_window_index, priority FROM generation_jobs
+        WHERE analysis_run_id = $1 AND job_type = 'character_card'
+        ORDER BY card_window_index`,
+      [runId]
+    )
+    // Персонаж принадлежит окну своего первого упоминания, а не окну захода.
+    const bazarov = cards.rows.find(({ character_key: key }) => key.includes('bazarov'))
+    assert.equal(Number(bazarov.card_window_index), 1)
+    // Фоновые окна не обгоняют первые главы.
+    const first = cards.rows.find(({ card_window_index: index }) => Number(index) === 0)
+    assert.ok(Number(first.priority) > Number(bazarov.priority))
   } finally {
     await isolated.release()
   }
@@ -353,6 +391,77 @@ test('a lone candidate is classified by the model and gets a card', {
       [runId]
     )
     assert.deepEqual(jobs.rows.map(({ character_key: key }) => key), ['char:bazarov'])
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('the book pass regroups candidates the window pass had grouped differently', {
+  skip: !connectionString
+}, async () => {
+  // Уникальный индекс держит «кандидат принадлежит одному персонажу прогона».
+  // Но подтверждение как раз перегруппировывает: полный заход собирает
+  // «Дубровского» из тех же имён, из которых окно собрало «Дубровском», и под
+  // другим ключом. Upsert идёт по (run_id, character_key) и такую строку не
+  // видит — заход падал на нарушении уникальности и не завершался никогда.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const { bookEditionId, runId } = await seed(pool)
+
+    // Окно собрало персонажа под одним ключом.
+    await runner(repository).run(
+      await claimRosterJob(pool, { bookEditionId, runId, windowIndex: 0 })
+    )
+    const before = await pool.query(
+      'SELECT character_key, candidate_keys FROM book_character_roster WHERE run_id = $1',
+      [runId]
+    )
+    assert.equal(before.rows.length, 1)
+    const movedCandidate = before.rows[0].candidate_keys[0]
+
+    // Полный заход отдаёт тех же кандидатов другому персонажу.
+    const queued = await pool.query(
+      `SELECT id FROM generation_jobs
+        WHERE analysis_run_id = $1 AND job_type = 'roster_confirm'
+          AND card_window_index IS NULL AND status = 'queued'`,
+      [runId]
+    )
+    const leaseToken = randomUUID()
+    await pool.query(
+      `UPDATE generation_jobs
+          SET status = 'running', locked_at = now(), locked_by = 'test', lease_token = $2
+        WHERE id = $1`,
+      [queued.rows[0].id, leaseToken]
+    )
+    const result = await repository.completeRosterConfirmation(
+      { id: queued.rows[0].id, bookEditionId, leaseToken },
+      {
+        runId,
+        bookEditionId,
+        windowIndex: null,
+        roster: [{
+          characterKey: 'char:renamed',
+          canonicalName: 'Другое имя',
+          names: ['Другое имя'],
+          candidateKeys: before.rows[0].candidate_keys,
+          mentionCount: 5,
+          firstMentionTextOffset: 0,
+          tier: 'significant'
+        }],
+        revisions: [],
+        skipped: false
+      }
+    )
+    assert.equal(result.characterCount, 1)
+
+    const after = await pool.query(
+      'SELECT character_key, candidate_keys FROM book_character_roster WHERE run_id = $1',
+      [runId]
+    )
+    assert.deepEqual(after.rows.map(({ character_key: key }) => key), ['char:renamed'])
+    assert.equal(after.rows[0].candidate_keys[0], movedCandidate)
   } finally {
     await isolated.release()
   }

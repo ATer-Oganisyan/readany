@@ -417,3 +417,46 @@ test('operator API validates identifiers and reports missing books without leaki
     assert.equal((await missing.json()).code, 'NOT_FOUND')
   })
 })
+
+test('the progress dashboard is served only when a progress repository is wired', async () => {
+  // Маршрут появляется вместе с репозиторием, а не всегда: без него страница
+  // отдавала бы пустой дашборд, который выглядит как «всё стоит».
+  const withoutProgress = dependencies()
+  await withServer(withoutProgress, async (baseUrl) => {
+    const api = await fetch(`${baseUrl}/operator/api/progress`, { headers: { authorization: AUTH } })
+    assert.equal(api.status, 404)
+    const page = await fetch(`${baseUrl}/operator/status`, { headers: { authorization: AUTH } })
+    assert.equal(page.status, 404)
+  })
+
+  const snapshot = {
+    generatedAt: '2026-09-10T18:30:00.000Z',
+    staleWorkerSeconds: 60,
+    workers: [{ workerType: 'book-card', buildVersion: 'abc', state: 'ready', total: 2, alive: 2 }],
+    running: [],
+    books: []
+  }
+  const input = dependencies()
+  input.progressRepository = { async snapshot() { return snapshot } }
+  await withServer(input, async (baseUrl) => {
+    const unauthorized = await fetch(`${baseUrl}/operator/api/progress`)
+    assert.equal(unauthorized.status, 401)
+
+    const api = await fetch(`${baseUrl}/operator/api/progress`, { headers: { authorization: AUTH } })
+    assert.equal(api.status, 200)
+    assert.deepEqual(await api.json(), snapshot)
+
+    const page = await fetch(`${baseUrl}/operator/status`, { headers: { authorization: AUTH } })
+    assert.equal(page.status, 200)
+    const html = await page.text()
+    assert.match(html, /assets\/status\.js/)
+
+    // Скрипт страницы обязан ехать со своего origin: CSP запрещает и внешние
+    // источники, и инлайн — страница с инлайновым скриптом просто не оживёт.
+    const script = await fetch(`${baseUrl}/operator/assets/status.js`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(script.status, 200)
+    assert.match(page.headers.get('content-security-policy') ?? '', /script-src 'self'/)
+  })
+})

@@ -2,7 +2,10 @@ import { resolveBookAnalysisEntities } from './book-analysis-resolver.mjs'
 import {
   BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION
 } from './book-analysis-contracts.mjs'
-import { bookAnalysisLogContext } from './book-analysis-observability.mjs'
+import {
+  bookAnalysisLogContext,
+  unexpectedErrorMessage
+} from './book-analysis-observability.mjs'
 import {
   BOOK_ANALYSIS_PIPELINE_NARRA,
   bookAnalysisPipelineForRun
@@ -139,6 +142,7 @@ export function createBookAnalysisResolveWorker({
           job: job.id,
           run: job.runId,
           error_code: errorCode,
+          error_message: unexpectedErrorMessage(error),
           retry_status: failure.status,
           ...bookAnalysisLogContext(job, {
             startedAt,

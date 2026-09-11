@@ -3,7 +3,9 @@ import test from 'node:test'
 import {
   CHARACTER_BUNDLE_VERSION,
   CHARACTER_MEDIA_JOB_TYPES,
+  CHARACTER_MEDIA_ASSET_TYPES,
   REQUIRED_CHARACTER_MEDIA,
+  parseRequiredCharacterMedia,
   characterBundleIdempotencyKey,
   characterMediaIdempotencyKey,
   characterMediaTargetVersion,
@@ -19,7 +21,7 @@ function readyBundle(characterKey = 'anna-karenina') {
   return {
     characterKey,
     status: 'ready',
-    assets: REQUIRED_CHARACTER_MEDIA.map((type, index) => ({
+    assets: CHARACTER_MEDIA_ASSET_TYPES.map((type, index) => ({
       type,
       status: 'ready',
       assetId: `asset-${index + 1}`
@@ -99,12 +101,38 @@ test('warmup selection uses markup text offsets and catches up after an offline 
   assert.deepEqual(due.map((character) => character.characterKey), ['early', 'middle'])
 })
 
-test('a ready character bundle is atomic and requires every media type', () => {
+test('a ready character bundle is atomic and requires every ordered media type', () => {
+  // Полнота считается по заказанному составу, а не по всему, что система умеет:
+  // idle-анимацию продукт не показывает, и ждать её незачем.
   assert.equal(isCompleteCharacterBundle(readyBundle()), true)
+  const [firstOrdered] = REQUIRED_CHARACTER_MEDIA
   const incomplete = readyBundle()
-  incomplete.assets = incomplete.assets.filter((asset) => asset.type !== 'idle_animation')
+  incomplete.assets = incomplete.assets.filter((asset) => asset.type !== firstOrdered)
   assert.equal(isCompleteCharacterBundle(incomplete), false)
+
+  const withoutUnordered = readyBundle()
+  withoutUnordered.assets = withoutUnordered.assets
+    .filter((asset) => REQUIRED_CHARACTER_MEDIA.includes(asset.type))
+  assert.equal(isCompleteCharacterBundle(withoutUnordered), true)
+
   assert.equal(isCompleteCharacterBundle({ ...readyBundle(), status: 'running' }), false)
+})
+
+test('the ordered media set is configurable and refuses what the system cannot make', () => {
+  // Продукт показывает портрет и приветствие; idle-анимация — отдельный вызов
+  // видеогенерации на каждого персонажа, и на «Обломове» это 212 роликов за
+  // сутки, которых никто не открывал.
+  assert.deepEqual([...parseRequiredCharacterMedia('')], ['primary_portrait', 'greeting_audio'])
+  assert.deepEqual([...parseRequiredCharacterMedia('primary_portrait')], ['primary_portrait'])
+  assert.deepEqual(
+    [...parseRequiredCharacterMedia('idle_animation, primary_portrait')],
+    ['primary_portrait', 'idle_animation']
+  )
+  // Опечатка — ошибка настройки, а не повод молча заказать меньше.
+  assert.throws(
+    () => parseRequiredCharacterMedia('primary_portrait, portret'),
+    { code: 'CHARACTER_MEDIA_INVALID' }
+  )
 })
 
 test('character media assets have independent revision-scoped job keys', () => {
@@ -113,7 +141,7 @@ test('character media assets have independent revision-scoped job keys', () => {
     mediaRevision: 2
   })
   assert.equal(targetVersion, 'character-bundle-v3:r2')
-  const keys = REQUIRED_CHARACTER_MEDIA.map((assetType) => characterMediaIdempotencyKey({
+  const keys = CHARACTER_MEDIA_ASSET_TYPES.map((assetType) => characterMediaIdempotencyKey({
     bookEditionId: 'book-42',
     characterKey: 'character:anna',
     targetVersion,

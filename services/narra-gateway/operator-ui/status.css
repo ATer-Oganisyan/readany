@@ -1,0 +1,50 @@
+/* Дашборд прогресса. Токены и базовые классы берутся из styles.css. */
+.topbar-side { display: flex; align-items: center; gap: 16px; }
+.refresh-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--primary-60); cursor: pointer; }
+.refresh-toggle input { width: 16px; height: 16px; accent-color: var(--blue); }
+
+.status-page { padding: 24px; display: grid; gap: 32px; max-width: 1440px; margin: 0 auto; }
+.status-section { display: grid; gap: 12px; }
+.status-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.status-head p { margin: 0; font-size: 13px; }
+
+.worker-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.worker-card { border: 1px solid var(--primary-10); border-radius: var(--radius); background: var(--surface); padding: 14px 16px; display: grid; gap: 8px; box-shadow: var(--shadow); }
+.worker-card.degraded { border-color: #c05b0055; background: color-mix(in srgb, var(--orange) 6%, var(--surface)); }
+.worker-card.down { border-color: #d6222a55; background: color-mix(in srgb, var(--red) 6%, var(--surface)); }
+.worker-name { font-weight: 700; font-size: 15px; }
+.worker-count { font-size: 28px; line-height: 30px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.worker-count .of { color: var(--primary-60); font-size: 16px; }
+.worker-meta { display: grid; gap: 2px; font-size: 12px; color: var(--primary-60); }
+.worker-meta code { font-size: 11px; word-break: break-all; }
+
+.running-list { display: grid; gap: 6px; }
+.running-row { display: grid; grid-template-columns: 90px minmax(0, 2fr) minmax(0, 1fr) 90px; gap: 12px; align-items: center; border: 1px solid var(--primary-10); border-radius: var(--radius-small); background: var(--surface); padding: 10px 14px; font-size: 13px; }
+.running-row.slow { border-color: #c05b0055; }
+.running-row .what { font-weight: 600; }
+.running-row .book { color: var(--primary-60); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.running-row .age { text-align: right; font-variant-numeric: tabular-nums; color: var(--primary-60); }
+
+.book-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.book-card { border: 1px solid var(--primary-10); border-radius: var(--radius); background: var(--surface); padding: 16px; display: grid; gap: 12px; box-shadow: var(--shadow); }
+.book-card.active { border-color: var(--blue); }
+.book-card.broken { border-color: #d6222a55; }
+.book-card h3 { font-size: 17px; line-height: 21px; }
+.book-card .byline { margin: 2px 0 0; font-size: 12px; color: var(--primary-60); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 9999px; padding: 3px 10px; font-size: 12px; font-weight: 600; background: var(--primary-5); border: 1px solid var(--primary-10); }
+.chip.pipeline-cards { background: color-mix(in srgb, var(--blue) 12%, transparent); border-color: #0088ff44; }
+.chip.ok { background: color-mix(in srgb, var(--green) 12%, transparent); border-color: #16883f44; }
+.chip.warn { background: color-mix(in srgb, var(--orange) 14%, transparent); border-color: #c05b0044; }
+.chip.bad { background: color-mix(in srgb, var(--red) 12%, transparent); border-color: #d6222a44; }
+.chip .n { font-variant-numeric: tabular-nums; }
+.book-block { display: grid; gap: 6px; }
+.book-block h4 { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--primary-60); }
+.empty-note { color: var(--primary-60); font-size: 13px; padding: 12px 0; }
+
+@media (max-width: 720px) {
+  .topbar { height: auto; position: static; flex-wrap: wrap; }
+  .status-page { padding: 16px; gap: 24px; }
+  .running-row { grid-template-columns: minmax(0, 1fr) 80px; }
+  .running-row .kind, .running-row .worker { display: none; }
+}

@@ -90,6 +90,23 @@ describe("reader backend scene action and persistence", () => {
     const correlation = runtime.diagnostic.mock.calls.map((args) => args[1].requestId);
     expect(new Set(correlation).size).toBe(1);
   });
+  it("reports the stretch the picture illustrates so the reader stops offering inserts", async () => {
+    // Без этого сигнала счёт страниц предложит вторую врезку внутри того же
+    // отрезка, и она покажет копию уже нарисованной картинки.
+    const action = { ...input(), onStretch: vi.fn() };
+    runtime.request.mockResolvedValue({ ...ready, stretch_end_fraction: 0.48 });
+
+    await generateBackendReaderScene(action, new AbortController().signal);
+
+    expect(action.onStretch).toHaveBeenCalledWith(0.48);
+  });
+  it("says nothing about the stretch when the server did not name one", async () => {
+    const action = { ...input(), onStretch: vi.fn() };
+
+    await generateBackendReaderScene(action, new AbortController().signal);
+
+    expect(action.onStretch).not.toHaveBeenCalled();
+  });
   it("shows the backend scene in every anchor that requested it", async () => {
     const first = input("first-anchor");
     const second = input("second-anchor");

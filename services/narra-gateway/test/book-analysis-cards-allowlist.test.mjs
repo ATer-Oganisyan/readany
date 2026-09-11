@@ -15,7 +15,8 @@ import {
   BOOK_ANALYSIS_PIPELINE_NARRA,
   bookAnalysisAssignedPipelineForEdition,
   bookAnalysisCardsEditionsFromEnv,
-  bookAnalysisPipelineForEdition
+  bookAnalysisPipelineForEdition,
+  bookAnalysisPipelineForScope
 } from '../analysis/book-analysis-pipeline.mjs'
 
 const CRIME = 'bef16434-1e57-4088-a9e0-aa3883797e1f'
@@ -74,5 +75,43 @@ test('an assignment is distinguishable from the default pipeline', () => {
   assert.equal(
     bookAnalysisPipelineForEdition(OTHER, { BOOK_ANALYSIS_PIPELINE: 'external' }),
     'external'
+  )
+})
+
+test('приватная книга идёт на карточки, каталожная остаётся на прежнем конвейере', () => {
+  // Приватная книга — загрузка живого человека: окна карточек открываются за
+  // ним, и разметка публикуется по мере их готовности. Каталог разбирается один
+  // раз на всех и целиком, поэтому правило про область видимости, а не про
+  // «новые книги».
+  assert.equal(bookAnalysisPipelineForScope('private', {}), BOOK_ANALYSIS_PIPELINE_CARDS)
+  assert.equal(bookAnalysisPipelineForScope('catalog', {}), null)
+  assert.equal(bookAnalysisPipelineForScope(null, {}), null)
+  assert.equal(
+    bookAnalysisAssignedPipelineForEdition(OTHER, {}, 'private'),
+    BOOK_ANALYSIS_PIPELINE_CARDS
+  )
+  assert.equal(bookAnalysisAssignedPipelineForEdition(OTHER, {}, 'catalog'), null)
+})
+
+test('приватные книги возвращаются к общей настройке одним словом', () => {
+  // Путь отката без выкладки кода: настройка сильнее умолчания в обе стороны.
+  const off = { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'none' }
+  assert.equal(bookAnalysisPipelineForScope('private', off), null)
+  assert.equal(bookAnalysisPipelineForEdition(OTHER, off), BOOK_ANALYSIS_PIPELINE_NARRA)
+  assert.equal(
+    bookAnalysisPipelineForScope('private', { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'narra' }),
+    BOOK_ANALYSIS_PIPELINE_NARRA
+  )
+  assert.throws(
+    () => bookAnalysisPipelineForScope('private', { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'выдумка' }),
+    /BOOK_ANALYSIS_PIPELINE_PRIVATE/
+  )
+})
+
+test('поимённый список сильнее правила по области видимости', () => {
+  const env = { BOOK_ANALYSIS_CARDS_EDITIONS: CRIME, BOOK_ANALYSIS_PIPELINE_PRIVATE: 'none' }
+  assert.equal(
+    bookAnalysisAssignedPipelineForEdition(CRIME, env, 'private'),
+    BOOK_ANALYSIS_PIPELINE_CARDS
   )
 })

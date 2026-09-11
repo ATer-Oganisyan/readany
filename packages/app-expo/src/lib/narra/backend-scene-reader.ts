@@ -43,6 +43,12 @@ export async function generateBackendReaderScene(
     chapter: string;
     intent: BackendSceneIntent;
     display(anchor: string, dataUri: string): void;
+    /**
+     * Граница отрезка, который иллюстрирует эта картинка. Сервер владеет
+     * сеткой, читатель — своим счётом страниц; без этого сигнала счёт страниц
+     * предложит вторую врезку внутри того же отрезка, и она покажет копию.
+     */
+    onStretch?(endFraction: number): void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -83,6 +89,7 @@ export async function generateBackendReaderScene(
         slotIndex: firstSnapshot.slotIndex,
         anchorTextOffset: firstSnapshot.anchorTextOffset,
       };
+      if (firstSnapshot.stretchEndFraction) input.onStretch?.(firstSnapshot.stretchEndFraction);
       persistIntent();
     }
     const id = backendSceneId(intent);
@@ -118,6 +125,7 @@ export async function generateBackendReaderScene(
               sharedIntent.sceneKey = scene.sceneKey;
               sharedIntent.slotIndex = scene.slotIndex;
               sharedIntent.anchorTextOffset = scene.anchorTextOffset;
+              if (scene.stretchEndFraction) input.onStretch?.(scene.stretchEndFraction);
               recordDiagnostic("scene_request", {
                 requestId,
                 stage: scene.status,

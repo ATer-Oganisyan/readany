@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  completionText,
   settleProviderResponse,
   validateChatCompletionPayload
 } from '../providers/provider-response.mjs'
@@ -41,4 +42,29 @@ test('non-stream completion rejects in-band error and content-filter finish', ()
     }),
     (error) => error?.code === 'CENSOR'
   )
+})
+
+test('a truncated or empty completion is a failure, not an empty answer', () => {
+  // `content || ''` превращал две разные аварии в немую пустую строку, а та
+  // доезжала до разбора JSON и падала на «LLM did not return a JSON object» —
+  // сообщение, по которому причину не найти. Reasoning-модель, потратившая
+  // весь `max_tokens` на рассуждение, приходит именно так: вызов «успешен»,
+  // стоит денег и минуту времени, а текста нет.
+  assert.equal(
+    completionText({ choices: [{ message: { content: '{"ok": true}' }, finish_reason: 'stop' }] }),
+    '{"ok": true}'
+  )
+  assert.throws(
+    () => completionText({ choices: [{ message: { content: '{"partial"' }, finish_reason: 'length' }] }),
+    (error) => error.code === 'LLM_OUTPUT_TRUNCATED'
+  )
+  assert.throws(
+    () => completionText({ choices: [{ message: { content: '' }, finish_reason: 'stop' }] }),
+    (error) => error.code === 'LLM_EMPTY_COMPLETION'
+  )
+  assert.throws(
+    () => completionText({ choices: [{ message: { reasoning_content: 'долго думал' } }] }),
+    (error) => error.code === 'LLM_EMPTY_COMPLETION'
+  )
+  assert.throws(() => completionText({}), (error) => error.code === 'LLM_EMPTY_COMPLETION')
 })

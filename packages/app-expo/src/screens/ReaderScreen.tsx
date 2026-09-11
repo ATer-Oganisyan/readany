@@ -697,6 +697,10 @@ function ReaderContent({ route, navigation }: Props) {
   // запускает генерацию, готовая картинка встаёт в текст на место слота.
   const sceneSuggestionInterval = useNarraStore((state) => state.sceneSuggestionInterval);
   const sceneSuggestionStateRef = useRef(INITIAL_SCENE_SUGGESTION_STATE);
+  // Докуда книгу иллюстрирует последняя нарисованная картинка. Счёт страниц не
+  // знает про сетку сервера, и без этой границы внутри одного отрезка возникала
+  // вторая врезка с той же картинкой.
+  const sceneStretchEndRef = useRef(0);
   const narraScenes = useNarraStore((state) => state.books[bookId]?.scenes);
   const narraSceneRequests = useNarraStore((state) => state.books[bookId]?.sceneRequests);
   const narraSceneAnchorBindings = useNarraStore(
@@ -761,6 +765,9 @@ function ReaderContent({ route, navigation }: Props) {
             intent,
             display: (targetAnchor, dataUri) =>
               bridgeRef.current?.replaceSceneSlot(targetAnchor, dataUri),
+            onStretch: (endFraction) => {
+              sceneStretchEndRef.current = Math.max(sceneStretchEndRef.current, endFraction);
+            },
           },
           action.signal,
         );
@@ -914,6 +921,7 @@ function ReaderContent({ route, navigation }: Props) {
     sessionProgressRef.current = null;
     totalBookCharactersRef.current = null;
     sceneSuggestionStateRef.current = INITIAL_SCENE_SUGGESTION_STATE;
+    sceneStretchEndRef.current = 0;
     suppressProgressTracking(INITIAL_PROGRESS_RESTORE_GUARD_MS);
   }, [bookId]);
   const chapterTranslation = useChapterTranslation({
@@ -1252,11 +1260,21 @@ function ReaderContent({ route, navigation }: Props) {
       );
       sceneSuggestionStateRef.current = sceneAdvance.state;
       if (sceneAdvance.suggest) {
-        console.log("[SceneSlot] suggest → insertSceneSlot", {
-          interval: sceneSuggestionInterval,
-          step: sceneAdvance.state.step,
-        });
-        bridgeRef.current?.insertSceneSlot(absoluteFraction);
+        // Одна картинка на отрезок: внутри уже проиллюстрированного участка
+        // врезку не предлагаем, счёт страниц при этом не сбрасываем — как
+        // только читатель перейдёт границу, предложение случится сразу.
+        if (absoluteFraction < sceneStretchEndRef.current) {
+          console.log("[SceneSlot] suggest → skipped inside illustrated stretch", {
+            fraction: absoluteFraction,
+            stretchEnd: sceneStretchEndRef.current,
+          });
+        } else {
+          console.log("[SceneSlot] suggest → insertSceneSlot", {
+            interval: sceneSuggestionInterval,
+            step: sceneAdvance.state.step,
+          });
+          bridgeRef.current?.insertSceneSlot(absoluteFraction);
+        }
       } else if (sceneAdvance.moved) {
         console.log("[SceneSlot] move counted", {
           pagesTurned: sceneAdvance.state.pagesTurned,
