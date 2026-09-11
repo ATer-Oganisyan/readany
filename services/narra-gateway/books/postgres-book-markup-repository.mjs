@@ -542,7 +542,12 @@ export function createPostgresBookMarkupRepository(pool, {
            LEFT JOIN book_character_fragments AS fragment
              ON fragment.run_id = roster.run_id
             AND fragment.character_key = ANY(roster.candidate_keys)
-            AND fragment.start_offset < $2
+            -- Тот же предикат, что у сборки карточки: фрагмент целиком внутри
+            -- барьера. Пока здесь стояло «начинается до конца окна», персонаж,
+            -- у которого единственный фрагмент пересекал границу, получал
+            -- задание и падал на CARD_FRAGMENTS_MISSING — окно считало его
+            -- своим, а сборка не находила ни одной цитаты.
+            AND fragment.end_offset <= $2
            WHERE roster.run_id = $1
              AND roster.first_mention_text_offset >= $3
              AND roster.first_mention_text_offset < $4

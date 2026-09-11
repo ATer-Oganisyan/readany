@@ -280,3 +280,26 @@ test('finalization refuses a window with no fragments at all', () => {
     { code: 'CARD_FRAGMENTS_MISSING' }
   )
 })
+
+test('a window that counted more mentions than the roster raises the book count', () => {
+  // Два счётчика из разных проходов: в ростере — вхождения поверхностей имени
+  // по инвентарю, в окне — упоминания по фрагментам. Обычно первый больше, но
+  // на «Обломове» у двух персонажей вышло наоборот, и карточка падала на
+  // собственном инварианте «в окне не больше, чем в книге». Инвариант верен, а
+  // меньшее из двух чисел — нет: если окно насчитало больше, недосчитал ростер.
+  const built = request({ character: {
+    canonicalName: 'Элизабет',
+    names: ['Элизабет'],
+    mentionCount: 2,
+    firstMentionTextOffset: 0
+  } })
+  const counted = FRAGMENTS.map((item) => ({ ...item, mentionCount: 4 }))
+  const finalized = finalizeCharacterCard({
+    input: built,
+    result: { card: modelCard() },
+    fragments: counted,
+    createdAt: '2026-09-10T10:00:00Z'
+  })
+  assert.ok(finalized.card.mentionCountInWindow > 2)
+  assert.equal(finalized.card.mentionCount, finalized.card.mentionCountInWindow)
+})
