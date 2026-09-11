@@ -1,3 +1,4 @@
+import { useReaderErrorToast } from "@/hooks/use-reader-error-toast";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
@@ -984,16 +985,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Focus & foreground state for volume paging whitelist
   const isFocused = useIsFocused();
-  const errorToastShown = useRef(false);
-  useEffect(() => {
-    if (!error || !isFocused || errorToastShown.current) return;
-    errorToastShown.current = true;
-    toast.error(t("reader.openFailedTitle", "Не удалось открыть книгу"), {
-      description: t("reader.openFailedDescription", "Попробуйте ещё раз"),
-    });
-    if (navigation.canGoBack()) navigation.goBack();
-    else navigation.navigate("Tabs");
-  }, [error, isFocused, navigation, t]);
+  useReaderErrorToast(error, isFocused, navigation, `${bookId}:${loadAttempt}`);
   useBackendBook(book, isFocused, progress);
   const [appActive, setAppActive] = useState(true);
 
