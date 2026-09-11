@@ -6,7 +6,7 @@ import {
   replayBookIdentity,
   scopeFrozenIdentityInput,
   summarizeAppliedIdentityMerges
-} from '../book-analysis-identity-replay.mjs'
+} from '../analysis/book-analysis-identity-replay.mjs'
 
 const RUN_ID = '7cd33c59-cde5-4c1a-a610-83f09fd61acf'
 const SNAPSHOT_ID = '335177b3-ae1d-45b2-b6b2-d8c584678bae'

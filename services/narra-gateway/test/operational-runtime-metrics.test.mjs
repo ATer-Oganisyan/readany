@@ -4,7 +4,7 @@ import {
   operationalRuntimeMetrics,
   recordProviderFailure,
   resetOperationalRuntimeMetricsForTests
-} from '../operational-runtime-metrics.mjs'
+} from '../platform/operational-runtime-metrics.mjs'
 
 test('runtime provider metrics aggregate only bounded safe categories', () => {
   resetOperationalRuntimeMetricsForTests()

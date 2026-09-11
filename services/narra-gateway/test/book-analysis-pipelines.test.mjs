@@ -2,16 +2,16 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { assembleBookMarkupV3 } from '../book-analysis-assembler.mjs'
+import { assembleBookMarkupV3 } from '../analysis/book-analysis-assembler.mjs'
 import {
   BOOK_ANALYSIS_MARKUP_VERSION,
   BOOK_ANALYSIS_SCHEMA_VERSION,
   normalizeBookAnalysisCharacterProfile
-} from '../book-analysis-contracts.mjs'
+} from '../analysis/book-analysis-contracts.mjs'
 import {
   createBookAnalysisExternalWorker,
   normalizeExternalBookObservations
-} from '../book-analysis-external-worker.mjs'
+} from '../analysis/book-analysis-external-worker.mjs'
 import {
   BOOK_ANALYSIS_PIPELINE_EXTERNAL,
   BOOK_ANALYSIS_PIPELINE_NARRA,
@@ -21,11 +21,11 @@ import {
   bookAnalysisPipelineFromEnv,
   createExternalEvidenceOnlyCharacterProfile,
   getBookAnalysisPipeline
-} from '../book-analysis-pipeline.mjs'
-import { resolveBookAnalysisEntities } from '../book-analysis-resolver.mjs'
-import { validateBookMarkupV3 } from '../book-analysis-validator.mjs'
+} from '../analysis/book-analysis-pipeline.mjs'
+import { resolveBookAnalysisEntities } from '../analysis/book-analysis-resolver.mjs'
+import { validateBookMarkupV3 } from '../analysis/book-analysis-validator.mjs'
 import { compareBookAnalysisPipelines } from '../evaluation/compare-book-analysis-pipelines.mjs'
-import { createExternalBookAdapterClient } from '../external-book-adapter-client.mjs'
+import { createExternalBookAdapterClient } from '../providers/external-book-adapter-client.mjs'
 
 const quietLogger = { info() {}, warn() {}, error() {} }
 

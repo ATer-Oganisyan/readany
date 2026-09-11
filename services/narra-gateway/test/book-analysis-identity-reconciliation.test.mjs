@@ -4,7 +4,7 @@ import {
   BOOK_IDENTITY_RECONCILIATION_LIMITS,
   buildBookIdentityReconciliationRequest,
   validateBookIdentityMerges
-} from '../book-analysis-identity-reconciliation.mjs'
+} from '../analysis/book-analysis-identity-reconciliation.mjs'
 
 function character(index, name) {
   const id = String(index).padStart(2, '0')

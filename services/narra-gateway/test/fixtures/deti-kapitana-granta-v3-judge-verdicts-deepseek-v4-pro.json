@@ -1,0 +1,529 @@
+[
+  {
+    "judgeId": "edward_glenarvan::гленарван",
+    "goldId": "edward_glenarvan",
+    "goldName": "Эдуард Гленарван",
+    "rowName": "Гленарван",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "tall",
+          "stern_features_kind_eyes"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.67,
+        "rationale": "Покрыты высокий рост и суровые черты с добрыми глазами; возраст не указан, но портрет узнаваем."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "mounts_expedition"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.14,
+        "rationale": "Отражена только организация экспедиции, остальные ключевые события и детали (шотландское происхождение, находка бутылки, женитьба и др.) отсутствуют."
+      }
+    }
+  },
+  {
+    "judgeId": "jacques_paganel::паганель",
+    "goldId": "jacques_paganel",
+    "goldName": "Жак Паганель",
+    "rowName": "Паганель",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "lanky",
+          "about_forty"
+        ],
+        "contradictions": [
+          {
+            "factId": "tattoo_before_the_end",
+            "cardClaim": "на груди — геральдическая птица, впившаяся клювом в сердце",
+            "goldSays": "Татуировка раскрывается только в финале, запрещена к упоминанию в карточке как спойлер",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [
+          {
+            "cardClaim": "на груди — геральдическая птица, впившаяся клювом в сердце",
+            "why": "Примета не входит в эталон внешности, появляется только в финале и является спойлером"
+          }
+        ],
+        "notInGold": [
+          {
+            "cardClaim": "лицо, оживлённое любопытством",
+            "why": "Деталь внешности не включена в эталон, но может быть из книги"
+          }
+        ],
+        "portraitUsable": false,
+        "score": 0.4,
+        "rationale": "Покрыты долговязый вид и возраст, но отсутствуют очки, а татуировка — грубый спойлер, делающий портрет непригодным."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "geographic_society",
+          "absent_minded",
+          "erudite"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "направлявшийся в Индию, чтобы связать в одно целое труды великих путешественников",
+            "why": "В эталоне не указана цель поездки, хотя это деталь из книги"
+          },
+          {
+            "cardClaim": "с живым участием относился к Мери Грант и её брату и старался внушить им твёрдую надежду на встречу с отцом",
+            "why": "В эталоне не указано отношение к детям Гранта, хотя это точная характеристика из книги"
+          },
+          {
+            "cardClaim": "Это сорокалетний мужчина с лицом, оживлённым любопытством",
+            "why": "Описание внешности в биографии не включено в эталон биографии, но может быть из книги"
+          }
+        ],
+        "score": 0.6,
+        "rationale": "Три ключевых факта биографии покрыты, но отсутствуют посадка не на то судно и расшифровка документов; многие детали верны, но не в эталоне."
+      }
+    }
+  },
+  {
+    "judgeId": "robert_grant::роберт",
+    "goldId": "robert_grant",
+    "goldName": "Роберт Грант",
+    "rowName": "Роберт",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [
+          {
+            "factId": "resolute_look",
+            "cardClaim": "мальчик с влажными от слёз глазами и маленьким растерянным лицом",
+            "goldSays": "очень решительный вид; держится покровителем сестры",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [
+          {
+            "cardClaim": "влажные от слёз глаза",
+            "why": "В книге Роберт не плачет, слёзы отнесены к сестре; эталон явно запрещает образ заплаканного растерянного ребёнка."
+          },
+          {
+            "cardClaim": "маленькое растерянное лицо",
+            "why": "Противоречит решительному виду, не соответствует описанию в тексте."
+          }
+        ],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0,
+        "rationale": "Промпт описывает заплаканного и растерянного мальчика, что прямо противоречит эталонному решительному виду и запрету; портрет будет неузнаваем."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "son_of_harry",
+          "becomes_a_sailor",
+          "brave_and_eager"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "Эмоционально привязан к семье",
+            "why": "Эта черта явно следует из книги (привязанность к отцу и сестре), но не включена в эталонные факты."
+          }
+        ],
+        "score": 0.75,
+        "rationale": "Покрыты основные биографические факты: сын капитана, становление моряком, храбрость. Не упомянут эпизод с кондором и Талькавом."
+      }
+    }
+  },
+  {
+    "judgeId": "john_mangles::джон-манглс",
+    "goldId": "john_mangles",
+    "goldName": "Джон Манглс",
+    "rowName": "Джон Манглс",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [
+          {
+            "factId": "glenarvan_features",
+            "cardClaim": "у него немного суровые черты лица",
+            "goldSays": "суровые черты лица — это приметы Гленарвана; нет описания внешности Манглса",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [
+          {
+            "cardClaim": "Мужчина с немного суровыми чертами лица",
+            "why": "В тексте нет описания внешности Манглса, а «суровые черты лица» относятся к Гленарвану."
+          }
+        ],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0,
+        "rationale": "Карточка приписывает персонажу деталь внешности, которая принадлежит Гленарвану, и в эталоне явно указано, что портрета нет."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "captain_of_duncan"
+        ],
+        "contradictions": [
+          {
+            "factId": "glenarvan_features",
+            "cardClaim": "у него немного суровые черты лица",
+            "goldSays": "суровые черты лица — это приметы Гленарвана; в тексте нет описания внешности Манглса",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [
+          {
+            "cardClaim": "Лингвистически компетентный",
+            "why": "Нет в эталоне, и в книге это не подтверждается."
+          },
+          {
+            "cardClaim": "Аналитичный интерпретатор",
+            "why": "Нет в эталоне, и в книге это не подтверждается."
+          }
+        ],
+        "notInGold": [
+          {
+            "cardClaim": "берётся найти место кораблекрушения и обещает, что они разыщут капитана Гранта",
+            "why": "Это деталь сюжета, вероятно, из книги, но не включена в эталонные факты."
+          }
+        ],
+        "score": 0.2,
+        "rationale": "Покрыт только факт о капитане «Дункана». Есть грубое противоречие по внешности, отсутствуют важные факты о воспитании, мастерстве моряка и любви к Мэри."
+      }
+    }
+  },
+  {
+    "judgeId": "helena_glenarvan::леди-элен",
+    "goldId": "helena_glenarvan",
+    "goldName": "Элен Гленарван",
+    "rowName": "Леди Элен",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0,
+        "rationale": "Внешность не описана, appearancePrompt пуст."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "takes_in_the_children"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "помогла раненому добраться до повозки",
+            "why": "Этот эпизод есть в книге, но не включён в эталон."
+          }
+        ],
+        "score": 0.17,
+        "rationale": "Карточка освещает только заботу о детях Гранта, остальные ключевые факты биографии отсутствуют."
+      }
+    }
+  },
+  {
+    "judgeId": "mary_grant::мери-грант",
+    "goldId": "mary_grant",
+    "goldName": "Мери Грант",
+    "rowName": "Мери Грант",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [
+          {
+            "factId": "age_16",
+            "cardClaim": "четырнадцатилетняя",
+            "goldSays": "лет шестнадцать",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0,
+        "rationale": "Карточка не содержит описания внешности, а указанный возраст (14 лет) противоречит эталону (16 лет)."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "raised_her_brother"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [
+          {
+            "cardClaim": "четырнадцатилетняя",
+            "why": "В эталоне биографии возраст не указан, а по книге ей 16 лет."
+          },
+          {
+            "cardClaim": "сестра милосердия",
+            "why": "В книге Мери Грант не была сестрой милосердия, эта роль отсутствует в эталоне."
+          }
+        ],
+        "notInGold": [],
+        "score": 0.2,
+        "rationale": "Покрыт только факт о том, что она растила брата, работая день и ночь. Остальные биографические факты не упомянуты. Присутствуют неподтверждённые утверждения о возрасте и роли."
+      }
+    }
+  },
+  {
+    "judgeId": "macnabbs::мак-наббс",
+    "goldId": "macnabbs",
+    "goldName": "Мак-Наббс",
+    "rowName": "Мак-Наббс",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "age_50",
+          "regular_calm_face"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 1,
+        "rationale": "Все факты внешности покрыты: возраст около 50 лет и спокойное лицо. Prompt содержит достаточно деталей для узнаваемого портрета."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "major_and_cousin",
+          "imperturbable"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "неподверженный увлечению",
+            "why": "Эталон не содержит этого факта, но он взят из книги."
+          },
+          {
+            "cardClaim": "участник путешествия на «Дункане»",
+            "why": "Эталон не содержит этого факта, но он верен."
+          }
+        ],
+        "score": 0.5,
+        "rationale": "Покрыты факты о родстве и невозмутимости. Не упомянуты шотландское происхождение и недоверие Айртону."
+      }
+    }
+  },
+  {
+    "judgeId": "macnabbs::майор",
+    "goldId": "macnabbs",
+    "goldName": "Мак-Наббс",
+    "rowName": "Майор",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "regular_calm_face"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.5,
+        "rationale": "Покрыт факт спокойного лица, но отсутствует возраст; портретный промпт слишком общий, чтобы дать узнаваемый образ."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "imperturbable"
+        ],
+        "contradictions": [
+          {
+            "factId": "distrusts_ayrton",
+            "cardClaim": "всегда присоединяется к общему мнению",
+            "goldSays": "единственный, кто с самого начала не доверяет Айртону",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "не теряет надежды и держится бодро",
+            "why": "не упомянуто в эталоне, но не противоречит"
+          },
+          {
+            "cardClaim": "Критично оценивает обстоятельства",
+            "why": "не упомянуто в эталоне"
+          },
+          {
+            "cardClaim": "Ищет практические решения",
+            "why": "не упомянуто в эталоне"
+          },
+          {
+            "cardClaim": "Осторожен в действиях",
+            "why": "не упомянуто в эталоне"
+          },
+          {
+            "cardClaim": "Заботится о безопасности",
+            "why": "не упомянуто в эталоне"
+          },
+          {
+            "cardClaim": "Эмоционально отзывчив",
+            "why": "не упомянуто в эталоне"
+          }
+        ],
+        "score": 0.2,
+        "rationale": "Покрыт только факт невозмутимости; карточка ошибочно утверждает, что майор всегда присоединяется к общему мнению, что прямо противоречит его недоверию к Айртону; отсутствуют ключевые факты о родстве, шотландском происхождении и недоверии."
+      }
+    }
+  },
+  {
+    "judgeId": "ayrton::айртон",
+    "goldId": "ayrton",
+    "goldName": "Айртон",
+    "rowName": "Айртон",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "age_45"
+        ],
+        "contradictions": [
+          {
+            "factId": "stern_face_bright_eyes",
+            "cardClaim": "бесстрастное лицо и сдержанный взгляд",
+            "goldSays": "блестящие глаза, глубоко сидящие под густыми бровями",
+            "severity": "major"
+          },
+          {
+            "factId": "resolute_energetic",
+            "cardClaim": "невозмутимый, бесстрастное лицо",
+            "goldSays": "энергичное, резко очерченное лицо",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0.2,
+        "rationale": "Описание внешности противоречит эталону в ключевых чертах: бесстрастное лицо и сдержанный взгляд вместо блестящих глаз и энергичного лица. Покрыт только возраст, все остальные детали упущены или искажены."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "boatswain_of_britannia",
+          "is_ben_joyce"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.4,
+        "rationale": "Карточка охватывает факты о боцмане и личности Бена Джойса, но упускает ключевые события: находку на ферме, засаду и высадку на Табор."
+      }
+    }
+  },
+  {
+    "judgeId": "thalcave::талькав",
+    "goldId": "thalcave",
+    "goldName": "Талькав",
+    "rowName": "Талькав",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0,
+        "rationale": "Карточка не содержит ни одной конкретной физической приметы из эталона (рост, волосы, раскраска лица, плащ, ружьё), а appearancePrompt даёт только оценочное выражение, не позволяющее нарисовать узнаваемый портрет."
+      },
+      "biography": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0,
+        "rationale": "В биографии упомянута только роль проводника, но ни один ключевой факт эталона (этническая принадлежность, спасение Роберта, владение Таукой, жертва лошадью, расставание на берегу) не передан."
+      }
+    }
+  },
+  {
+    "judgeId": "helena_glenarvan::леди-гленарван",
+    "goldId": "helena_glenarvan",
+    "goldName": "Элен Гленарван",
+    "rowName": "Леди Гленарван",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 0,
+        "rationale": "Карточка не содержит никаких деталей внешности: возраст, цвет волос, глаз не указаны, appearancePrompt пуст."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "takes_in_the_children"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.17,
+        "rationale": "Карточка упоминает сердечное отношение к детям капитана Гранта, что покрывает факт takes_in_the_children. Остальные факты биографии не отражены."
+      }
+    }
+  },
+  {
+    "judgeId": "mary_grant::мисс-грант",
+    "goldId": "mary_grant",
+    "goldName": "Мери Грант",
+    "rowName": "Мисс Грант",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "age_16",
+          "pretty_tired_face",
+          "modest_courageous",
+          "poor_but_neat"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 1,
+        "rationale": "AppearancePrompt полностью отражает все четыре core-факта внешности из эталона, противоречий и неподтверждённых деталей нет."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "daughter_of_harry",
+          "joins_expedition"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "взволнованно расспрашивает о судьбе отца",
+            "why": "деталь не указана в эталонной биографии, но присутствует в книге"
+          },
+          {
+            "cardClaim": "имеет скромное, мужественное выражение лица",
+            "why": "факт внешности, не входящий в эталонную биографию"
+          }
+        ],
+        "score": 0.4,
+        "rationale": "Биография покрывает только два из пяти core-фактов; отсутствуют факты о воспитании брата, приходе в Малькольм-Касл и замужестве."
+      }
+    }
+  }
+]

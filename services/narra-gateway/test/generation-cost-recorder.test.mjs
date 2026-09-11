@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBestEffortGenerationCostRecorder } from '../generation-cost-recorder.mjs'
+import { createBestEffortGenerationCostRecorder } from '../generation/generation-cost-recorder.mjs'
 
 test('cost recording is skipped when context is absent', async () => {
   let calls = 0

@@ -34,7 +34,7 @@ x-book-analysis-storage-environment: &book-analysis-storage-environment
 x-book-analysis-worker: &book-analysis-worker
   image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
   healthcheck:
-    test: ["CMD", "node", "worker-healthcheck.mjs"]
+    test: ["CMD", "node", "platform/worker-healthcheck.mjs"]
     interval: 30s
     timeout: 5s
     retries: 3
@@ -240,7 +240,7 @@ services:
   migrate:
     profiles: ["operations"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must be set}
-    command: ["node", "migrate.mjs"]
+    command: ["node", "db/migrate.mjs"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -263,11 +263,11 @@ services:
   book-markup-worker:
     profiles: ["book-backend"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
-    command: ["node", "book-markup-worker.mjs"]
+    command: ["node", "books/book-markup-worker.mjs"]
     deploy:
       replicas: ${BOOK_MARKUP_WORKER_REPLICAS:-1}
     healthcheck:
-      test: ["CMD", "node", "worker-healthcheck.mjs"]
+      test: ["CMD", "node", "platform/worker-healthcheck.mjs"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -311,11 +311,11 @@ services:
   book-identity-worker:
     profiles: ["book-backend"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
-    command: ["node", "book-identity-worker.mjs"]
+    command: ["node", "books/book-identity-worker.mjs"]
     deploy:
       replicas: ${BOOK_IDENTITY_WORKER_REPLICAS:-1}
     healthcheck:
-      test: ["CMD", "node", "worker-healthcheck.mjs"]
+      test: ["CMD", "node", "platform/worker-healthcheck.mjs"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -358,7 +358,7 @@ services:
   book-tts-markup-worker:
     <<: *book-analysis-worker
     profiles: ["tts-markup"]
-    command: ["node", "book-tts-markup-worker-runner.mjs"]
+    command: ["node", "tts/book-tts-markup-worker-runner.mjs"]
     read_only: true
     deploy:
       replicas: ${BOOK_TTS_MARKUP_WORKER_REPLICAS:-1}
@@ -366,62 +366,37 @@ services:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
       WORKER_TYPE: book-tts-markup
 
-  book-analysis-prepare:
+  # Все шесть стадий канонического анализа обслуживает один воркер: очередь
+  # book_analysis_jobs общая, claimAnalysisJob фильтрует по стадии. Разделение
+  # на процессы — вопрос масштабирования, а не схемы.
+  book-analysis-worker:
     <<: *book-analysis-worker
     profiles: ["book-backend"]
-    command: ["node", "book-analysis-worker.mjs"]
-    environment:
-      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-scan-policy-environment]
-      WORKER_TYPE: book-analysis-prepare
-
-  book-analysis-scan:
-    <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-scan-worker-runner.mjs"]
+    command: ["node", "analysis/book-analysis-worker.mjs"]
     deploy:
-      replicas: ${BOOK_ANALYSIS_SCAN_REPLICAS:-1}
+      replicas: ${BOOK_ANALYSIS_WORKER_REPLICAS:-1}
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment, *book-analysis-scan-policy-environment]
-      WORKER_TYPE: book-analysis-scan
+      WORKER_TYPE: book-analysis
 
-  book-analysis-resolve:
+  # Опциональный пул под горячие стадии: тот же образ и та же точка входа,
+  # но опрашивается только BOOK_ANALYSIS_POOL_STAGES. Включается профилем,
+  # когда одного воркера перестаёт хватать по пропускной способности.
+  book-analysis-pool:
     <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-resolve-worker-runner.mjs"]
-    environment:
-      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
-      WORKER_TYPE: book-analysis-resolve
-
-  book-analysis-synthesize:
-    <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]
+    profiles: ["book-analysis-pool"]
+    command: ["node", "analysis/book-analysis-worker.mjs"]
     deploy:
-      replicas: ${BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-1}
+      replicas: ${BOOK_ANALYSIS_POOL_REPLICAS:-2}
     environment:
-      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
-      WORKER_TYPE: book-analysis-synthesize
-
-  book-analysis-validate:
-    <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "validate"]
-    environment:
-      <<: [*book-analysis-database-environment, *book-analysis-storage-environment]
-      WORKER_TYPE: book-analysis-validate
-
-  book-analysis-publish:
-    <<: *book-analysis-worker
-    profiles: ["book-backend"]
-    command: ["node", "book-analysis-stage-worker-runner.mjs", "publish"]
-    environment:
-      <<: *book-analysis-database-environment
-      WORKER_TYPE: book-analysis-publish
+      <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment, *book-analysis-scan-policy-environment]
+      WORKER_TYPE: book-analysis-pool
+      BOOK_ANALYSIS_STAGES: ${BOOK_ANALYSIS_POOL_STAGES:-scan}
 
   book-media-worker:
     <<: *book-analysis-worker
     profiles: ["media"]
-    command: ["node", "book-markup-worker.mjs"]
+    command: ["node", "books/book-markup-worker.mjs"]
     deploy:
       replicas: ${BOOK_MEDIA_WORKER_REPLICAS:-1}
     env_file:
@@ -434,7 +409,7 @@ services:
   book-scene-worker:
     <<: *book-analysis-worker
     profiles: ["scenes"]
-    command: ["node", "book-markup-worker.mjs"]
+    command: ["node", "books/book-markup-worker.mjs"]
     deploy:
       replicas: ${BOOK_SCENE_WORKER_REPLICAS:-1}
     env_file:
@@ -444,10 +419,27 @@ services:
       BOOK_MARKUP_WORKER_JOB_TYPES: scene_image
       WORKER_TYPE: book-scene
 
+  # Карточки персонажей и подтверждение состава — отдельный воркер, а не
+  # довесок к book-markup-worker. Обе задачи ходят в модель и держат слот
+  # минутами, а в очереди book-markup-worker стоит разметка книги: смешав их,
+  # мы бы отдали импорт новой книги в заложники канареечной раскатке карточек.
+  book-card-worker:
+    <<: *book-analysis-worker
+    profiles: ["cards"]
+    command: ["node", "books/book-markup-worker.mjs"]
+    deploy:
+      replicas: ${BOOK_CARD_WORKER_REPLICAS:-2}
+    env_file:
+      - ${NARRA_ENV_FILE:-/etc/narra-gateway.env}
+    environment:
+      <<: [*book-analysis-database-environment, *book-analysis-generator-environment]
+      BOOK_MARKUP_WORKER_JOB_TYPES: character_card,roster_confirm
+      WORKER_TYPE: book-card
+
   generation-queue-operator:
     profiles: ["operator-campaigns"]
     image: ${NARRA_GATEWAY_IMAGE:?NARRA_GATEWAY_IMAGE must contain an immutable image tag}
-    command: ["node", "generation-queue-operator.mjs", "status"]
+    command: ["node", "generation/generation-queue-operator.mjs", "status"]
     depends_on:
       postgres:
         condition: service_healthy

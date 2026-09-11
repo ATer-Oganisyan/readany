@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBookSearchService } from '../book-search-service.mjs'
+import { createBookSearchService } from '../search/book-search-service.mjs'
 
 const SUBJECT_ID = '123e4567-e89b-42d3-a456-426614174000'
 const BOOK_ID = '123e4567-e89b-42d3-a456-426614174001'

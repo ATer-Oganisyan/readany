@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   PORTRAIT_PROMPT_CHAR_LIMIT,
   buildCharacterPortraitPrompt
-} from '../character-portrait-prompt.mjs'
+} from '../generation/character-portrait-prompt.mjs'
 
 test('character portrait prompt keeps origin framing, appearance and style within budget', () => {
   const prompt = buildCharacterPortraitPrompt({

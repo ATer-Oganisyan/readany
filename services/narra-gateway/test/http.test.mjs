@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
-import { consumeResponse, createResponseBuffer, normalizeHttpTransportError } from '../http.mjs'
+import { consumeResponse, createResponseBuffer, normalizeHttpTransportError } from '../platform/http.mjs'
 
 test('socket timeouts keep the closed TIMEOUT error contract', () => {
   const error = normalizeHttpTransportError(new Error('TIMEOUT'))
