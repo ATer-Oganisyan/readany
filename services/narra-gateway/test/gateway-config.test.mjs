@@ -130,3 +130,12 @@ test('without an image provider in the environment the default is still openrout
 test('an unsupported image provider fails loudly instead of falling back', () => {
   assert.throws(() => load({ COVER_IMAGE_PROVIDER: 'выдуманный' }), /Unsupported cover image provider/)
 })
+
+test('the character media backfill stays off until it is asked for by name', () => {
+  // Подогрев медиа по старту стоит денег: каждый перезапуск шлюза заказывал
+  // портреты персонажам, чей бандл однажды не собрался. Умолчание «выключено»
+  // и есть предохранитель — включение должно быть видно в окружении.
+  assert.equal(load().BOOK_CHARACTER_MEDIA_BACKFILL, false)
+  assert.equal(load({ BOOK_CHARACTER_MEDIA_BACKFILL: 'true' }).BOOK_CHARACTER_MEDIA_BACKFILL, true)
+  assert.equal(load({ BOOK_CHARACTER_MEDIA_BACKFILL: 'false' }).BOOK_CHARACTER_MEDIA_BACKFILL, false)
+})

@@ -47,6 +47,15 @@ export function loadGatewayConfig(env = process.env) {
     'BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED',
     true
   )
+  // Подогрев медиа по старту раньше был безусловным: каждый перезапуск шлюза
+  // брал тысячу персонажей с неготовым бандлом и дозаказывал им недостающее.
+  // На проде, где такие бандлы висят неготовыми неделями, это значит «платить
+  // за картинки за каждый деплой», причём молча. Теперь это явная просьба.
+  const BOOK_CHARACTER_MEDIA_BACKFILL = parseEnvBool(
+    env,
+    'BOOK_CHARACTER_MEDIA_BACKFILL',
+    false
+  )
   const BOOK_SHADOW_PREVIEW_ENABLED = parseEnvBool(
     env,
     'BOOK_SHADOW_PREVIEW_ENABLED',
@@ -266,6 +275,7 @@ export function loadGatewayConfig(env = process.env) {
     BOOK_BACKEND_REQUIRED,
     BOOK_SEARCH_ENABLED,
     BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED,
+    BOOK_CHARACTER_MEDIA_BACKFILL,
     BOOK_SHADOW_PREVIEW_ENABLED,
     ALLOW_INSECURE_VIDEO_HTTP,
     INSECURE_VIDEO_ENV_ALLOWED,

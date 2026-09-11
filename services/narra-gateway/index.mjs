@@ -103,7 +103,8 @@ import { withChatCompliance, withImageCompliance } from './providers/rf-complian
 const {
   PORT, BOOK_ANALYSIS_PIPELINE, BOOK_ANALYSIS_PIPELINE_FOR_EDITION, BOOK_ANALYSIS_SCAN_POLICY, INSECURE,
   PRODUCTION, BUILD_VERSION, ANALYTICS_ENV, VIDEO_REQUIRED,
-  BOOK_BACKEND_REQUIRED, BOOK_SEARCH_ENABLED, BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED, BOOK_SHADOW_PREVIEW_ENABLED,
+  BOOK_BACKEND_REQUIRED, BOOK_SEARCH_ENABLED, BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED,
+  BOOK_CHARACTER_MEDIA_BACKFILL, BOOK_SHADOW_PREVIEW_ENABLED,
   ALLOW_INSECURE_VIDEO_HTTP, INSECURE_VIDEO_ENV_ALLOWED, VIDEO_INSECURE_HTTP_HOSTS, ALLOW_INSECURE_LLM_HTTP,
   LLM_INSECURE_HTTP_HOSTS, REGISTRATION_LIMIT, REGISTRATION_GLOBAL_LIMIT, REGISTRATION_GLOBAL_DAILY_LIMIT,
   INSTALLATION_REGISTRY_MAX, INSTALLATION_INACTIVE_RETENTION_DAYS, INSTALLATION_TOKEN_TTL_SECONDS, REFRESH_LIMIT,
@@ -815,7 +816,6 @@ if (process.env.DATABASE_URL) {
   if (internalGenerationService && BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED) {
     const identityJobs = await bookMarkupRepository.enqueueMissingBookIdentities()
     const coverJobs = await bookMarkupRepository.enqueueMissingCatalogCovers()
-    const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
     console.info('[book-identity] durable backfill checked', {
       jobs: identityJobs.length,
       created: identityJobs.filter((job) => job.created).length
@@ -824,10 +824,19 @@ if (process.env.DATABASE_URL) {
       jobs: coverJobs.length,
       created: coverJobs.filter((job) => job.created).length
     })
-    console.info('[character-media] independent backfill checked', {
-      jobs: characterMediaJobs.length,
-      created: characterMediaJobs.filter((job) => job.created).length
-    })
+    // Бандл, который не собрался, остаётся незавершённым навсегда, и подогрев
+    // по старту заказывает ему недостающее заново при каждом перезапуске. На
+    // проде это вышло тысячей портретов за три деплоя подряд — поэтому теперь
+    // подогрев зовут руками: `node books/backfill-character-media.mjs`.
+    if (BOOK_CHARACTER_MEDIA_BACKFILL) {
+      const characterMediaJobs = await bookMarkupRepository.enqueueCharacterMediaBackfill()
+      console.info('[character-media] independent backfill checked', {
+        jobs: characterMediaJobs.length,
+        created: characterMediaJobs.filter((job) => job.created).length
+      })
+    } else {
+      console.info('[character-media] startup backfill disabled; on-demand only')
+    }
     console.info('[book-scenes] automatic backfill disabled; on-demand only')
   } else if (internalGenerationService) {
     console.info('[book-media] generation and startup backfills are disabled')
