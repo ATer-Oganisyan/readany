@@ -491,7 +491,7 @@ function buildConstraintsSection(
     : "- When citing non-indexed fallback content, use [1], [2] only after addCitation succeeds with a returned fallback cfi; otherwise use plain chapter names/indices and quoted excerpts";
   const lines = [
     "## Response Guidelines",
-    `- **IMPORTANT: You MUST respond in ${language || "English"}. This is non-negotiable regardless of the book's language.**`,
+    `- Interface language: ${language || "English"}.`,
     citationGuideline,
     "- Keep responses concise unless the user asks for detailed analysis",
     "- Use markdown formatting for readability",

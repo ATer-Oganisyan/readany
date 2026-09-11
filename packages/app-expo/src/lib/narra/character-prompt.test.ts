@@ -19,6 +19,15 @@ const bazarov = {
 describe("buildCharacterSystemPrompt — предохранители роли", () => {
   const prompt = buildCharacterSystemPrompt(bazarov, "Отцы и дети", 0.3, "");
 
+  it("передаёт язык интерфейса без клиентского правила выбора языка", () => {
+    const english = buildCharacterSystemPrompt(bazarov, "Отцы и дети", 0.3, "", "en");
+    expect(english).not.toContain("Reply in English,");
+    expect(english).not.toContain("latest substantive message");
+    expect(english).toContain("Interface language: en.");
+    expect(prompt).not.toContain("последнего содержательного сообщения");
+    expect(prompt).toContain("Язык интерфейса: ru.");
+  });
+
   it("держит роль, характер и срез знаний по прогрессу", () => {
     expect(prompt).toContain("Евгений Васильевич Базаров");
     expect(prompt).toContain("«Отцы и дети»");
