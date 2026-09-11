@@ -118,6 +118,67 @@ export function bookSceneSlotsThrough(policyValue, textLengthValue, frontierText
   return slots
 }
 
+/**
+ * Докуда делать сцены.
+ *
+ * Отдельно от `bookMediaFrontier`, который решает про портреты персонажей и у
+ * каталожной книги отдаёт её целиком. Для сцен это оказалось дорого: у «Героя
+ * нашего времени» 45 слотов, и все 45 вставали в очередь разом в тот же миг,
+ * когда книга опубликована. По всей установке так набралось 10 639 заданий, и
+ * 31 августа очередь чистили руками.
+ *
+ * Поэтому сцены идут пачками за читателем: всё до его позиции плюс запас. Режим
+ * `book` возвращает прежнее поведение — вся книга сразу.
+ */
+export function bookSceneFrontier({
+  scope,
+  textLength: textLengthValue,
+  readerTextOffset = 0,
+  mode = 'reader',
+  lookaheadFraction = BOOK_MEDIA_LOOKAHEAD_FRACTION
+}) {
+  const textLength = positiveTextLength(textLengthValue)
+  if (scope !== 'catalog' && scope !== 'private') {
+    throw new TypeError('scope: expected catalog or private')
+  }
+  if (mode !== 'reader' && mode !== 'book') {
+    throw new TypeError('mode: expected reader or book')
+  }
+  if (mode === 'book') return textLength
+  if (!(lookaheadFraction > 0) || lookaheadFraction > 1) {
+    throw new TypeError('lookaheadFraction: expected a fraction between 0 and 1')
+  }
+  const currentOffset = textOffset(readerTextOffset, textLength, 'readerTextOffset')
+  return Math.min(textLength, currentOffset + Math.ceil(textLength * lookaheadFraction))
+}
+
+/**
+ * Делать ли сцены заранее, и докуда.
+ *
+ * По умолчанию `none` — сцена появляется, когда читатель её открыл. Это не
+ * лень, а решение после инцидента: 31 августа очередь сцен чистили руками
+ * (10 639 заданий по 148 книгам), и на следующий день автоматический подогрев
+ * выключили. Возвращать его по умолчанию нельзя.
+ *
+ * `reader` включает пачки: всё до позиции читателя плюс запас. Причина
+ * инцидента была не в подогреве самом по себе, а в том, что у каталожной книги
+ * фронтир равен всей книге, и 45 слотов «Героя нашего времени» вставали в
+ * очередь разом. Пачка за читателем — это 4–14 сцен.
+ *
+ * `book` — прежнее «вся книга сразу», для тех, кто этого хочет осознанно.
+ */
+export function bookScenePregenerationMode(env = process.env) {
+  const raw = String(env.BOOK_SCENE_PREGENERATION ?? '').trim().toLowerCase()
+  if (!raw) return 'none'
+  if (!['none', 'reader', 'book'].includes(raw)) {
+    throw Object.assign(
+      new TypeError('BOOK_SCENE_PREGENERATION must be none, reader or book'),
+      { code: 'BOOK_SCENE_PREGENERATION_INVALID' }
+    )
+  }
+  return raw
+}
+
 export function bookMediaFrontier({ scope, textLength: textLengthValue, readerTextOffset = 0 }) {
   const textLength = positiveTextLength(textLengthValue)
   if (scope === 'catalog') return textLength

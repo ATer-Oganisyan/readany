@@ -19,6 +19,8 @@ import {
 } from './book-markup.mjs'
 import {
   bookMediaFrontier,
+  bookSceneFrontier,
+  bookScenePregenerationMode,
   bookReaderSceneAt,
   bookSceneIdempotencyKey,
   bookSceneSlotAt,
@@ -1645,10 +1647,11 @@ export function createPostgresBookMarkupRepository(pool, {
           if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
           return { requested: 0, ready: 0, pending: 0, failed: 0 }
         }
-        const frontier = bookMediaFrontier({
+        const frontier = bookSceneFrontier({
           scope: context.scope,
           textLength: context.textLength,
-          readerTextOffset
+          readerTextOffset,
+          mode: bookScenePregenerationMode()
         })
         const slots = bookSceneSlotsThrough(context.policy, context.textLength, frontier)
         const scenes = []

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
 import { assembleBookMarkupV3 } from '../analysis/book-analysis-assembler.mjs'
 import { createPostgresBookAnalysisRepository } from '../analysis/book-analysis-repository.mjs'
 import { resolveBookAnalysisEntities } from '../analysis/book-analysis-resolver.mjs'
@@ -757,7 +758,7 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       edition_status: 'base_ready',
       shadow_publications: 1,
       media_projections: 1,
-      media_jobs: 6,
+      media_jobs: 2 * REQUIRED_CHARACTER_MEDIA.length,
       media_characters: 2
     })
     const repeatedProjection = await repository.ensureLatestMediaProjection(bookEditionId)

@@ -159,7 +159,8 @@ test('PostgreSQL persists markup and independently publishes character media', {
       character_animation: 'idle_animation'
     }
     const completedByCharacter = new Map()
-    for (let index = 0; index < 6; index += 1) {
+    const expectedJobs = 2 * REQUIRED_CHARACTER_MEDIA.length
+    for (let index = 0; index < expectedJobs; index += 1) {
       const job = await repository.claimGenerationJob('integration-worker')
       assert.ok(['anna', 'vronsky'].includes(job.characterKey))
       const characterKey = job.characterKey
@@ -190,7 +191,10 @@ test('PostgreSQL persists markup and independently publishes character media', {
         assert.equal(partial.rows.some((row) => row.asset_type === 'primary_portrait'), true)
       }
     }
-    assert.deepEqual(Object.fromEntries(completedByCharacter), { anna: 3, vronsky: 3 })
+    assert.deepEqual(Object.fromEntries(completedByCharacter), {
+      anna: REQUIRED_CHARACTER_MEDIA.length,
+      vronsky: REQUIRED_CHARACTER_MEDIA.length
+    })
     const edition = await pool.query('SELECT status FROM book_editions WHERE id = $1', [bookEditionId])
     assert.equal(edition.rows[0].status, 'base_ready')
 
