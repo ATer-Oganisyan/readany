@@ -104,12 +104,37 @@ export function bookAnalysisCardsEditionsFromEnv(env = process.env) {
  * книга, уже разобранная старым конвейером, останется на нём навсегда.
  * Настройка по умолчанию, наоборот, слабее наследования — поэтому её тут нет.
  */
-export function bookAnalysisAssignedPipelineForEdition(bookEditionId, env = process.env) {
+export function bookAnalysisAssignedPipelineForEdition(
+  bookEditionId,
+  env = process.env,
+  scope = null
+) {
   const editions = bookAnalysisCardsEditionsFromEnv(env)
   if (bookEditionId && editions.has(String(bookEditionId).toLowerCase())) {
     return BOOK_ANALYSIS_PIPELINE_CARDS
   }
-  return null
+  return bookAnalysisPipelineForScope(scope, env)
+}
+
+/**
+ * Конвейер по области видимости книги.
+ *
+ * Приватная книга — это загрузка живого человека, и ей нужен разбор, который
+ * доходит до читателя быстро и стоит ровно столько, сколько человек прочитал:
+ * окна карточек открываются за ним, а разметка публикуется по мере их
+ * готовности. Каталог живёт по другим правилам — книга там разбирается один раз
+ * на всех и целиком, — поэтому правило именно про область видимости, а не про
+ * «новые книги».
+ *
+ * `BOOK_ANALYSIS_PIPELINE_PRIVATE=none` возвращает приватные книги к общей
+ * настройке по умолчанию. Это путь отката, и он не требует выкладки кода.
+ */
+export function bookAnalysisPipelineForScope(scope, env = process.env) {
+  if (scope !== 'private') return null
+  const raw = String(env.BOOK_ANALYSIS_PIPELINE_PRIVATE || '').trim().toLowerCase()
+  if (raw === 'none') return null
+  if (!raw) return BOOK_ANALYSIS_PIPELINE_CARDS
+  return normalizeBookAnalysisPipelineId(raw, 'BOOK_ANALYSIS_PIPELINE_PRIVATE')
 }
 
 /**

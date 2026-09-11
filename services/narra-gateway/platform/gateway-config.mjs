@@ -25,8 +25,8 @@ export function loadGatewayConfig(env = process.env) {
   // Список разбирается на старте, а не при создании прогона: оператор,
   // опечатавшийся в идентификаторе книги, узнаёт об этом сразу.
   bookAnalysisCardsEditionsFromEnv(env)
-  const BOOK_ANALYSIS_PIPELINE_FOR_EDITION = (bookEditionId) => (
-    bookAnalysisAssignedPipelineForEdition(bookEditionId, env)
+  const BOOK_ANALYSIS_PIPELINE_FOR_EDITION = (bookEditionId, scope = null) => (
+    bookAnalysisAssignedPipelineForEdition(bookEditionId, env, scope)
   )
   const BOOK_ANALYSIS_SCAN_POLICY = createBookAnalysisScanPolicyFromEnv(env)
   const INSECURE = env.ALLOW_INSECURE_TLS === 'true'

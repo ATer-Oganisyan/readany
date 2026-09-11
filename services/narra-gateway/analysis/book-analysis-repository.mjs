@@ -427,9 +427,21 @@ export function createPostgresBookAnalysisRepository(pool, {
   if (typeof pipelineForEdition !== 'function') {
     throw new TypeError('pipelineForEdition must be a function')
   }
-  function assignedPipelineId(bookEditionId) {
-    const assigned = pipelineForEdition(bookEditionId)
+  function assignedPipelineId(bookEditionId, scope = null) {
+    const assigned = pipelineForEdition(bookEditionId, scope)
     return assigned ? normalizeBookAnalysisPipelineId(assigned, 'pipelineForEdition') : null
+  }
+  /**
+   * Область видимости книги нужна до выбора конвейера, а выбор случается до
+   * транзакции: от него зависит ключ идемпотентности прогона. Поэтому отдельный
+   * короткий запрос, а не чтение внутри — иначе ключ пришлось бы считать дважды.
+   */
+  async function editionScope(bookEditionId) {
+    const result = await pool.query(
+      'SELECT scope FROM book_editions WHERE id = $1',
+      [bookEditionId]
+    )
+    return result.rows[0]?.scope ?? null
   }
   if (typeof mediaGenerationEnabled !== 'boolean') {
     throw new TypeError('mediaGenerationEnabled must be a boolean')
@@ -623,7 +635,9 @@ export function createPostgresBookAnalysisRepository(pool, {
       priority = 50
     }) {
       const strategy = getBookAnalysisPipeline(
-        pipelineId ?? assignedPipelineId(bookEditionId) ?? repositoryDefaultPipelineId
+        pipelineId
+          ?? assignedPipelineId(bookEditionId, await editionScope(bookEditionId))
+          ?? repositoryDefaultPipelineId
       )
       const selectedPipelineVersion = validateIdentifier(
         pipelineVersion ?? strategy.orchestrationVersion,
@@ -741,7 +755,7 @@ export function createPostgresBookAnalysisRepository(pool, {
       const safePriority = validatePriority(priority)
       return transaction(pool, async (client) => {
         const source = await client.query(
-          `SELECT edition.id, edition.content_sha256
+          `SELECT edition.id, edition.scope, edition.content_sha256
            FROM book_editions AS edition
            JOIN book_files AS file
              ON file.book_edition_id = edition.id
@@ -769,7 +783,7 @@ export function createPostgresBookAnalysisRepository(pool, {
         const previous = previousResult.rows[0]
         const strategy = getBookAnalysisPipeline(
           pipelineId
-            ?? assignedPipelineId(safeBookEditionId)
+            ?? assignedPipelineId(safeBookEditionId, edition.scope)
             ?? previous?.pipeline_id
             ?? repositoryDefaultPipelineId
         )
