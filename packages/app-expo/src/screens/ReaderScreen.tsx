@@ -1,4 +1,4 @@
-import CopyToastIcon from "../../assets/icons/copy-2.svg";
+import { useReaderCopy } from "@/hooks/use-reader-copy";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
@@ -73,7 +73,6 @@ import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import type { Book, ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
-import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 /**
@@ -1119,6 +1118,7 @@ function ReaderContent({ route, navigation }: Props) {
     setLoadAttempt((value) => value + 1);
   }, []);
 
+  const copySelection = useReaderCopy();
   const bridge = useReaderBridge({
     onDiagnosticPong: (id) => {
       if (id !== diagnosticPingRef.current) return;
@@ -1362,13 +1362,7 @@ function ReaderContent({ route, navigation }: Props) {
         });
       }
     },
-    onCopySelection: (text, nativeCopied) => {
-      void (nativeCopied ? Promise.resolve() : Clipboard.setStringAsync(text)).then(() => {
-        toast.success(t("common.copied", "Скопировано"), {
-          icon: <CopyToastIcon width={24} height={24} color={colors.primary60} />,
-        });
-      }).catch(() => toast.error(t("common.error", "Ошибка")));
-    },
+    onCopySelection: copySelection,
     onSelectionCleared: () => {
       setSelection(null);
       readingContextService.clearSelection();
