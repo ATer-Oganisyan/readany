@@ -1,21 +1,10 @@
 import { ChevronRightIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { toast } from "@/lib/notifications";
-import { useUpdateStore } from "@/stores/update-store";
 import { getPlatformService } from "@readany/core/services";
-import { checkForUpdate } from "@readany/core/update";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Image,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Image, Linking, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppIcon from "../../../assets/app-icon.png";
 import {
@@ -49,34 +38,10 @@ export default function AboutScreen() {
   const { t } = useTranslation();
   const layout = useResponsiveLayout();
   const [version, setVersion] = useState("1.0.0");
-  const [checking, setChecking] = useState(false);
-
-  const checkResult = useUpdateStore((s) => s.checkResult);
-  const setCheckResult = useUpdateStore((s) => s.setCheckResult);
-  const showDialog = useUpdateStore((s) => s.showDialog);
 
   useEffect(() => {
     getPlatformService().getAppVersion().then(setVersion);
   }, []);
-
-  const handleCheckUpdate = useCallback(async () => {
-    setChecking(true);
-    try {
-      const platform = getPlatformService();
-      const v = await platform.getAppVersion();
-      const result = await checkForUpdate(v, platform, true);
-      setCheckResult(result);
-      if (result.hasUpdate && result.release) {
-        showDialog();
-      } else {
-        toast.success(t("settings.upToDate"), { description: t("settings.upToDate") });
-      }
-    } catch {
-      toast.error(t("settings.updateError"), { description: t("settings.updaterCheckFailed") });
-    } finally {
-      setChecking(false);
-    }
-  }, [t, setCheckResult, showDialog]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={[]}>
@@ -102,33 +67,6 @@ export default function AboutScreen() {
             <Text style={styles.desc}>
               {t("about.desc", "一个跨平台的智能电子书阅读器，支持 AI 对话、TTS 朗读、多语言翻译")}
             </Text>
-          </View>
-
-          {/* Check for Updates */}
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.updateBtn}
-              onPress={handleCheckUpdate}
-              disabled={checking}
-              activeOpacity={0.7}
-            >
-              {checking && <ActivityIndicator size="small" color={colors.primaryForeground} />}
-              <Text style={styles.updateBtnText}>
-                {checking ? t("settings.updateChecking") : t("settings.checkUpdate")}
-              </Text>
-            </TouchableOpacity>
-            {checkResult?.hasUpdate && checkResult.release && (
-              <TouchableOpacity
-                style={styles.updateBanner}
-                onPress={() => showDialog()}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.updateBannerText}>
-                  {t("settings.newVersionAvailable", { version: checkResult.latestVersion })}
-                </Text>
-                <ChevronRightIcon size={18} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            )}
           </View>
 
           {/* Tech Stack */}
@@ -219,36 +157,6 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.base,
       fontWeight: fontWeight.normal,
       color: colors.foreground,
-    },
-    updateBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
-      borderRadius: radius.xl,
-      backgroundColor: colors.primary,
-      paddingVertical: 12,
-    },
-    updateBtnText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.primaryForeground,
-    },
-    updateBanner: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      borderRadius: radius.xl,
-      backgroundColor: colors.card,
-      borderWidth: 1,
-      borderColor: colors.primary,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: 12,
-    },
-    updateBannerText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.primary,
     },
     techGrid: {
       flexDirection: "row",

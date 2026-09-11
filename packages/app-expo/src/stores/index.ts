@@ -24,9 +24,6 @@ export type { ReadingSessionState } from "./reading-session-store";
 
 export { useLibraryStore } from "./library-store";
 
-export { useUpdateStore } from "./update-store";
-export type { UpdateState } from "./update-store";
-
 export { useVectorModelStore } from "./vector-model-store";
 export type { BuiltinModelStatus, BuiltinModelState, VectorModelState } from "./vector-model-store";
 
