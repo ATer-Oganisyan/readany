@@ -125,11 +125,11 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
           modifiers={[padding(0, 28, 0, 0)]}
         >
           <IconButton
-            onClick={player.seekBackward}
-            enabled={player.hasDuration}
+            onClick={props.onPreviousSentence}
+            enabled={props.canGoToPreviousSentence}
             modifiers={[size(48, 48)]}
           >
-            <PlayerIcon name="skip-backward" label={t("tts.backward15")} size={34} />
+            <PlayerIcon name="skip-backward" label={t("tts.prevSentence")} size={34} />
           </IconButton>
           <IconButton onClick={player.togglePlayback} modifiers={[size(64, 64)]}>
             <PlayerIcon
@@ -139,11 +139,11 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
             />
           </IconButton>
           <IconButton
-            onClick={player.seekForward}
-            enabled={player.hasDuration}
+            onClick={props.onNextSentence}
+            enabled={props.canGoToNextSentence}
             modifiers={[size(48, 48)]}
           >
-            <PlayerIcon name="skip-forward" label={t("tts.forward15")} size={34} />
+            <PlayerIcon name="skip-forward" label={t("tts.nextSentence")} size={34} />
           </IconButton>
         </Row>
         <Row verticalAlignment="center" modifiers={[fillMaxWidth(), padding(0, 16, 0, 0)]}>
