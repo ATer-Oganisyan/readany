@@ -1983,6 +1983,12 @@
           postShowAnnotation(value, range);
         });
 
+        // Book links must never replace the reader with a web page. Keep the
+        // separate internal-link handler below for chapters and footnotes.
+        el.addEventListener('external-link', (e) => {
+          e.preventDefault();
+        });
+
         el.addEventListener('link', (e) => {
           const detail = e.detail || {};
           const anchor = detail.a;

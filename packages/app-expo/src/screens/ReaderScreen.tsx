@@ -1,3 +1,4 @@
+import { allowReaderNavigation } from "@/lib/reader/reader-navigation";
 import { openAudiobookPlayerFromReader } from "@/lib/audiobook-player";
 import { useReaderCopy } from "@/hooks/use-reader-copy";
 import { recordCharacterEncounters } from "@/lib/narra/character-encounters";
@@ -2207,6 +2208,9 @@ function ReaderContent({ route, navigation }: Props) {
               ]}
               pointerEvents={isPanelOpen ? "none" : "auto"}
               onMessage={bridge.handleMessage}
+              onShouldStartLoadWithRequest={(request) => allowReaderNavigation(request, readerHtmlUri)}
+              onOpenWindow={() => undefined}
+              javaScriptCanOpenWindowsAutomatically={false}
               menuItems={Platform.OS === "android"
                 ? [{ key: "copy", label: t("reader.copySelection", "Скопировать") }]
                 : undefined}
