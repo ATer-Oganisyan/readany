@@ -5,6 +5,7 @@ import {
   coverRouteReadiness,
   llmRouteReadiness,
   maxTokensFor,
+  timeoutMsFor,
   mediaImageQualityForDimensions,
   normalizeImageTransportError,
   omitsJsonResponseFormat,
@@ -169,6 +170,31 @@ test('readiness requires a complete configured route for every purpose', () => {
     LLM_API_KEY: 'key', LLM_MODEL: 'model'
   })
   assert.equal(ready.ready, true)
+})
+
+test('сколько ждать модель — настройка, а не константа в коде', () => {
+  // Потолок был зашит: 120 секунд на любой нестримовый вызов. Подтверждение
+  // состава большой книги в них не укладывалось и уходило в повтор, чтобы
+  // упереться снова — менять было нечего.
+  assert.equal(timeoutMsFor('roster_confirm', false, {}), 120_000)
+  assert.equal(timeoutMsFor('summary', true, {}), 180_000)
+  assert.equal(
+    timeoutMsFor('roster_confirm', false, { LLM_TIMEOUT_MS_ROSTER_CONFIRM: '240000' }),
+    240_000
+  )
+  // Точечная настройка сильнее режимной, как и у потолка токенов.
+  assert.equal(
+    timeoutMsFor('roster_confirm', false, {
+      LLM_TIMEOUT_MS_COMPLETE: '90000',
+      LLM_TIMEOUT_MS_ROSTER_CONFIRM: '240000'
+    }),
+    240_000
+  )
+  assert.equal(timeoutMsFor('summary', false, { LLM_TIMEOUT_MS_COMPLETE: '90000' }), 90_000)
+  // Пять минут — потолок: дальше истекает запрос самого генератора.
+  assert.equal(timeoutMsFor('summary', false, { LLM_TIMEOUT_MS_COMPLETE: '900000' }), 300_000)
+  assert.equal(timeoutMsFor('summary', false, { LLM_TIMEOUT_MS_COMPLETE: '10' }), 120_000)
+  assert.equal(timeoutMsFor('summary', false, { LLM_TIMEOUT_MS_COMPLETE: 'мусор' }), 120_000)
 })
 
 test('llm max_tokens has safe defaults and env overrides with bounds', async () => {
@@ -812,6 +838,11 @@ test('a structured task asks the model for a JSON object, and other purposes do 
 
   assert.deepEqual((await call('structured_task')).response_format, { type: 'json_object' })
   assert.equal(Object.hasOwn(await call('character_chat'), 'response_format'), false)
+  // Назначение, унаследовавшее модель структурных задач, наследует и форму
+  // запроса. Пока проверка шла напрямую, `roster_confirm` уходил на ту же
+  // модель без формата, и рассуждающая модель тратила на рассуждение весь
+  // потолок токенов, не закрыв JSON.
+  assert.deepEqual((await call('roster_confirm')).response_format, { type: 'json_object' })
 
   // Провайдер, который формат не принимает, отключается настройкой, а не
   // молчаливым отказом от формата.

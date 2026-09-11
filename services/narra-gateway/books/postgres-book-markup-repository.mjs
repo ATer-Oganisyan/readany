@@ -2798,7 +2798,34 @@ export function createPostgresBookMarkupRepository(pool, {
      * очередь заполнится фоновыми заданиями большой книги, и окно первых глав
      * следующей книги будет ждать за ними.
      */
-    async advanceCardWindows({ runId, bookEditionId, scope, readerTextOffset = 0 }) {
+    async advanceCardWindows({
+      // Прогон тоже можно не называть: читатель знает только книгу, а карточный
+      // прогон у неё один — последний. Без этого шаг читателя не мог бы
+      // разбудить цепочку, потому что идентификатор прогона ему взять неоткуда.
+      runId: requestedRunId = null,
+      bookEditionId,
+      scope,
+      // Позиция читателя по умолчанию читается здесь же, а не приходит нулём от
+      // вызывающего. Ни воркер карточки, ни операторская команда её не знают, и
+      // пока она была аргументом со значением 0, фронт приватной книги навсегда
+      // оставался «нулевая глава плюс две»: цепочка вставала на третьем окне,
+      // сколько бы человек ни прочитал. Область видимости берётся тут же и по
+      // той же причине.
+      readerTextOffset = null,
+      // Задание, которое прямо сейчас падает. Воркер пометит его провалившимся
+      // только после того, как раннер вернёт управление, поэтому здесь оно ещё
+      // `running` — и окно, где оно было последним, считало бы себя незакрытым
+      // навсегда. Ровно тот случай, ради которого цепочку и стали двигать по
+      // завершению карточки, а не по её успеху.
+      failingJobId = null
+    }) {
+      const runId = requestedRunId ?? (await pool.query(
+        `SELECT id FROM book_analysis_runs
+          WHERE book_edition_id = $1 AND pipeline_id = 'cards'
+          ORDER BY run_sequence DESC, created_at DESC LIMIT 1`,
+        [bookEditionId]
+      )).rows[0]?.id
+      if (!runId) return { closed: [], enqueued: null }
       const windows = await pool.query(
         `SELECT window_index, start_offset, end_offset, chapter_indexes,
                 priority_class, status
@@ -2814,14 +2841,20 @@ export function createPostgresBookMarkupRepository(pool, {
         [bookEditionId]
       )).rows[0]?.scope
       if (!bookScope) return { closed: [], enqueued: null }
+      const frontierTextOffset = readerTextOffset ?? Number((await pool.query(
+        `SELECT COALESCE(MAX(text_offset), 0)::bigint AS text_offset
+         FROM reader_book_positions WHERE book_edition_id = $1`,
+        [bookEditionId]
+      )).rows[0]?.text_offset ?? 0)
       const closed = []
       for (const row of windows.rows) {
         if (row.status !== 'running') continue
         const pending = await pool.query(
           `SELECT count(*)::int AS count FROM generation_jobs
            WHERE analysis_run_id = $1 AND card_window_index = $2
-             AND job_type = 'character_card' AND status IN ('queued', 'running')`,
-          [runId, row.window_index]
+             AND job_type = 'character_card' AND status IN ('queued', 'running')
+             AND ($3::uuid IS NULL OR id <> $3::uuid)`,
+          [runId, row.window_index, failingJobId]
         )
         if (Number(pending.rows[0].count) > 0) continue
         await pool.query(
@@ -2851,7 +2884,7 @@ export function createPostgresBookMarkupRepository(pool, {
       const maxChapterIndex = cardWindowChapterFrontier({
         scope: bookScope,
         windows: scheduleWindows,
-        readerTextOffset
+        readerTextOffset: frontierTextOffset
       })
       const next = nextCardWindow({ windows: scheduleWindows, maxChapterIndex })
       if (!next) return { closed, enqueued: null, maxChapterIndex }
@@ -3555,11 +3588,19 @@ export function createPostgresBookMarkupRepository(pool, {
          ORDER BY first_mention_text_offset, character_key`,
         [runId]
       )
+      // Фрагменты лежат под ключами кандидатов инвентаря (`name:*`), карточки —
+      // под подтверждёнными (`char:*`). Мост между ними — состав книги: он и
+      // решил, какие формы имени принадлежат одному человеку. Без перевода
+      // публикация не находит ни одной цитаты и отказывается собирать книгу.
       const fragments = await pool.query(
-        `SELECT fragment_id, character_key, chapter_index, start_offset, end_offset
-         FROM book_character_fragments
-         WHERE run_id = $1
-         ORDER BY character_key, start_offset`,
+        `SELECT fragment.fragment_id, roster.character_key,
+                fragment.chapter_index, fragment.start_offset, fragment.end_offset
+         FROM book_character_fragments AS fragment
+         JOIN book_character_roster AS roster
+           ON roster.run_id = fragment.run_id
+          AND fragment.character_key = ANY(roster.candidate_keys)
+         WHERE fragment.run_id = $1
+         ORDER BY roster.character_key, fragment.start_offset`,
         [runId]
       )
       return {
