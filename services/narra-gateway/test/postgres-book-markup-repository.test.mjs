@@ -975,3 +975,42 @@ test('FBZ uploads keep checksum and MIME validation before staging source bytes'
     assert.equal(rejectedPool.queries.some(({ sql }) => sql.includes('INSERT INTO book_files')), false)
   }
 })
+
+test('публикация ищет цитаты через состав книги, а не по ключу кандидата', async () => {
+  // Фрагменты лежат под ключами кандидатов инвентаря (`name:*`), карточки — под
+  // подтверждёнными (`char:*`). Без перевода через состав публикация не найдёт
+  // ни одной цитаты и откажется собирать книгу: ровно это и случилось на
+  // «Прямо в воде?» с CARD_PUBLICATION_EMPTY.
+  const pool = scriptedPool([
+    () => ({ rows: [{
+      book_edition_id: 'edition-1',
+      normalized_text_object_key: 'normalized/book.txt',
+      normalized_text_hash: 'a'.repeat(64),
+      text_length: '25000'
+    }] }),
+    () => ({ rows: [{ document: { characterKey: 'char:drako' } }] }),
+    (sql, params) => {
+      assert.match(sql, /JOIN book_character_roster AS roster/)
+      assert.match(sql, /fragment\.character_key = ANY\(roster\.candidate_keys\)/)
+      assert.match(sql, /roster\.character_key/)
+      assert.deepEqual(params, ['123e4567-e89b-42d3-a456-426614174000'])
+      return { rows: [{
+        fragment_id: 'frag:1', character_key: 'char:drako',
+        chapter_index: 0, start_offset: '10', end_offset: '40'
+      }] }
+    }
+  ])
+
+  const input = await createPostgresBookMarkupRepository(pool).getCardPublicationInput({
+    runId: '123e4567-e89b-42d3-a456-426614174000'
+  })
+
+  assert.deepEqual(input.fragments, [{
+    fragmentId: 'frag:1',
+    characterKey: 'char:drako',
+    chapterIndex: 0,
+    startOffset: 10,
+    endOffset: 40
+  }])
+  assert.equal(input.bookEditionId, 'edition-1')
+})

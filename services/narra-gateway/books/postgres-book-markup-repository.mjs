@@ -3554,11 +3554,19 @@ export function createPostgresBookMarkupRepository(pool, {
          ORDER BY first_mention_text_offset, character_key`,
         [runId]
       )
+      // Фрагменты лежат под ключами кандидатов инвентаря (`name:*`), карточки —
+      // под подтверждёнными (`char:*`). Мост между ними — состав книги: он и
+      // решил, какие формы имени принадлежат одному человеку. Без перевода
+      // публикация не находит ни одной цитаты и отказывается собирать книгу.
       const fragments = await pool.query(
-        `SELECT fragment_id, character_key, chapter_index, start_offset, end_offset
-         FROM book_character_fragments
-         WHERE run_id = $1
-         ORDER BY character_key, start_offset`,
+        `SELECT fragment.fragment_id, roster.character_key,
+                fragment.chapter_index, fragment.start_offset, fragment.end_offset
+         FROM book_character_fragments AS fragment
+         JOIN book_character_roster AS roster
+           ON roster.run_id = fragment.run_id
+          AND fragment.character_key = ANY(roster.candidate_keys)
+         WHERE fragment.run_id = $1
+         ORDER BY roster.character_key, fragment.start_offset`,
         [runId]
       )
       return {
