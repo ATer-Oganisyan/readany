@@ -301,7 +301,7 @@ export function createBookAnalysisScanWorker({
           job: job.id,
           run: job.runId,
           error_code: errorCode,
-          error_message: unexpectedErrorMessage(error, errorCode),
+          error_message: unexpectedErrorMessage(error),
           retry_status: failure.status,
           ...bookAnalysisLogContext(job, {
             startedAt,

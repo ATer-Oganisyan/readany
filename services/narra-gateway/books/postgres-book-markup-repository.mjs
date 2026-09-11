@@ -2790,12 +2790,29 @@ export function createPostgresBookMarkupRepository(pool, {
       if (!bookPass.rows.length) {
         return { closed, enqueued: null, maxChapterIndex, waitingForBookRoster: true }
       }
-      const enqueued = await this.enqueueCardWindow({
-        runId,
-        bookEditionId,
-        windowIndex: next.windowIndex,
-        priority: next.priority
-      })
+      // Пустое окно проходится насквозь. Окно, в котором не оказалось ни
+      // одного персонажа, закрывается сразу и карточек не даёт — а цепочку
+      // двигает именно завершённая карточка. На «Герое» и «Дубровском» это
+      // останавливало книгу на третьем окне: второе пустое, и дальше не шёл
+      // никто, хотя в следующем персонажи были.
+      let enqueued = null
+      let cursor = next
+      for (let step = 0; step < scheduleWindows.length && cursor; step += 1) {
+        enqueued = await this.enqueueCardWindow({
+          runId,
+          bookEditionId,
+          windowIndex: cursor.windowIndex,
+          priority: cursor.priority
+        })
+        if (enqueued.created > 0) break
+        closed.push(cursor.windowIndex)
+        const passed = scheduleWindows.map((window) => window.windowIndex === cursor.windowIndex
+          ? { ...window, status: 'ready' }
+          : window)
+        scheduleWindows.length = 0
+        scheduleWindows.push(...passed)
+        cursor = nextCardWindow({ windows: scheduleWindows, maxChapterIndex })
+      }
       return { closed, enqueued, maxChapterIndex }
     },
 

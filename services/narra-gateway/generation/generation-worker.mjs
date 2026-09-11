@@ -557,7 +557,7 @@ export function createGenerationWorker({
           edition: job.bookEditionId,
           character_key: job.characterKey,
           error_code: errorCode,
-          error_message: unexpectedErrorMessage(error, errorCode),
+          error_message: unexpectedErrorMessage(error),
           duration_ms: Date.now() - startedAt
         }
         if (failure?.status === 'queued') {

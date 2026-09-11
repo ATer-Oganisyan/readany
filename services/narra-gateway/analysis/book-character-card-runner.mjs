@@ -70,6 +70,20 @@ export function createCharacterCardRunner({
     async run(job) {
       const startedAt = Date.now()
       const input = await repository.getCharacterCardInput(job)
+      // Цепочку окон двигает завершение карточки, а не её успех. Пока
+      // двигало только успешное, одна упавшая карточка останавливала книгу
+      // навсегда: окно оставалось `running`, следующее не ставил никто.
+      // «Обломов» встал так на восемнадцати готовых карточках второго окна.
+      try {
+        return await build(job, input, startedAt)
+      } catch (error) {
+        await advanceWindows(input).catch(() => {})
+        throw error
+      }
+    }
+  }
+
+  async function build(job, input, startedAt) {
       const text = await readNormalizedText(input)
       const fragments = input.fragments.map((fragment) => ({
         ...fragment,
@@ -134,23 +148,7 @@ export function createCharacterCardRunner({
         media_status: published?.media?.status ?? 'unknown',
         duration_ms: Date.now() - startedAt
       })
-      // Цепочку окон двигает тот, кто закончил карточку: окно закрывается,
-      // когда его карточки кончились, и следующее ставится тогда же. До этого
-      // цепочку не двигал никто — окна после первого не ставились вовсе, и
-      // книга получала карточки только первых глав.
-      const advanced = await repository.advanceCardWindows({
-        runId: input.runId,
-        bookEditionId: input.bookEditionId
-      })
-      if (advanced?.closed?.length || advanced?.enqueued?.created) {
-        log.info('card.window_advanced', 'Окно карточек продвинуто', {
-          run: input.runId,
-          edition: input.bookEditionId,
-          closed: advanced.closed,
-          enqueued_window: advanced.enqueued?.windowIndex ?? null,
-          enqueued_cards: advanced.enqueued?.created ?? 0
-        })
-      }
+      await advanceWindows(input)
       return {
         characterKey: input.characterKey,
         cardRevision: finalized.cardRevision,
@@ -158,6 +156,22 @@ export function createCharacterCardRunner({
         bioSource: finalized.audit.bioSource,
         mediaPriority
       }
+  }
+
+  async function advanceWindows(input) {
+    const advanced = await repository.advanceCardWindows({
+      runId: input.runId,
+      bookEditionId: input.bookEditionId
+    })
+    if (advanced?.closed?.length || advanced?.enqueued?.created) {
+      log.info('card.window_advanced', 'Окно карточек продвинуто', {
+        run: input.runId,
+        edition: input.bookEditionId,
+        closed: advanced.closed,
+        enqueued_window: advanced.enqueued?.windowIndex ?? null,
+        enqueued_cards: advanced.enqueued?.created ?? 0
+      })
     }
+    return advanced
   }
 }

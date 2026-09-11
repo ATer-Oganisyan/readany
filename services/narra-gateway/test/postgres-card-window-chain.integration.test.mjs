@@ -646,3 +646,40 @@ test('the window chain waits for the whole-book roster before it moves on', {
     await isolated.release()
   }
 })
+
+test('an empty window does not stop the chain', {
+  skip: !connectionString
+}, async () => {
+  // Окно, в котором не оказалось ни одного персонажа, закрывается сразу и
+  // карточек не даёт — а цепочку двигает именно завершённая карточка. На
+  // «Герое» и «Дубровском» это останавливало книгу на третьем окне: второе
+  // пустое, и дальше не шёл никто, хотя в следующем персонажи были.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const { bookEditionId, runId } = await seedBook(pool, { chapterCount: 6, charactersPerWindow: 1 })
+    await repository.enqueueCardWindow({ runId, bookEditionId, windowIndex: 0, priority: 60 })
+    await finishCardJobs(pool, runId, 0)
+
+    // Второе окно остаётся без героев: их фрагменты убраны.
+    const [, second] = await assignmentRanges(pool, runId)
+    await pool.query(
+      `DELETE FROM book_character_fragments
+        WHERE run_id = $1 AND start_offset >= $2 AND start_offset < $3`,
+      [runId, second[0], second[1]]
+    )
+
+    const advanced = await repository.advanceCardWindows({ runId, bookEditionId })
+    // Пустое окно пройдено насквозь, карточки поставлены в следующее за ним.
+    assert.ok(advanced.closed.includes(1), 'пустое окно не закрыто')
+    assert.ok(advanced.enqueued, 'цепочка встала на пустом окне')
+    assert.ok(advanced.enqueued.created > 0, 'следующее окно осталось без карточек')
+    assert.ok(Number(advanced.enqueued.windowIndex) > 1)
+
+    const statuses = await windowStatuses(pool, runId)
+    assert.equal(statuses[1], 'ready')
+  } finally {
+    await isolated.release()
+  }
+})

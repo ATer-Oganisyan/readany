@@ -34,7 +34,7 @@ const FRAGMENTS = [
   fragmentAt(3, 'Элизабет снова заметила эту привычку и промолчала.')
 ]
 
-function harness({ generatorResult, storageBytes = TEXT_BYTES, input = {} } = {}) {
+function harness({ generatorResult, generatorError, storageBytes = TEXT_BYTES, input = {} } = {}) {
   const calls = { advanced: [], requests: [], published: [] }
   const repository = {
     async getCharacterCardInput() {
@@ -77,6 +77,7 @@ function harness({ generatorResult, storageBytes = TEXT_BYTES, input = {} } = {}
   const generator = {
     async generateCharacterCard(request) {
       calls.requests.push(request)
+      if (generatorError) throw generatorError
       return generatorResult ?? {
         card: {
           name: 'Элизабет',
@@ -211,4 +212,17 @@ test('the runner moves the window chain on, so the book does not stop after its 
     }),
     /advance card windows/
   )
+})
+
+test('a failed card still moves the window chain on', async () => {
+  // Пока цепочку двигала только успешная карточка, одна упавшая
+  // останавливала книгу навсегда: окно оставалось `running`, следующее не
+  // ставил никто. «Обломов» встал так на восемнадцати готовых карточках
+  // второго окна — последняя в нём не собралась.
+  const { runner, calls } = harness({
+    generatorError: Object.assign(new Error('модель не ответила'), { code: 'TIMEOUT' })
+  })
+  await assert.rejects(() => runner.run(JOB))
+  assert.deepEqual(calls.advanced, [{ runId: 'run-1', bookEditionId: 'edition-1' }])
+  assert.deepEqual(calls.published, [])
 })

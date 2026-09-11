@@ -97,7 +97,7 @@ export function createBookAnalysisSynthesizeWorker({
         const failure = await repository.failAnalysisJob(job, errorCode)
         log.error('synthesis.failed', 'Задание синтеза завершилось ошибкой', {
           job: job.id, run: job.runId, error_code: errorCode,
-          error_message: unexpectedErrorMessage(error, errorCode),
+          error_message: unexpectedErrorMessage(error),
           retry_status: failure.status,
           ...bookAnalysisLogContext(job, {
             startedAt,
