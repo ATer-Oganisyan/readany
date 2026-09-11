@@ -76,6 +76,7 @@ def clean_catalog(snapshot, sources, output, reviews, workers=2):
         'service_documents_excluded': sum(len(r['nonreading_documents']) for r in reports),
         'xml_documents_repaired': sum(len(r.get('repaired_xml', [])) for r in reports),
         'image_floats_normalized': sum(r.get('image_floats_normalized', 0) for r in reports),
+        'chapter_headings_normalized': sum(len(r.get('chapter_heading_changes', [])) for r in reports),
         'snapshot_sha256': sha256(snapshot), 'review_sha256': sha256(Path(reviews)),
     }
     (output / 'report.json').write_text(json.dumps(reports, ensure_ascii=False, indent=2)+'\n')

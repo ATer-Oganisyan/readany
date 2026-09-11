@@ -76,7 +76,10 @@ class CatalogCleanupTests(unittest.TestCase):
                 for name in before.namelist():
                     if not name.endswith('.xhtml'): continue
                     old, new = parse(before.read(name)), parse(after.read(name))
-                    self.assertEqual(text(old), text(new), name)
+                    self.assertEqual(text(old).casefold(), text(new).casefold(), name)
+                    # Only heading case may change; the author's paragraph text is exact.
+                    self.assertEqual([text(p) for p in old.xpath('//*[local-name()="p"]')],
+                                     [text(p) for p in new.xpath('//*[local-name()="p"]')], name)
                     self.assertEqual(old.xpath('//*[@id]/@id'), new.xpath('//*[@id]/@id'), name)
                     self.assertFalse(any(external(href) for href in new.xpath('//*[local-name()="a"]/@href')), name)
 

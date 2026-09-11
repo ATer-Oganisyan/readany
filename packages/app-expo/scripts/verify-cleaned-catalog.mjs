@@ -54,6 +54,16 @@ try {
       await view.renderer.goTo({ index: selected });
       for (let i = 0; i < 12; i++) await new Promise(requestAnimationFrame);
       const rendered = getRendererContents().some(({ doc }) => doc.body.textContent.trim().length > 0);
+      for (const { doc } of getRendererContents()) {
+        for (const heading of doc.querySelectorAll('h1,h2,h3,h4,h5,h6')) {
+          for (const node of [heading, ...heading.querySelectorAll('*')]) {
+            const style = doc.defaultView.getComputedStyle(node);
+            if (style.textTransform !== 'none' || style.fontVariantCaps !== 'normal') {
+              throw new Error(`Heading still forces capital letters: ${heading.textContent}`);
+            }
+          }
+        }
+      }
       await view.next();
       for (let i = 0; i < 4; i++) await new Promise(requestAnimationFrame);
       return { sections, rendered, stillReadable: getRendererContents().some(({ doc }) => doc.body.textContent.trim().length > 0) };

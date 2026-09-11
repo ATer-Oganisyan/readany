@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import unquote
 from lxml import etree as ET
 from lxml import html as HTML
+from chapter_headings import normalize_chapters
 
 XHTML = 'http://www.w3.org/1999/xhtml'
 OPF = 'http://www.idpf.org/2007/opf'
@@ -326,9 +327,11 @@ def clean_epub(source, destination, title=None, author=None, editorial_headings=
 
     # Prune invalid/removed destinations without dropping their valid child chapters.
 
+    ncxs = {}
     for name, item in manifest.values():
         if item.get('media-type') == 'application/x-dtbncx+xml':
             ncx = read_document(files[name], report, name)
+            ncxs[name] = ncx
             for point in list(ncx.xpath('//*[local-name()="navPoint" or local-name()="pageTarget" or local-name()="navTarget"]')):
                 content = next(iter(point.xpath('./*[local-name()="content"]')), None)
                 if content is not None and not readable_link(name, content.get('src', '')):
@@ -355,6 +358,10 @@ def clean_epub(source, destination, title=None, author=None, editorial_headings=
                 if local(parent) == 'sup' and re.fullmatch(r'[\[\]\d\s↑*]+', text(parent)):
                     discard(parent)
 
+    languages = metadata.findall(f'{{{DC}}}language')
+    normalize_chapters(docs, ncxs, manifest, excluded, report, member_path, text,
+                       languages[0].text if languages and languages[0].text else 'ru')
+    for name, ncx in ncxs.items(): files[name] = serialize(ncx)
     notices = report.pop('_notices', [])
     if notices:
         notice_name = 'Narra/source-notices.xhtml'
