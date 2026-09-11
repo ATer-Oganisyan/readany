@@ -3,6 +3,7 @@ import { toast } from "@/lib/notifications";
 import { useLibraryStore } from "@/stores";
 import { useTheme } from "@/styles/ThemeContext";
 import type { ImportBooksResult } from "@readany/core";
+import { getBookImportFormat } from "@readany/core/utils/book-import-format";
 import * as DocumentPicker from "expo-document-picker";
 import { File as ExpoFile, Paths } from "expo-file-system";
 import { createElement, useCallback, useRef, useState } from "react";
@@ -10,29 +11,19 @@ import { useTranslation } from "react-i18next";
 import { Alert } from "react-native";
 import ReadAnyNativeControls from "../../modules/native-controls";
 
-const URL_IMPORT_EXTENSIONS = new Set([
-  "epub",
-  "pdf",
-  "mobi",
-  "azw",
-  "azw3",
-  "cbz",
-  "cbr",
-  "fb2",
-  "fbz",
-  "txt",
-  "umd",
-]);
-
 function getUrlImportFilename(url: URL): string {
-  const rawName = decodeURIComponent(url.pathname.split("/").pop() || "").trim();
-  const safeName = rawName.replace(/[\\/:*?"<>|\[\]{}#%&]/g, "_");
-  const extension = safeName.split(".").pop()?.toLowerCase();
-
-  if (!safeName || !extension || !URL_IMPORT_EXTENSIONS.has(extension)) {
+  let rawName = url.pathname.split("/").pop() || "";
+  try {
+    rawName = decodeURIComponent(rawName);
+  } catch {
+    /* Keep a literal percent sign. */
+  }
+  const safeName = rawName.trim().replace(/[\\/:*?"<>|\[\]{}#%&]/g, "_");
+  try {
+    getBookImportFormat(safeName);
+  } catch {
     throw new Error("unsupported-url");
   }
-
   return safeName;
 }
 
@@ -104,16 +95,9 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
 
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: [
-          "application/epub+zip",
-          "application/pdf",
-          "application/x-mobipocket-ebook",
-          "application/vnd.amazon.ebook",
-          "application/vnd.comicbook+zip",
-          "application/x-fictionbook+xml",
-          "text/plain",
-          "application/octet-stream",
-        ],
+        // Document providers label FB2/FBZ inconsistently (XML, ZIP or binary).
+        // Validate the filename in the importer instead of hiding valid files here.
+        type: "*/*",
         multiple: true,
         copyToCacheDirectory: true,
       });

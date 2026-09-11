@@ -49,6 +49,7 @@ const SUPPORTED_EXTS = new Set([
   "azw3",
   "fb2",
   "fbz",
+  "zip",
   "txt",
   "umd",
   "cbz",

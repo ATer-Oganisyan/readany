@@ -7,6 +7,9 @@ const runtime = vi.hoisted(() => ({
   request: vi.fn(),
   hash: vi.fn(async () => "a".repeat(64)),
   media: vi.fn(async () => {}),
+  reads: [] as string[],
+  copy: vi.fn(async () => {}),
+  mkdir: vi.fn(async () => {}),
   sourceBytes: new Uint8Array([60, 63, 120, 109, 108, 62]),
 }));
 vi.mock("@/stores/library-store", () => ({
@@ -28,11 +31,16 @@ vi.mock("expo-file-system", () => ({
   File: class {
     constructor(public uri: string) {}
     async bytes() {
+      runtime.reads.push(this.uri);
       return runtime.sourceBytes;
     }
   },
 }));
-vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
+vi.mock("expo-file-system/legacy", () => ({
+  documentDirectory: "file:///documents/",
+  copyAsync: runtime.copy,
+  makeDirectoryAsync: runtime.mkdir,
+}));
 vi.mock("expo-crypto", () => ({ randomUUID: () => "22222222-2222-4222-8222-222222222222" }));
 vi.mock("@readany/core/services", () => ({
   getPlatformService: () => ({
@@ -67,6 +75,7 @@ import { useNarraStore } from "@/stores/narra-store";
 import { BackendBookError } from "./backend-book-api";
 import { parseBackendManifest } from "./backend-book-contract";
 import {
+  preserveBackendOriginalSource,
   retainBackendBookSync,
   retryBackendBookAnalysis,
   startImportedBackendBook,
@@ -107,6 +116,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   runtime.books = [book()];
   runtime.hash.mockClear();
+  runtime.reads = [];
+  runtime.copy.mockClear();
+  runtime.mkdir.mockClear();
   runtime.request.mockReset();
   runtime.media.mockClear();
   useNarraStore.setState({ ...initial, books: {} });
@@ -478,4 +490,65 @@ describe("backend book import and persistence integration", () => {
     expect(useNarraStore.getState().books.local).toBe(previous);
     expect(previous.characters[0].portraitUri).toBe("file:///manual.png");
   });
+});
+
+it.each([
+  ["epub", "application/epub+zip"],
+  ["fb2", "application/x-fictionbook+xml"],
+  ["fbz", "application/zip"],
+  ["pdf", "application/pdf"],
+  ["txt", "text/plain"],
+] as const)("registers and uploads %s with the matching format and MIME", async (format, mime) => {
+  const imported = { ...book(), format, filePath: `books/local.${format}` };
+  runtime.books = [imported];
+  runtime.request
+    .mockResolvedValueOnce({ resolution: "local_registration_required" })
+    .mockResolvedValueOnce({
+      resolution: "private",
+      book_edition_id: "private-id",
+      source_uploaded: false,
+    });
+  await open(imported);
+  const registration = runtime.request.mock.calls.find((call) => call[0] === "/v2/books/local");
+  expect(JSON.parse(registration?.[1].body).format).toBe(format);
+  const upload = runtime.request.mock.calls.find((call) => call[1]?.method === "PUT");
+  expect(upload?.[1].headers["content-type"]).toBe(mime);
+  expect(upload?.[1].body).toBe(runtime.sourceBytes);
+  expect(runtime.reads).toContain(`file:///documents/books/local.${format}`);
+});
+
+it("uploads the readable EPUB for UMD, not unsupported original UMD bytes", async () => {
+  useNarraStore.getState().setBackendOriginalSource("local", {
+    path: "sources/local.umd",
+    format: "umd",
+    hash: "b".repeat(64),
+  });
+  runtime.books = [{ ...book(), contentHash: "b".repeat(64) }];
+  runtime.request
+    .mockResolvedValueOnce({ resolution: "local_registration_required" })
+    .mockResolvedValueOnce({
+      resolution: "private",
+      book_edition_id: "private-id",
+      source_uploaded: false,
+    });
+  await open(runtime.books[0]);
+  const registration = runtime.request.mock.calls.find((call) => call[0] === "/v2/books/local");
+  expect(JSON.parse(registration?.[1].body)).toMatchObject({
+    format: "epub",
+    content_sha256: "a".repeat(64),
+  });
+  expect(runtime.reads).toEqual(["file:///documents/books/local.epub"]);
+  expect(runtime.books[0].contentHash).toBe("a".repeat(64));
+});
+
+it("hashes a preserved source after copying it out of a document provider", async () => {
+  await preserveBackendOriginalSource("local", "content://provider/book.txt", "txt");
+  expect(runtime.copy).toHaveBeenCalledWith({
+    from: "content://provider/book.txt",
+    to: "file:///documents/narra-backend-sources/local.txt",
+  });
+  expect(runtime.hash).toHaveBeenCalledWith("file:///documents/narra-backend-sources/local.txt");
+  expect(runtime.copy.mock.invocationCallOrder[0]).toBeLessThan(
+    runtime.hash.mock.invocationCallOrder[0],
+  );
 });

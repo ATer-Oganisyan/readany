@@ -18,12 +18,16 @@ const isPDF = async (file) => {
   );
 };
 
-const isCBZ = ({ name, type }) => type === "application/vnd.comicbook+zip" || name.endsWith(".cbz");
+const isCBZ = ({ name, type }) =>
+  type === "application/vnd.comicbook+zip" || name.toLowerCase().endsWith(".cbz");
 
-const isFB2 = ({ name, type }) => type === "application/x-fictionbook+xml" || name.endsWith(".fb2");
+const isFB2 = ({ name, type }) =>
+  type === "application/x-fictionbook+xml" || name.toLowerCase().endsWith(".fb2");
 
 const isFBZ = ({ name, type }) =>
-  type === "application/x-zip-compressed-fb2" || name.endsWith(".fb2.zip") || name.endsWith(".fbz");
+  type === "application/x-zip-compressed-fb2" ||
+  name.toLowerCase().endsWith(".fb2.zip") ||
+  name.toLowerCase().endsWith(".fbz");
 
 const makeZipLoader = async (file) => {
   const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } = await import(
@@ -109,8 +113,15 @@ export const makeBook = async (file) => {
     } else if (isFBZ(file)) {
       const { makeFB2 } = await import("./fb2.js");
       const { entries } = loader;
-      const entry = entries.find((entry) => entry.filename.endsWith(".fb2"));
-      const blob = await loader.loadBlob((entry ?? entries[0]).filename);
+      const entry = entries.find(
+        (entry) =>
+          !entry.directory &&
+          !entry.filename.startsWith("__MACOSX/") &&
+          !entry.filename.split("/").pop().startsWith("._") &&
+          entry.filename.toLowerCase().endsWith(".fb2"),
+      );
+      if (!entry) throw new Error("FB2 archive contains no FB2 document");
+      const blob = await loader.loadBlob(entry.filename);
       book = await makeFB2(blob);
     } else {
       const { EPUB } = await import("./epub.js");

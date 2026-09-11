@@ -366,3 +366,92 @@ test('structured TXT extraction does not treat prose beginning with introduction
     'CHAPTER II.'
   ])
 })
+
+test('FB2 honors UTF-16 byte order marks before the XML declaration', async () => {
+  const text = '<?xml version="1.0" encoding="UTF-16"?><FictionBook><body><section><p>Иван вошёл в дом.</p></section></body></FictionBook>'
+  for (const little of [true, false]) {
+    const content = Buffer.from(text, 'utf16le')
+    const bytes = Buffer.concat([Buffer.from(little ? [0xff, 0xfe] : [0xfe, 0xff]), little ? content : content.swap16()])
+    assert.match(await extractBookText({ bytes, format: 'fb2' }), /Иван вошёл в дом\./)
+  }
+})
+
+test('FBZ extracts the actual FB2 entry, ignoring folders and archive metadata', async () => {
+  const xml = '<?xml version="1.0" encoding="windows-1251"?><FictionBook><body><section><p>Иван вошёл в дом.</p></section></body></FictionBook>'
+  const bytes = zipSync({
+    'books/': new Uint8Array(),
+    '__MACOSX/._BOOK.FB2': strToU8('metadata'),
+    'books/BOOK.FB2': encodeWindows1251(xml)
+  })
+  const result = await extractStructuredBookText({ bytes, format: 'fbz', mimeType: 'application/zip' })
+  assert.match(result.text, /Иван вошёл в дом\./)
+  assert.equal(result.sections.at(-1).endOffset, result.textLength)
+})
+
+test('FBZ rejects malformed, empty, ambiguous and oversized archives', async () => {
+  for (const bytes of [Buffer.from('broken'), zipSync({ 'cover.jpg': strToU8('image') }), zipSync({
+    'a.fb2': strToU8('<FictionBook/>'), 'b.fb2': strToU8('<FictionBook/>')
+  })]) {
+    await assert.rejects(extractBookText({ bytes, format: 'fbz' }), { code: 'BOOK_PARSE_FAILED' })
+  }
+  const bytes = zipSync({ 'book.fb2': strToU8('small') }, { level: 0 })
+  const central = Buffer.from(bytes).indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))
+  new DataView(bytes.buffer).setUint32(central + 24, 65 * 1024 * 1024, true)
+  await assert.rejects(extractBookText({ bytes, format: 'fbz' }), { code: 'BOOK_TOO_LARGE' })
+})
+
+test('PDF extraction cancels before starting a subprocess', async () => {
+  const controller = new AbortController()
+  controller.abort(new Error('cancelled import'))
+  await assert.rejects(extractBookText({ bytes: Buffer.from('%PDF-1.4'), format: 'pdf', signal: controller.signal }), /cancelled import/)
+})
+
+function pdfFixture(content) {
+  const stream = content ? `BT /F1 12 Tf 72 720 Td (${content}) Tj ET` : ''
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets = [0]
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf))
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`
+  }
+  const xref = Buffer.byteLength(pdf)
+  pdf += `xref\n0 ${offsets.length}\n0000000000 65535 f \n`
+  for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  pdf += `trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return Buffer.from(pdf)
+}
+
+// The production worker includes poppler-utils. No parser mock is used here.
+const { spawnSync } = await import('node:child_process')
+const hasPdfToText = spawnSync('pdftotext', ['-v']).status === 0
+
+test('PDF extracts real page text and rejects a PDF without a text layer', { skip: !hasPdfToText }, async () => {
+  const result = await extractStructuredBookText({ bytes: pdfFixture('Hello Narra reader'), format: 'pdf' })
+  assert.equal(result.text, 'Hello Narra reader')
+  assert.equal(result.sections.at(-1).endOffset, result.textLength)
+  await assert.rejects(extractBookText({ bytes: pdfFixture(''), format: 'pdf' }), { code: 'BOOK_PARSE_FAILED' })
+})
+
+test('a PDF parser closing its input early does not crash the worker', { skip: !hasPdfToText }, async () => {
+  await assert.rejects(extractBookText({ bytes: Buffer.alloc(2 * 1024 * 1024, 'x'), format: 'pdf' }), { code: 'BOOK_PARSE_FAILED' })
+  assert.equal(await extractBookText({ bytes: pdfFixture('Still running'), format: 'pdf' }), 'Still running')
+})
+
+test('EPUB with namespace-prefixed package tags retains spine order for markup', async () => {
+  const bytes = zipSync({
+    'META-INF/container.xml': strToU8('<c:container xmlns:c="urn:oasis:names:tc:opendocument:xmlns:container"><c:rootfiles><c:rootfile full-path="OPS/book.opf"/></c:rootfiles></c:container>'),
+    'OPS/book.opf': strToU8('<opf:package xmlns:opf="http://www.idpf.org/2007/opf"><opf:manifest><opf:item id="z" href="z.xhtml"/><opf:item id="a" href="a.xhtml"/></opf:manifest><opf:spine><opf:itemref idref="z"/><opf:itemref idref="a"/></opf:spine></opf:package>'),
+    'OPS/a.xhtml': strToU8('<p>The last chapter.</p>'),
+    'OPS/z.xhtml': strToU8('<p>The first chapter.</p>')
+  })
+  const result = await extractStructuredBookText({ bytes, format: 'epub' })
+  assert.equal(result.text, 'The first chapter.\n\nThe last chapter.')
+  assert.deepEqual(result.sections.map(({ key }) => key), ['epub:OPS/z.xhtml', 'epub:OPS/a.xhtml'])
+})

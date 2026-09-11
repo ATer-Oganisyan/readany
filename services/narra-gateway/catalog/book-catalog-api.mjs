@@ -6,7 +6,7 @@ import { CATALOG_GENRES, CATALOG_GENRE_DATA_VERSION } from './catalog-book-genre
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SHA256 = /^[0-9a-f]{64}$/
 const CHARACTER_KEY = /^[a-z0-9][a-z0-9._-]{0,127}$/i
-const BOOK_FORMATS = new Set(['epub', 'fb2', 'txt', 'pdf'])
+const BOOK_FORMATS = new Set(['epub', 'fb2', 'fbz', 'txt', 'pdf'])
 export const BOOK_CATALOG_LANGUAGE_CONTRACT_VERSION = 'book-catalog-language-v1'
 export const BOOK_CHARACTERS_PREVIEW_CONTRACT_VERSION = 'book-characters-preview-v1'
 

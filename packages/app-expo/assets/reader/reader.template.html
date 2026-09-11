@@ -1732,10 +1732,10 @@
             })}`
           });
 
-          // Try Range-based lazy loading for ZIP-based formats (EPUB, CBZ, FBZ)
+          // Try Range-based lazy loading for EPUB; other archives use makeBook.
           // This avoids loading the entire file into memory — only reads
           // the ZIP central directory (~few KB) then fetches entries on demand.
-          const isZipFormat = /\.(epub|cbz|fb2\.zip|fbz)$/i.test(msg.fileName || '');
+          const isZipFormat = /\.epub$/i.test(msg.fileName || '');
           let lazyBook = null;
 
           if (isZipFormat) {
