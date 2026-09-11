@@ -1,3 +1,4 @@
+import { openAudiobookPlayerFromReader } from "@/lib/audiobook-player";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
@@ -1662,14 +1663,9 @@ function ReaderContent({ route, navigation }: Props) {
   const openReaderAppearance = useCallback(() => setShowSettings(true), []);
 
   const openAudiobookPlayer = useCallback(async () => {
-    const current = useTTSStore.getState();
-    if (current.currentBookId !== bookId || current.playState === "stopped") {
-      await tts.handleToggleTTS();
-    }
-    const started = useTTSStore.getState();
-    if (started.currentBookId === bookId && started.playState !== "stopped") {
+    await openAudiobookPlayerFromReader(bookId, tts.handleToggleTTS, () => {
       navigation.navigate("AudiobookPlayer", { sourceId: speechSheetSourceId });
-    }
+    });
   }, [bookId, navigation, speechSheetSourceId, tts.handleToggleTTS]);
 
   const readerActions = useMemo<NativeContextMenuItem[]>(

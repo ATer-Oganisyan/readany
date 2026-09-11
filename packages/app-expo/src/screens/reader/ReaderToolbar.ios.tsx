@@ -1,3 +1,4 @@
+import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
 import { requireNativeView } from "expo";
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
@@ -27,6 +28,7 @@ const NativeReaderToolbar = requireNativeView(
 ) as ComponentType<NativeReaderToolbarProps>;
 
 export function ReaderToolbar({
+  speechState,
   charactersSheetSourceId = "",
   speechSheetSourceId = "",
   ...props
@@ -37,14 +39,16 @@ export function ReaderToolbar({
     <NativeReaderToolbar
       tintColor={props.tintColor}
       isDark={props.isDark}
-      speechActive={false}
-      speechLoading={false}
-      speechLabel={t("reader.audio", "Аудио")}
+      speechActive={!AUDIOBOOK_PLAYER_ENABLED && speechState === "playing"}
+      speechLoading={!AUDIOBOOK_PLAYER_ENABLED && speechState === "loading"}
+      speechLabel={
+        AUDIOBOOK_PLAYER_ENABLED ? t("reader.audio", "Аудио") : t("reader.listen", "Слушать")
+      }
       speechStopLabel={t("tts.stopShort", "Стоп")}
       speechLoadingLabel={t("reader.audioLoading", "Загрузка аудио")}
       charactersLabel={t("narra.characters", "Персонажи")}
       charactersSheetSourceId={charactersSheetSourceId}
-      speechSheetSourceId={speechSheetSourceId}
+      speechSheetSourceId={AUDIOBOOK_PLAYER_ENABLED ? speechSheetSourceId : ""}
       onSpeechPress={props.onSpeechPress}
       onCharactersPress={props.onCharactersPress}
       style={{ width: "100%", height: TOOLBAR_HEIGHT }}

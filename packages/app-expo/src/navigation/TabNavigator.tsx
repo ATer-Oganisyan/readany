@@ -1,3 +1,4 @@
+import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
 import { AudiobookPlayerAccessory } from "@/components/tts/audiobook-player-accessory";
 import { getFilledIconImageSource, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
@@ -263,7 +264,7 @@ export function TabNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const hasPlayer = useTTSStore(
-    (state) => state.playState !== "stopped" && Boolean(state.currentBookId),
+    (state) => AUDIOBOOK_PLAYER_ENABLED && state.playState !== "stopped" && Boolean(state.currentBookId),
   );
   const nativeAccessory =
     Platform.OS === "ios" && Number.parseInt(String(Platform.Version), 10) >= 26;

@@ -4150,8 +4150,9 @@ a { color: ${primary} !important; }
         const endLocation = endHref && String(endHref) !== String(startHref)
           ? await resolveHrefForTTSSegments(endHref)
           : null;
-        const lastSection = endLocation ? endLocation.sectionIndex : sectionIndex;
-        if (lastSection < sectionIndex) return [];
+        const lastSection = endLocation ? endLocation.sectionIndex : currentBook.sections.length - 1;
+        const limit = Number.isFinite(maxCount) ? Math.max(0, Math.floor(maxCount)) : 24;
+        if (lastSection < sectionIndex || !limit) return [];
         const segments = [];
         for (let index = sectionIndex; index <= lastSection; index++) {
           const section = currentBook.sections[index];
@@ -4164,9 +4165,9 @@ a { color: ${primary} !important; }
           // A following chapter at a new document's start contributes no text.
           if (endLocation && index === lastSection && index > sectionIndex && !end) break;
           segments.push(...extractTTSSegmentsFromDocument(
-            doc, index, maxCount - segments.length, start, end,
+            doc, index, limit - segments.length, start, end,
           ));
-          if (segments.length >= maxCount) break;
+          if (segments.length >= limit) break;
         }
         return segments;
       } catch (e) {

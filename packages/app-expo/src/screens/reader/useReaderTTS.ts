@@ -1,3 +1,4 @@
+import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
 import { getTTSCfiStartIdentity } from "@/lib/tts-chapter-progress";
 /**
  * useReaderTTS — encapsulates all TTS (text-to-speech) logic for ReaderScreen.
@@ -623,7 +624,7 @@ export function useReaderTTS({
     const canLoadSection = sectionIndex >= 0 && Boolean(bridge?.getSectionTTSSegments);
 
     if (
-      !(showTTS || ttsCurrentBookId === bookId) ||
+      !(showTTS || (AUDIOBOOK_PLAYER_ENABLED && ttsCurrentBookId === bookId)) ||
       !webViewReady ||
       (!canLoadSemanticChapter && !canLoadSection)
     ) {

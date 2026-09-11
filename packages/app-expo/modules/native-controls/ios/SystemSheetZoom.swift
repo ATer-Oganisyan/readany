@@ -72,7 +72,7 @@ final class SystemSheetZoomSourceRepository: NSObject {
   }
 
   func preparePresentation(identifier: String) {
-    pendingIdentifier = identifier
+    pendingIdentifier = identifier.isEmpty ? nil : identifier
   }
 
   @objc private func handleWillPresentFormSheet(_ notification: Notification) {
