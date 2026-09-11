@@ -189,6 +189,7 @@ function preparedNavigation(content, byteSize) {
         parentKey: typeof raw.parentKey === 'string' ? raw.parentKey.slice(0, 500) : null,
         sectionKey: section.key,
         href: typeof raw.href === 'string' ? raw.href.slice(0, 2_000) : null,
+        readerHref: typeof raw.readerHref === 'string' ? raw.readerHref.slice(0, 2_000) : null,
         anchorResolved: raw.anchorResolved !== false,
         order: index,
         startByte: section.startByte,
@@ -800,6 +801,7 @@ export function createBookCatalogService({
       const navigation = preparedNavigation(content, info.byteSize) || fallbackNavigation(info.byteSize)
       return {
         contractVersion: BOOK_CONTENT_TOC_CONTRACT_VERSION,
+        sourceContentHash: content.sourceContentHash,
         representation: content.normalizationVersion,
         bookEditionId,
         contentHash: content.contentHash,

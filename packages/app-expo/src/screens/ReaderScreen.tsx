@@ -143,6 +143,7 @@ import { useRubyStore } from "@readany/core/stores/ruby-store";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel.entry";
 import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
 import { makeStyles, noteTooltipMdStyles } from "./reader/reader-styles";
+import { useBackendBookToc } from "./reader/useBackendBookToc";
 import { useReaderTOCSheet } from "./reader/reader-toc-sheet-context";
 import { useReaderBookmark } from "./reader/useReaderBookmark";
 import { useReaderSystemInfo } from "./reader/useReaderSystemInfo";
@@ -668,6 +669,7 @@ function ReaderContent({ route, navigation }: Props) {
   }, [bookId, progress, updateBook]);
   const { loadAnnotations, highlights } = useAnnotationStore();
   const book = useMemo(() => books.find((b) => b.id === bookId), [books, bookId]);
+  const backendToc = useBackendBookToc(book);
   const activeReaderLoadIdRef = useRef<string | null>(null);
 
   // ── Narra: кликабельные имена персонажей ────────────────────────────────────
@@ -1640,6 +1642,11 @@ function ReaderContent({ route, navigation }: Props) {
 
   // ── Non-TTS callbacks ──────────────────────────────────────────────────────
 
+  useEffect(() => {
+    if (loading || !webViewReady || !backendToc?.length || !activeReaderLoadIdRef.current) return;
+    bridge.setBackendTOC(backendToc, activeReaderLoadIdRef.current);
+  }, [backendToc, bridge, loading, webViewReady, bookId, loadAttempt]);
+
   const closeTocSheet = useCallback(() => {
     setShowTOC(false);
     const state = navigation.getState();
@@ -1692,10 +1699,11 @@ function ReaderContent({ route, navigation }: Props) {
       bookId,
       toc,
       currentChapter,
+      currentChapterHref,
       onClose: closeTocSheet,
       onSelectTocItem: goToTocItem,
     }),
-    [bookId, closeTocSheet, currentChapter, goToTocItem, toc],
+    [bookId, closeTocSheet, currentChapter, currentChapterHref, goToTocItem, toc],
   );
 
   useEffect(() => {

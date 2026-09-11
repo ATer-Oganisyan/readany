@@ -455,3 +455,65 @@ test('EPUB with namespace-prefixed package tags retains spine order for markup',
   assert.equal(result.text, 'The first chapter.\n\nThe last chapter.')
   assert.deepEqual(result.sections.map(({ key }) => key), ['epub:OPS/z.xhtml', 'epub:OPS/a.xhtml'])
 })
+
+function dualNavigationEpub(navLinks, ncxLinks) {
+  return zipSync({
+    'META-INF/container.xml': strToU8('<container><rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles></container>'),
+    'OPS/content.opf': strToU8('<package><manifest>' +
+      '<item id="nav" href="nav/nav.xhtml" properties="nav" media-type="application/xhtml+xml"/>' +
+      '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>' +
+      '<item id="one" href="text/one.xhtml"/><item id="two" href="text/two.xhtml"/>' +
+      '</manifest><spine toc="ncx"><itemref idref="one"/><itemref idref="two"/></spine></package>'),
+    'OPS/nav/nav.xhtml': strToU8('<html><body><nav epub:type="toc"><ol>' + navLinks + '</ol></nav></body></html>'),
+    'OPS/toc.ncx': strToU8('<ncx><navMap>' + ncxLinks.map(([title, href]) =>
+      `<navPoint><navLabel><text>${title}</text></navLabel><content src="${href}"/></navPoint>`).join('') + '</navMap></ncx>'),
+    'OPS/text/one.xhtml': strToU8('<html><body><h1 id="one">One</h1><p>First chapter.</p><h2 id="sub">Subchapter</h2><p>More text.</p></body></html>'),
+    'OPS/text/two.xhtml': strToU8('<html><body><h1>Two</h1><p>Second chapter.</p></body></html>'),
+  })
+}
+
+const sparseNav = '<li><a href="../text/one.xhtml">Текст</a></li>'
+
+test('EPUB selects complete NCX over abbreviated NAV without changing text or source sections', async () => {
+  const abbreviated = await extractStructuredBookText({ format: 'epub', bytes: dualNavigationEpub(sparseNav, []) })
+  const complete = await extractStructuredBookText({ format: 'epub', bytes: dualNavigationEpub(sparseNav, [
+    ['One', 'text/one.xhtml'], ['Two', 'text/two.xhtml']
+  ]) })
+  assert.equal(complete.navigation.source, 'ncx')
+  assert.equal(complete.navigation.selectionVersion, 2)
+  assert.equal(complete.text, abbreviated.text)
+  assert.deepEqual(complete.sections, abbreviated.sections)
+  assert.deepEqual(complete.navigation.items.map(i => [i.title, i.readerHref]), [
+    ['One', 'OPS/text/one.xhtml'], ['Two', 'OPS/text/two.xhtml']
+  ])
+  assert.equal(complete.navigation.segments.length, 2)
+})
+
+test('EPUB keeps complete hierarchical NAV when NCX has fewer destinations', async () => {
+  const result = await extractStructuredBookText({ format: 'epub', bytes: dualNavigationEpub(
+    '<li><a href="../text/one.xhtml">One</a><ol><li><a href="../text/one.xhtml#sub">Subchapter</a></li></ol></li>' +
+    '<li><a href="../text/two.xhtml">Two</a></li>', [['One', 'text/one.xhtml']]
+  ) })
+  assert.equal(result.navigation.source, 'nav')
+  assert.equal(result.navigation.items[1].parentKey, result.navigation.items[0].key)
+  assert.equal(result.navigation.items[1].readerHref, 'OPS/text/one.xhtml#sub')
+  assert.equal(result.navigation.items[1].anchorResolved, true)
+})
+
+test('EPUB does not mistake duplicate, missing-file or broken-anchor NCX entries for more chapters', async () => {
+  const result = await extractStructuredBookText({ format: 'epub', bytes: dualNavigationEpub(sparseNav, [
+    ['One', 'text/one.xhtml'], ['Duplicate', 'text/one.xhtml'],
+    ['Missing file', 'missing.xhtml'], ['Missing anchor', 'text/two.xhtml#missing']
+  ]) })
+  assert.equal(result.navigation.source, 'nav')
+  assert.equal(result.navigation.items.length, 1)
+})
+
+test('EPUB does not replace NAV with a longer NCX that omits an existing chapter', async () => {
+  const result = await extractStructuredBookText({ format: 'epub', bytes: dualNavigationEpub(
+    '<li><a href="../text/two.xhtml">Two</a></li>', [
+      ['One', 'text/one.xhtml'], ['Subchapter', 'text/one.xhtml#sub']
+    ]
+  ) })
+  assert.equal(result.navigation.source, 'nav')
+})

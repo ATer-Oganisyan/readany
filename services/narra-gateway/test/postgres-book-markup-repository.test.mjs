@@ -446,6 +446,7 @@ test('catalog content resolves the latest prepared normalized text only for cata
     book_edition_id: 'book-1',
     normalized_text_object_key: 'analysis/run-2/normalized-text-v1.txt',
     normalized_text_hash: 'a'.repeat(64),
+    content_sha256: 'b'.repeat(64),
     text_length: '1200',
     normalization_version: 'normalized-text-v1',
     content_navigation: null
@@ -458,6 +459,7 @@ test('catalog content resolves the latest prepared normalized text only for cata
     bookEditionId: 'book-1',
     objectKey: 'analysis/run-2/normalized-text-v1.txt',
     contentHash: 'a'.repeat(64),
+    sourceContentHash: 'b'.repeat(64),
     textLength: 1200,
     normalizationVersion: 'normalized-text-v1',
     navigation: null

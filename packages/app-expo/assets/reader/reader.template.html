@@ -4478,6 +4478,24 @@ a { color: ${primary} !important; }
     window.goPrev = function (distance) { goPrevByMode(distance); };
     window.goLeft = function () { if (view) view.goLeft(); };
     window.goRight = function () { if (view) view.goRight(); };
+    window.setBackendTOC = async function (items, loadId) {
+      if (!view || loadId !== _characterReaderLoadId) return;
+      const activeView = view;
+      function convert(items) {
+        return items.map(item => ({
+          label: item.title, href: item.href,
+          subitems: item.subitems ? convert(item.subitems) : undefined,
+        }));
+      }
+      try {
+        await activeView.setTOC(convert(items));
+        if (view === activeView && loadId === _characterReaderLoadId) {
+          postToRN('toc', { items: convertTOC(activeView.book.toc) });
+        }
+      } catch (error) {
+        console.warn('[Reader] Failed to apply server TOC', error);
+      }
+    };
     window.goToHref = function (href) { if (view) view.goTo(href); };
     window.goToSection = async function (sectionIndex) {
       if (!view) return;
