@@ -111,6 +111,10 @@ const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
 const CONTROLS_VISIBILITY_ANIMATION_MS = 220;
+const ANDROID_READER_BOOTSTRAP_SCRIPT =
+  Platform.OS === "android"
+    ? 'document.getElementById("book-page-loader")?.remove(); true;'
+    : undefined;
 const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
   epub: "application/epub+zip",
   pdf: "application/pdf",
@@ -2166,6 +2170,7 @@ function ReaderContent({ route, navigation }: Props) {
               key={`${readerHtmlUri}:${loadAttempt}`}
               ref={bridge.webViewRef}
               source={{ uri: readerHtmlUri }}
+              injectedJavaScript={ANDROID_READER_BOOTSTRAP_SCRIPT}
               containerStyle={{ backgroundColor: "transparent" }}
               style={[
                 s.webview,

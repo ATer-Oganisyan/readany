@@ -39,7 +39,7 @@ import { getCatalogBookWithCover } from "@/lib/narra/catalog-cover-store";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { LibraryTabStackParamList } from "@/navigation/TabNavigator";
-import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
+import { NATIVE_SCROLL_EDGE_EFFECTS, topScrollEdgeEffect } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore } from "@/stores/library-store";
 import {
   type ThemeColors,
@@ -242,6 +242,11 @@ function LibraryScreenContent() {
   const loadBackendCatalog = catalogState.retry;
   const loadMoreBackendCatalogPage = catalogState.retry;
   const [catalogScrollY, setCatalogScrollY] = useState(0);
+  const [topEdgeEffect, setTopEdgeEffect] = useState<"hidden" | "hard">("hidden");
+  const libraryScrollEdgeEffects = useMemo(
+    () => ({ ...NATIVE_SCROLL_EDGE_EFFECTS, top: topEdgeEffect }),
+    [topEdgeEffect],
+  );
   const primaryScrollRef = useRef<ScrollView>(null);
 
   const {
@@ -448,8 +453,9 @@ function LibraryScreenContent() {
     nav.setOptions({
       title,
       headerTitle: title,
+      ...(Platform.OS === "ios" ? { scrollEdgeEffects: libraryScrollEdgeEffects } : {}),
     });
-  }, [activeGroup?.name, nav, selectedBookIds.size, selectionMode, t]);
+  }, [activeGroup?.name, libraryScrollEdgeEffects, nav, selectedBookIds.size, selectionMode, t]);
 
   const groupedEntries = useMemo(() => {
     return groups
@@ -569,6 +575,9 @@ function LibraryScreenContent() {
   const handlePrimaryScroll = useCallback(
     ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
       setCatalogScrollY(nativeEvent.contentOffset.y);
+      if (Platform.OS === "ios") {
+        setTopEdgeEffect(topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top));
+      }
       if (
         !showCatalog ||
         librarySection !== "catalog" ||
@@ -1194,7 +1203,7 @@ function LibraryScreenContent() {
         enabled={catalogCoverLoadingEnabled}
       />
       <View style={s.page} {...swipePressGuard?.touchHandlers}>
-        <ScrollViewMarker style={s.page} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+        <ScrollViewMarker style={s.page} scrollEdgeEffects={libraryScrollEdgeEffects}>
           <ScrollView
             ref={primaryScrollRef}
             {...swipePressGuard?.scrollHandlers}

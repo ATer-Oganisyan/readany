@@ -609,55 +609,6 @@ export class ExpoPlatformService implements IPlatformService {
     return Constants.expoConfig?.version ?? "1.0.0";
   }
 
-  // ---- Update (GitHub releases) ----
-
-  async checkUpdate() {
-    try {
-      const response = await fetch(
-        "https://api.github.com/repos/codedogQBY/ReadAny/releases/latest",
-      );
-      if (!response.ok) return null;
-
-      const release = await response.json();
-      const latestVersion = release.tag_name.replace(/^v/, "");
-      const currentVersion = await this.getAppVersion();
-
-      if (this._compareVersions(latestVersion, currentVersion) > 0) {
-        const apkAsset = release.assets.find((a: { name: string }) => a.name === "ReadAny.apk");
-        if (apkAsset) {
-          return {
-            version: latestVersion,
-            notes: release.body || undefined,
-            date: release.published_at || undefined,
-            downloadUrl: apkAsset.browser_download_url,
-          };
-        }
-      }
-      return null;
-    } catch (e) {
-      console.error("[Updater] Check failed:", e);
-      return null;
-    }
-  }
-
-  async installUpdate(downloadUrl?: string) {
-    if (!downloadUrl) return;
-    const { Linking } = await import("react-native");
-    await Linking.openURL(downloadUrl);
-  }
-
-  private _compareVersions(a: string, b: string): number {
-    const pa = a.split(".").map(Number);
-    const pb = b.split(".").map(Number);
-    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-      const na = pa[i] || 0;
-      const nb = pb[i] || 0;
-      if (na > nb) return 1;
-      if (na < nb) return -1;
-    }
-    return 0;
-  }
-
   // ---- KV Storage (backed by expo-secure-store) ----
 
   private async _getKeysIndex(): Promise<string[]> {
