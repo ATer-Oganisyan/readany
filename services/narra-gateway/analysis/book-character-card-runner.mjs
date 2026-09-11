@@ -98,6 +98,7 @@ export function createCharacterCardRunner({
         fragment_count: fragments.length
       })
       const request = buildCharacterCardRequest({
+        cardRevision: input.cardRevision ?? 1,
         runId: input.runId,
         bookEditionId: input.bookEditionId,
         characterKey: input.characterKey,

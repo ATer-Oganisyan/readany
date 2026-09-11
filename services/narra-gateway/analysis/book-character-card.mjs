@@ -118,6 +118,7 @@ function selectRequestFragments(fragments, { maxBytes, maxFragments }) {
  * модель не увидит, а не то, что она обещает не использовать.
  */
 export function buildCharacterCardRequest({
+  cardRevision = 1,
   runId,
   bookEditionId,
   characterKey,
@@ -165,6 +166,10 @@ export function buildCharacterCardRequest({
     bookEditionId,
     characterKey,
     promptVersion,
+    // Ревизия — часть запроса, а не только результата: полный заход по книге
+    // переиздаёт карточки тех, чей состав имён изменился, и по прежнему ключу
+    // под тем же промптом лежал ответ на прежние имена.
+    cardRevision,
     contractVersion: CHARACTER_CARD_CONTRACT_VERSION,
     inventoryVersion,
     normalizedTextHash,

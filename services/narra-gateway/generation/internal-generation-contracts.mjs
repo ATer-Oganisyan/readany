@@ -1793,14 +1793,20 @@ const CARD_GENDERS = new Set(['male', 'female', 'unknown'])
 export function normalizeCharacterCardRequest(input) {
   const body = exactKeys(input, new Set([
     'idempotencyKey', 'runId', 'bookEditionId', 'characterKey', 'promptVersion',
-    'contractVersion', 'inventoryVersion', 'normalizedTextHash', 'bookTitle',
-    'bookAuthor', 'language', 'traitCandidateTarget', 'maxTraits', 'character',
-    'cardWindow', 'fragments'
+    'cardRevision', 'contractVersion', 'inventoryVersion', 'normalizedTextHash',
+    'bookTitle', 'bookAuthor', 'language', 'traitCandidateTarget', 'maxTraits',
+    'character', 'cardWindow', 'fragments'
   ]))
   const runId = identifier(body.runId, 'runId')
   const characterKey = identifier(body.characterKey, 'characterKey')
   const promptVersion = identifier(body.promptVersion, 'promptVersion')
-  const expectedKey = `${runId}:character-card:${characterKey}:${promptVersion}`
+  // Ревизия в ключе: переиздание карточки — другой запрос, и без неё под
+  // прежним ключом лежал ответ на прежний набор имён и фрагментов.
+  const cardRevision = Number.isSafeInteger(body.cardRevision) && body.cardRevision >= 1
+    ? body.cardRevision
+    : 1
+  const expectedKey =
+    `${runId}:character-card:${characterKey}:${promptVersion}:rev-${cardRevision}`
   if (body.idempotencyKey !== expectedKey) {
     invalid('idempotencyKey does not match character card request')
   }
