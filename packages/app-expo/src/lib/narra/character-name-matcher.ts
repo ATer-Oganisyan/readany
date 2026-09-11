@@ -43,7 +43,9 @@ export interface CharacterNameMatch {
   characterId: string;
 }
 
-export const MIN_NAME_STEM_LENGTH = 4;
+// Три, а не четыре: у четырёх основа трёхбуквенного имени короче порога, и
+// имя выпадает целиком.
+export const MIN_NAME_STEM_LENGTH = 3;
 
 /**
  * Русские падежные окончания, которые допускаются после основы имени.
@@ -160,7 +162,9 @@ const NAME_STOPWORDS: readonly string[] = [
   "истина",
 ];
 
-const VOWELS = "аеёиоуыэюя";
+// «э» здесь нет намеренно: русское склонение ею не кончается, и срезать её
+// значит выдумать основу, из которой само имя уже не собирается.
+const VOWELS = "аеёиоуыюя";
 
 /** Основа словоформы имени: срезаем один финальный гласный, «й» или «ь». */
 export function stemNameToken(token: string): string {
