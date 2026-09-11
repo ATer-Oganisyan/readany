@@ -133,10 +133,21 @@ public final class ReadAnyNativeControlsModule: Module {
       Prop("charactersSheetSourceId") { (view, value: String) in
         view.charactersSheetSourceIdentifier = value
       }
+      Prop("speechSheetSourceId") { (view, value: String) in
+        view.speechSheetSourceIdentifier = value
+      }
 
       OnViewDidUpdateProps { view in
         view.applyProps()
       }
+    }
+
+    AsyncFunction("prepareSheetZoom") { (sourceId: String) in
+      SystemSheetZoomSourceRepository.shared.preparePresentation(identifier: sourceId)
+    }.runOnQueue(.main)
+
+    View(SystemSheetZoomSourceView.self) {
+      Prop("sourceId") { (view, value: String) in view.sourceIdentifier = value }
     }
 
     View(SystemSheetZoomDestinationView.self) {
@@ -427,6 +438,13 @@ final class ReadAnyReaderToolbar: ExpoView {
   var speechStopLabel = "Стоп"
   var speechLoadingLabel = "Загрузка аудио"
   var charactersLabel = "Персонажи"
+  var speechSheetSourceIdentifier = "" {
+    didSet {
+      guard oldValue != speechSheetSourceIdentifier else { return }
+      SystemSheetZoomSourceRepository.shared.unregister(identifier: oldValue, matching: speechItem)
+      updateSheetSourceRegistrations()
+    }
+  }
   var charactersSheetSourceIdentifier = "" {
     didSet {
       guard oldValue != charactersSheetSourceIdentifier else { return }
@@ -434,7 +452,7 @@ final class ReadAnyReaderToolbar: ExpoView {
         identifier: oldValue,
         matching: charactersItem
       )
-      updateCharactersSourceRegistration()
+      updateSheetSourceRegistrations()
     }
   }
 
@@ -474,6 +492,9 @@ final class ReadAnyReaderToolbar: ExpoView {
 
   deinit {
     SystemSheetZoomSourceRepository.shared.unregister(
+      identifier: speechSheetSourceIdentifier, matching: speechItem
+    )
+    SystemSheetZoomSourceRepository.shared.unregister(
       identifier: charactersSheetSourceIdentifier,
       matching: charactersItem
     )
@@ -481,10 +502,11 @@ final class ReadAnyReaderToolbar: ExpoView {
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
-    updateCharactersSourceRegistration()
+    updateSheetSourceRegistrations()
   }
 
   @objc private func handleSpeechPress() {
+    SystemSheetZoomSourceRepository.shared.preparePresentation(identifier: speechSheetSourceIdentifier)
     onSpeechPress()
   }
 
@@ -526,22 +548,20 @@ final class ReadAnyReaderToolbar: ExpoView {
     )
     charactersItem.accessibilityLabel = charactersLabel
 
-    updateCharactersSourceRegistration()
+    updateSheetSourceRegistrations()
   }
 
-  private func updateCharactersSourceRegistration() {
-    guard window != nil, !charactersSheetSourceIdentifier.isEmpty else {
-      SystemSheetZoomSourceRepository.shared.unregister(
-        identifier: charactersSheetSourceIdentifier,
-        matching: charactersItem
-      )
-      return
+  private func updateSheetSourceRegistrations() {
+    for (identifier, item) in [
+      (charactersSheetSourceIdentifier, charactersItem),
+      (speechSheetSourceIdentifier, speechItem)
+    ] {
+      if window != nil, !identifier.isEmpty {
+        SystemSheetZoomSourceRepository.shared.register(identifier: identifier, item: item)
+      } else {
+        SystemSheetZoomSourceRepository.shared.unregister(identifier: identifier, matching: item)
+      }
     }
-
-    SystemSheetZoomSourceRepository.shared.register(
-      identifier: charactersSheetSourceIdentifier,
-      item: charactersItem
-    )
   }
 
   private func makeToolbarButton(action: Selector) -> UIButton {

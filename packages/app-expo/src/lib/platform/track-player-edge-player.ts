@@ -1,10 +1,10 @@
 import type { ITTSPlayer, TTSConfig } from "@readany/core/tts";
 import { splitIntoChunks } from "@readany/core/tts";
 import { File } from "expo-file-system";
-import { AppState, type AppStateStatus, Image, Platform } from "react-native";
+import { Alert, AppState, type AppStateStatus, Image, Platform } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
-import { NarraServiceError } from "../narra/errors";
+import { NarraServiceError, normalizeNarraError } from "../narra/errors";
 import { synthesizeNarraBookSpeech } from "../narra/media";
 import { getNarratorVoice } from "../narra/scene-audio";
 import { resolveReaderVoiceForChunk } from "../narra/voice-markup";
@@ -229,6 +229,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       this._downloadComplete = true;
       return;
     }
+    if (this._nextChunkToAdd >= this._bufferEndIndex()) return;
 
     this._producerRunning = true;
     void this._runProducer(gen).finally(() => {
@@ -238,6 +239,13 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
         this._ensureProducerRunning(gen);
       }
     });
+  }
+
+  private _bufferEndIndex(): number {
+    return Math.min(
+      this._chunks.length,
+      this._currentIndex + TrackPlayerEdgeTTSPlayer.INITIAL_BUFFER_CHUNKS,
+    );
   }
 
   private async _runProducer(gen: number): Promise<void> {
@@ -250,7 +258,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       while (
         gen === this._speakGen &&
         !this._stopped &&
-        this._nextChunkToAdd < this._chunks.length
+        this._nextChunkToAdd < this._bufferEndIndex()
       ) {
         this._startChunkFetches(gen);
         const nextIndex = this._nextChunkToAdd;
@@ -283,6 +291,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       if (gen === this._speakGen && !this._stopped && (err as Error)?.message !== "aborted") {
         console.log("[TTS] Speech synthesis stopped after retries");
         this.stop();
+        Alert.alert("Озвучка недоступна", normalizeNarraError(err).message);
       }
     }
   }
@@ -292,7 +301,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       gen === this._speakGen &&
       !this._stopped &&
       this._fetchPromises.size < TrackPlayerEdgeTTSPlayer.FETCH_CONCURRENCY &&
-      this._nextChunkToFetch < this._chunks.length
+      this._nextChunkToFetch < this._bufferEndIndex()
     ) {
       const index = this._nextChunkToFetch++;
       const promise = this._fetchChunkFileWithRetry(index, gen);
@@ -457,7 +466,8 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
         lastError = error;
         if (
           error instanceof NarraServiceError &&
-          ["AUTH", "CONFIG", "REQUEST"].includes(error.code)
+          (["AUTH", "CONFIG", "REQUEST"].includes(error.code) ||
+            error.backendCode === "DAILY_LIMIT")
         )
           throw error;
         if (
@@ -492,6 +502,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     this._lastNotifiedIndex = index;
     this._currentIndex = index;
     this.onChunkChange?.(index, this._chunks.length);
+    this._ensureProducerRunning(this._speakGen);
   }
 
   private _syncActiveTrackFromNative(gen: number): void {

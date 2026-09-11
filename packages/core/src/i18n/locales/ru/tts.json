@@ -1,5 +1,15 @@
 {
   "tts": {
+    "previousParagraph": "На абзац назад",
+    "volume": "Громкость",
+    "openAudiobookPlayer": "Открыть плеер: {{title}}",
+    "playerOptions": "Действия с аудиокнигой",
+    "returnToBook": "К тексту",
+    "forward15": "Вперёд на 15 секунд",
+    "backward15": "Назад на 15 секунд",
+    "speedValue": "Скорость {{value}}×",
+    "narrationProgress": "Прогресс озвучки",
+    "customTimer": "Другое время…",
     "title": "Озвучивание",
     "closePlayer": "Закрыть озвучку",
     "settingsTitle": "Настройки озвучивания",

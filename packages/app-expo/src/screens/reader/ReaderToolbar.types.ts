@@ -3,6 +3,7 @@ export interface ReaderToolbarProps {
   isDark: boolean;
   speechState: "idle" | "loading" | "playing";
   charactersSheetSourceId?: string;
+  speechSheetSourceId?: string;
   onSpeechPress: () => void;
   onCharactersPress: () => void;
 }

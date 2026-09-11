@@ -7,11 +7,14 @@ import FilledBookAsset from "../../../assets/icons/mishanaer/filled/book.svg";
 import FilledChatBubbleAsset from "../../../assets/icons/mishanaer/filled/chat-bubble.svg";
 import FilledChatBubblesAsset from "../../../assets/icons/mishanaer/filled/chat-bubbles.svg";
 import FilledCloudAsset from "../../../assets/icons/mishanaer/filled/cloud.svg";
+import FilledFastBackwardAsset from "../../../assets/icons/mishanaer/filled/fast-backward.svg";
 import FilledHeadphonesAsset from "../../../assets/icons/mishanaer/filled/headphones.svg";
 import FilledMagicWandAsset from "../../../assets/icons/mishanaer/filled/magic-wand.svg";
 import FilledMagnifyingGlassAsset from "../../../assets/icons/mishanaer/filled/magnifying-glass.svg";
+import FilledPauseAsset from "../../../assets/icons/mishanaer/filled/pause.svg";
 import FilledPencilSquareAsset from "../../../assets/icons/mishanaer/filled/pencil-square.svg";
 import FilledPersonAsset from "../../../assets/icons/mishanaer/filled/person.svg";
+import FilledPlayAsset from "../../../assets/icons/mishanaer/filled/play.svg";
 import FilledStopAsset from "../../../assets/icons/mishanaer/filled/stop.svg";
 import StrokeArchiveAsset from "../../../assets/icons/mishanaer/stroke/archive.svg";
 import StrokeArrowBlockUpAsset from "../../../assets/icons/mishanaer/stroke/arrow-block-up.svg";
@@ -284,6 +287,7 @@ export const strokeIconComponents = {
 } as const;
 
 export const filledIconComponents = {
+  "fast-backward": FilledFastBackwardAsset,
   "arrow-rotate-ccw-up": FilledArrowRotateCcwUpAsset,
   bell: FilledBellAsset,
   bin: FilledBinAsset,
@@ -296,6 +300,8 @@ export const filledIconComponents = {
   "magnifying-glass": FilledMagnifyingGlassAsset,
   "pencil-square": FilledPencilSquareAsset,
   person: FilledPersonAsset,
+  play: FilledPlayAsset,
+  pause: FilledPauseAsset,
   stop: FilledStopAsset,
 } as const;
 
@@ -362,6 +368,7 @@ export const strokeIconImages = {
 } as const satisfies Record<string, ImageSourcePropType>;
 
 export const filledIconImages = {
+  "fast-backward": require("../../../assets/icons/mishanaer/filled-png/fast-backward.png"),
   "arrow-rotate-ccw-up": require("../../../assets/icons/mishanaer/filled-png/arrow-rotate-ccw-up.png"),
   bell: require("../../../assets/icons/mishanaer/filled-png/bell.png"),
   bin: require("../../../assets/icons/mishanaer/filled-png/bin.png"),
@@ -374,5 +381,7 @@ export const filledIconImages = {
   "magnifying-glass": require("../../../assets/icons/mishanaer/filled-png/magnifying-glass.png"),
   "pencil-square": require("../../../assets/icons/mishanaer/filled-png/pencil-square.png"),
   person: require("../../../assets/icons/mishanaer/filled-png/person.png"),
+  play: require("../../../assets/icons/mishanaer/filled-png/play.png"),
+  pause: require("../../../assets/icons/mishanaer/filled-png/pause.png"),
   stop: require("../../../assets/icons/mishanaer/filled-png/stop.png"),
 } as const satisfies Record<string, ImageSourcePropType>;

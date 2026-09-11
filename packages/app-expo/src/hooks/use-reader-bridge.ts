@@ -32,6 +32,7 @@ export interface SelectionEvent {
 export interface VisibleTTSSegment {
   text: string;
   cfi: string;
+  paragraphId?: string;
 }
 
 export interface CharacterTapEvent {

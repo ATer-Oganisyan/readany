@@ -16,7 +16,7 @@ export function formatTTSPlaybackTime(seconds: number) {
 
 type ChapterProgressOptions = Pick<
   TTSNativePlayerProps,
-  "chapterCurrentIndex" | "chapterTotalChunks" | "onSeekChapterChunk"
+  "chapterCurrentIndex" | "chapterTotalChunks" | "onSeekChapterChunk" | "chapterProgressOnly"
 >;
 
 function getChapterTimeline(options: ChapterProgressOptions) {
@@ -51,7 +51,11 @@ export function useTTSNativePlayer(
   const activeTrackPosition = clamp(progress.position, activeTrackDuration);
   const activeTrackFraction =
     activeTrackDuration > 0 ? activeTrackPosition / activeTrackDuration : 0;
-  const duration = chapterTimeline.enabled ? chapterTimeline.total : activeTrackDuration;
+  const duration = chapterTimeline.enabled
+    ? chapterTimeline.total
+    : chapterProgress.chapterProgressOnly
+      ? 0
+      : activeTrackDuration;
   const livePosition = chapterTimeline.enabled
     ? chapterTimeline.currentIndex + activeTrackFraction
     : activeTrackPosition;
@@ -85,7 +89,7 @@ export function useTTSNativePlayer(
       void chapterProgress.onSeekChapterChunk?.(targetIndex);
       return;
     }
-    void seekActiveTTS(localPositionRef.current);
+    if (!chapterProgress.chapterProgressOnly) void seekActiveTTS(localPositionRef.current);
   }, [activeTrackDuration, chapterProgress, chapterTimeline]);
   const seekBackward = useCallback(() => void seekActiveTTSBy(-15), []);
   const seekForward = useCallback(() => void seekActiveTTSBy(15), []);
@@ -93,8 +97,13 @@ export function useTTSNativePlayer(
 
   const progressLabel = chapterTimeline.enabled
     ? `${Math.round((localPosition / chapterTimeline.total) * 100)}%`
-    : formatTTSPlaybackTime(localPosition);
-  const durationLabel = chapterTimeline.enabled ? "100%" : formatTTSPlaybackTime(duration);
+    : chapterProgress.chapterProgressOnly
+      ? "—"
+      : formatTTSPlaybackTime(localPosition);
+  const durationLabel =
+    chapterTimeline.enabled || chapterProgress.chapterProgressOnly
+      ? "100%"
+      : formatTTSPlaybackTime(duration);
   const progressPercent =
     duration > 0 ? Math.max(0, Math.min(100, Math.round((localPosition / duration) * 100))) : 0;
 

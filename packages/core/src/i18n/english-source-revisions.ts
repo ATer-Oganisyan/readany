@@ -11,9 +11,9 @@ export const ENGLISH_SOURCE_REVISIONS = {
   "notes.json": "3737b673efeaff04113de518a4c0d237fe2f8858e6133998afa994871ec5380d",
   "onboarding.json": "691446f63699c6a6391e3adacc65f2a197943880cdfdf678e1383c8bc298a750",
   "profile.json": "7f64cf3d63d528b5016c75688ba8d8745397e999dc12c31b037355b164a35aed",
-  "reader.json": "b892645ab85ea193a5affd63af808981a954f14696839efb9f2b96d666510c59",
+  "reader.json": "d2e39be2382158bf777cf141dfcefd3a631c7ec0801bf8823934e090d90fbb56",
   "settings.json": "d7ea3526cf6c5750d0d330dcfbb02396445175f6e1eabfc1ed96854383088d46",
   "stats.json": "3494f4ea5d32428462edbb41a005811b4614399be8391a31ac50592bba8ea48a",
   "translation.json": "d0808cbaae51cd2cfc017d0c0bec9c6fe482adfed8e23e4150a6c440af63aa49",
-  "tts.json": "65d2e931451e14c341289cb6950e1fcd314b70853da5e0711fa512f75d8d350a",
+  "tts.json": "ba0ee35eb0eab6e51482d5e34732c285d2b0c98caec5b162ed282fe0cb62062b",
 } as const;
