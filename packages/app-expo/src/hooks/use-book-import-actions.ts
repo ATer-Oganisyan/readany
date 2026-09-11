@@ -42,7 +42,7 @@ interface UseBookImportActionsOptions {
 
 type ImportToastId = string | number;
 
-const RESULT_TOAST_DURATION_MS = 4000;
+const RESULT_TOAST_DURATION_MS = 3000;
 
 export function useBookImportActions({ onImportComplete }: UseBookImportActionsOptions = {}) {
   const { t } = useTranslation();
@@ -75,7 +75,7 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
           announceEnrichment
             ? t(
                 "library.localImportEnrichmentPending",
-                "Готово! Скоро добавим обложку и\u00A0персонажей",
+                "Готовим обложку и персонажей —\nэто займёт до 15 минут",
               )
             : t("common.success", "Книга добавлена"),
           announceEnrichment
