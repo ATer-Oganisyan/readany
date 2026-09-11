@@ -1,3 +1,4 @@
+import { canRecoverLegacyCoverJob } from "@/lib/book/cover-job-recovery";
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
 import { ensureTxtUtf8Bytes } from "@/lib/book/txt-encoding";
 import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
@@ -430,7 +431,7 @@ async function ensureGeneratedBookCover(
     }
   }
   const existingJob = await getLocalCoverJob(book.id);
-  if (existingJob?.status === "failed") return;
+  if (existingJob?.status === "failed" && !canRecoverLegacyCoverJob(existingJob)) return;
   const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
   if (catalogBook && !existingJob) {
     const coverUrl = await installBundledCatalogCover(book.id, catalogBook);

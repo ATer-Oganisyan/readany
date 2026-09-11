@@ -229,6 +229,7 @@ export class View extends HTMLElement {
   #root = this.attachShadow({ mode: "closed" });
   #sectionProgress;
   #tocProgress;
+  #tocUpdate = 0;
   #pageProgress;
   #searchResults = new Map();
   #searchIndicatorConfig = { type: "outline", options: {} };
@@ -327,6 +328,25 @@ export class View extends HTMLElement {
     this.history.clear();
     this.tts = null;
     this.mediaOverlay = null;
+  }
+  async setTOC(toc) {
+    const book = this.book;
+    if (!book?.splitTOCHref || !book?.getTOCFragment) return;
+    const update = ++this.#tocUpdate;
+    const progress = new TOCProgress();
+    await progress.init({
+      toc, ids: book.sections.map(s => s.id),
+      splitHref: book.splitTOCHref.bind(book),
+      getFragment: book.getTOCFragment.bind(book),
+    });
+    if (this.book !== book || update !== this.#tocUpdate) return;
+    book.toc = toc;
+    this.#tocProgress = progress;
+    if (this.lastLocation) {
+      const { section, range } = this.lastLocation;
+      this.lastLocation.tocItem = progress.getProgress(section.current, range);
+      this.#emit("relocate", this.lastLocation);
+    }
   }
   goToTextStart() {
     return this.goTo(

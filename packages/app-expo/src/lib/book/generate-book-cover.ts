@@ -14,6 +14,7 @@ import {
   deleteLocalCoverJob,
   getLocalCoverJob,
   getOrCreateLocalCoverJob,
+  recoverLegacyCoverJob,
   updateLocalCoverJob,
 } from "./cover-job-repository";
 import { inCoverForeground } from "./cover-job-session";
@@ -83,6 +84,7 @@ async function runBookCoverJob(input: {
   excerpt?: string;
   subjects?: string[];
 }): Promise<GeneratedBookCover> {
+  await recoverLegacyCoverJob(input.bookId, generateId(), { book: boundedCoverBookFacts(input) });
   await getOrCreateLocalCoverJob({
     bookId: input.bookId,
     requestId: generateId(),

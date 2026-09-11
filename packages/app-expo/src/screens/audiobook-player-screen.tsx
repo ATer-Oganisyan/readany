@@ -1,3 +1,6 @@
+import { useAudiobookArtwork } from "@/components/tts/use-audiobook-artwork";
+import ReadAnyNativeControls from "../../modules/native-controls";
+import { useColors } from "@/styles/theme";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 // Presentation adapted from expo-ui-examples/mini-player/player-screen.tsx.
 // MIT attribution: vendor/expo-ui-examples-LICENSE.txt.
@@ -10,7 +13,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { useTTSStore } from "@/stores/tts-store";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Platform, View } from "react-native";
 import TrackPlayer from "react-native-track-player";
 import { useShallow } from "zustand/react/shallow";
@@ -19,12 +22,15 @@ export function AudiobookPlayerScreen({
   navigation,
   route,
 }: NativeStackScreenProps<RootStackParamList, "AudiobookPlayer">) {
+  const colors = useColors();
+  const [coverColor, setCoverColor] = useState<{ uri: string; color: string; accent: string }>();
   const [timerVisible, setTimerVisible] = useState(false);
   const [volume, setVolume] = useState(1);
   const state = useTTSStore(
     useShallow((s) => ({
       playState: s.playState,
       title: s.currentBookTitle,
+      artwork: s.currentArtwork,
       chapter: s.currentChapterTitle,
       bookId: s.currentBookId,
       cfi: s.currentLocationCfi,
@@ -42,6 +48,50 @@ export function AudiobookPlayerScreen({
       clearSleepTimer: s.clearSleepTimer,
     })),
   );
+  const artwork = useAudiobookArtwork();
+  const backgroundColor = coverColor?.uri === artwork ? coverColor.color : colors.background;
+  useEffect(() => {
+    if (Platform.OS !== "ios" || !artwork || !ReadAnyNativeControls.averageTopImageColor) {
+      return;
+    }
+    let cancelled = false;
+    void ReadAnyNativeControls.averageTopImageColor(artwork, 0.25)
+      .then((color) => {
+        if (cancelled || !/^#[0-9a-f]{6}$/i.test(color)) return;
+        // Mix in 35% black for a deeper background that preserves the cover hue.
+        const darker =
+          "#" +
+          [1, 3, 5]
+            .map((offset) =>
+              Math.round(parseInt(color.slice(offset, offset + 2), 16) * 0.65)
+                .toString(16)
+                .padStart(2, "0"),
+            )
+            .join("");
+        // Screen with 60% white over the sheet background, precomputed for native tint.
+        const accent =
+          "#" +
+          [1, 3, 5]
+            .map((offset) =>
+              Math.round(parseInt(darker.slice(offset, offset + 2), 16) * 0.4 + 255 * 0.6)
+                .toString(16)
+                .padStart(2, "0"),
+            )
+            .join("");
+        setCoverColor({ uri: artwork, color: darker, accent });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [artwork]);
+  useLayoutEffect(() => {
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        contentStyle: { backgroundColor },
+      });
+    }
+  }, [backgroundColor, navigation]);
   const bookAuthor = useLibraryStore(
     (s) => s.books.find((book) => book.id === state.bookId)?.meta.author,
   );
@@ -75,6 +125,8 @@ export function AudiobookPlayerScreen({
     <View collapsable={false} style={Platform.OS === "ios" ? undefined : { flex: 1 }}>
       <SystemSheetZoomDestination sourceId={route.params?.sourceId} expanded={false} />
       <AudiobookPlayerContent
+        backgroundColor={Platform.OS === "ios" ? backgroundColor : undefined}
+        accentColor={coverColor?.uri === artwork ? coverColor.accent : undefined}
         title={state.title}
         author={author}
         chapter={chapter?.chapter.title || state.chapter}

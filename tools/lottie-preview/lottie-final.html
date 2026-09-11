@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Play / Loader / Pause · Lottie</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg, #111); color: var(--fg, #fff); font: 16px/1.5 system-ui; }
+    main { max-width: 720px; margin: 32px auto; padding: var(--space, 24px); }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    p { color: var(--secondary, #ffffff99); }
+    .stage { height: 340px; background: #941a00; display: grid; place-items: center; border-radius: var(--radius, 26px); margin: var(--space, 24px) 0; overflow: hidden; }
+    .disc { position: relative; border: 1px solid #ff643a; background: linear-gradient(150deg, #de3103, #c32000); border-radius: 50%; width: 70px; height: 70px; display: grid; place-items: center; cursor: pointer; padding: 0; transform: scale(var(--zoom, 3)); }
+    .disc.guides::before, .disc.guides::after { content: ""; position: absolute; background: #ffffff60; pointer-events: none; z-index: 2; }
+    .disc.guides::before { width: 1px; height: 100%; }
+    .disc.guides::after { height: 1px; width: 100%; }
+    #icon { width: 65.64102564px; height: 65.64102564px; pointer-events: none; }
+    #icon svg { display: block; width: 100%; height: 100%; }
+    .controls { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin: 20px 0; }
+    label { display: flex; gap: 10px; align-items: center; }
+    button, select, input { font: inherit; accent-color: var(--accent, #ff9230); }
+    button, select { color: inherit; background: var(--panel, #282828); border: 1px solid #ffffff30; border-radius: var(--control-radius, 10px); padding: 8px 14px; }
+    button { cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .5; }
+    button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+    .timeline { display: grid; gap: 8px; }
+    .timeline input { width: 100%; }
+    a { color: inherit; text-underline-offset: 3px; }
+    output { font-variant-numeric: tabular-nums; }
+    #status { min-height: 24px; }
+    .note { font-size: 13px; }
+    @media (max-width: 500px) { main { margin: 8px auto; } .stage { height: 300px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Play / Loader / Pause · Lottie</h1>
+    <p><a href="exits.html">Сравнить 6 выходов из спиннера → pause</a></p>
+    <p>Play → лоадер → pause. Нажмите на иконку для загрузки, затем ещё раз — для завершения.</p>
+    <div class="stage">
+      <button class="disc" id="toggle" aria-label="Переключить состояние плеера" aria-pressed="false" disabled>
+        <span id="icon" aria-hidden="true"></span>
+      </button>
+    </div>
+    <div class="controls">
+      <label>Переход <select id="duration">
+        <option value="150">150 мс</option><option value="300" selected>300 мс</option>
+        <option value="650">650 мс</option><option value="1000">1000 мс</option>
+      </select></label>
+      <label>Масштаб <select id="zoom">
+        <option value="1">1×</option><option value="2">2×</option>
+        <option value="3" selected>3×</option><option value="4">4×</option>
+      </select></label>
+      <label><input type="checkbox" id="guides"> Центр</label>
+    </div>
+    <div class="controls">
+      <label><input type="checkbox" id="withLoader" checked> Через лоадер</label>
+      <label>Загрузка <select id="loadTime">
+        <option value="manual" selected>Вручную</option><option value="80">Быстрая · 80 мс</option>
+        <option value="1600">1,6 с</option><option value="5000">5 с</option>
+      </select></label>
+    </div>
+    <div class="controls">
+      <button id="startLoad" disabled>Запустить лоадер</button>
+      <button id="ready" disabled>Готово → pause</button>
+      <button id="cancel" disabled>Отменить → play</button>
+    </div>
+    <p id="status" role="status">Загрузка…</p>
+    <div class="controls">
+      <label>Участок <select id="clip">
+        <option value="enter" selected>Play → лоадер</option><option value="settle">Начало вращения</option><option value="spin">Вращение</option>
+        <option value="exit">Лоадер → pause</option><option value="cancel">Лоадер → play</option>
+        <option value="forward">Play → pause</option><option value="reverse">Pause → play</option>
+      </select></label>
+      <button id="replay" disabled>Повторить участок</button>
+    </div>
+    <label class="timeline">Переход <output id="frameLabel">0%</output>
+      <input aria-label="Положение в переходе" type="range" id="frame" min="0" max="100" value="0" step="0.1" disabled>
+    </label>
+    <div class="controls">
+      <button id="play" disabled>Показать play</button>
+      <button id="pause" disabled>Показать pause</button>
+      <button id="reload">Обновить SVG</button>
+      <a href="saved/approved/play-loader-pause.json" download="play-loader-pause.json">Скачать Lottie</a>
+    </div>
+    <p class="note">Play разгоняется (ease-in), лоадер продолжает вращаться с той же скоростью. Две отдельные дуги вращаются вместе. При темпе 300 мс оборот — 400 мс. Плавный пружинный выход — 350 мс, когда дуги сверху и снизу. Толщина — ½ ножки pause. По 8 точек на дугу.<br><a href="reference.html" target="_blank" rel="noopener">Открыть исходный Lottie для сравнения</a></p>
+  </main>
+  <script src="vendor/lottie.min.js"></script><script type="module" src="lottie-preview.js?v=approved"></script>
+</body>
+</html>

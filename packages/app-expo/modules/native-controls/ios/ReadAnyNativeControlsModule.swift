@@ -56,6 +56,10 @@ public final class ReadAnyNativeControlsModule: Module {
       try Self.averageBottomImageColor(uri: uri, bottomFraction: bottomFraction)
     }
 
+    AsyncFunction("averageTopImageColor") { (uri: URL, fraction: Double) -> String in
+      try Self.averageBottomImageColor(uri: uri, bottomFraction: fraction, fromTop: true)
+    }
+
     AsyncFunction("promptForText") { (
       title: String,
       message: String,
@@ -209,7 +213,8 @@ public final class ReadAnyNativeControlsModule: Module {
 
   private static func averageBottomImageColor(
     uri: URL,
-    bottomFraction: Double
+    bottomFraction: Double,
+    fromTop: Bool = false
   ) throws -> String {
     let data = try Data(contentsOf: uri)
     guard let image = UIImage(data: data), let cgImage = image.cgImage else {
@@ -220,7 +225,7 @@ public final class ReadAnyNativeControlsModule: Module {
     let source = CIImage(cgImage: cgImage)
     let sampleRect = CGRect(
       x: source.extent.minX,
-      y: source.extent.minY,
+      y: fromTop ? source.extent.maxY - source.extent.height * fraction : source.extent.minY,
       width: source.extent.width,
       height: source.extent.height * fraction
     )

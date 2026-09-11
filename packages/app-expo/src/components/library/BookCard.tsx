@@ -11,7 +11,6 @@ import { useColors } from "@/styles/theme";
  * Cover (28:41), vectorization overlay, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
-import { BlurView } from "expo-blur";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, Pressable, View } from "react-native";
@@ -75,7 +74,6 @@ export const BookCard = memo(function BookCard({
     : isGeneratedBookCoverPath(book.id, book.meta.coverUrl)
       ? generatedCoverTextTone({ title: book.meta.title, author: book.meta.author })
       : (bundledCatalogBook?.coverTextTone ?? "dark");
-  const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
 
   return (
     <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
@@ -129,15 +127,6 @@ export const BookCard = memo(function BookCard({
               showText={showCoverTypography}
               textTone={coverTextTone}
               coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
-              bottomAccessory={
-                progressPercent > 0 ? (
-                  <BlurView tint="dark" intensity={50} style={s.progressChip}>
-                    <Text style={s.cardProgress} numberOfLines={1}>
-                      {`${progressPercent}%`}
-                    </Text>
-                  </BlurView>
-                ) : null
-              }
             />
             {/* Remote status overlay (on-demand download) */}
             {book.syncStatus === "remote" && (

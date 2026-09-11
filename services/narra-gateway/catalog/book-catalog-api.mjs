@@ -743,6 +743,7 @@ export function createBookCatalogRouter({
       representation: result.representation,
       book_edition_id: result.bookEditionId,
       content_hash: result.contentHash,
+      source_content_hash: result.sourceContentHash,
       source: result.source,
       items: result.items.map(item => ({
         key: item.key,
@@ -751,6 +752,7 @@ export function createBookCatalogRouter({
         parent_key: item.parentKey,
         section_key: item.sectionKey,
         href: item.href,
+        reader_href: item.readerHref ?? null,
         anchor_resolved: item.anchorResolved,
         order: item.order,
         start_byte: item.startByte,

@@ -79,7 +79,11 @@ final class SystemSheetZoomSourceRepository: NSObject {
     guard let identifier = pendingIdentifier else { return }
     pendingIdentifier = nil
 
-    guard #available(iOS 26.0, *), let controller = notification.object as? UIViewController else {
+    guard
+      #available(iOS 26.0, *),
+      let controller = notification.object as? UIViewController,
+      controller.preferredTransition == nil
+    else {
       return
     }
 
@@ -102,9 +106,6 @@ final class SystemSheetZoomDestinationView: ExpoView {
     }
   }
 
-  private weak var configuredScreen: RNSScreen?
-  private var configuredSourceIdentifier: String?
-
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     isUserInteractionEnabled = false
@@ -114,51 +115,32 @@ final class SystemSheetZoomDestinationView: ExpoView {
   override func didMoveToSuperview() {
     super.didMoveToSuperview()
 
-    guard superview != nil else {
-      clearTransition()
-      return
-    }
-
+    guard superview != nil else { return }
     configureTransition()
   }
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
 
-    guard window != nil else {
-      clearTransition()
-      return
-    }
-
+    guard window != nil else { return }
     configureTransition()
     updateDetent()
   }
 
   private func configureTransition() {
-    guard let screen = findScreen() else { return }
-
-    guard #available(iOS 26.0, *), !sourceIdentifier.isEmpty else {
-      clearTransition()
+    guard
+      #available(iOS 26.0, *),
+      !sourceIdentifier.isEmpty,
+      let screen = findScreen(),
+      screen.preferredTransition == nil
+    else {
       return
     }
 
-    guard configuredScreen !== screen || configuredSourceIdentifier != sourceIdentifier else {
-      return
-    }
-
-    clearTransition()
+    // UIKit owns the transition through interactive dismissal, including temporary
+    // view detachment. Keep it on the controller until that controller is released.
     let identifier = sourceIdentifier
     screen.preferredTransition = SystemSheetZoomSourceRepository.shared.transition(identifier: identifier)
-    configuredScreen = screen
-    configuredSourceIdentifier = identifier
-  }
-
-  private func clearTransition() {
-    if #available(iOS 26.0, *) {
-      configuredScreen?.preferredTransition = nil
-    }
-    configuredScreen = nil
-    configuredSourceIdentifier = nil
   }
 
   private func updateDetent() {

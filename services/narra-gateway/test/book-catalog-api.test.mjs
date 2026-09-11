@@ -464,3 +464,32 @@ test('local markup accepts derived profiles but rejects text excerpts', () => {
     }]
   }), /unknown field/)
 })
+
+test('content TOC response carries the source revision and reader-ready chapter href', async () => {
+  const router = createBookCatalogRouter({
+    repository: {
+      async listCatalogBooks() {}, async resolveBook() {},
+      async getReaderBookManifest() {}, async advanceReaderPosition() {},
+      async getReaderBookContent() {
+        return {
+          bookEditionId: ID, objectKey: 'text', contentHash: 'a'.repeat(64),
+          sourceContentHash: 'b'.repeat(64), textLength: 10, normalizationVersion: 'normalized-text-v2',
+          navigation: {
+            version: 'book-navigation-v1', source: 'ncx',
+            items: [{ key: 'one', title: 'Глава I', level: 0, parentKey: null,
+              sectionKey: 'one', href: 'one.xhtml', readerHref: 'OPS/one.xhtml' }],
+            segments: [{ key: 'one', title: 'Глава I', startByte: 0, endByte: 10 }]
+          }
+        }
+      }
+    },
+    storage: { async getObjectInfo() { return { byteSize: 10 } } }
+  })
+  const route = router.stack.find(layer => layer.route?.path === '/:bookEditionId/content/toc').route
+  const response = await new Promise((resolve, reject) => route.stack[0].handle(
+    { params: { bookEditionId: ID }, installation: { sub: ID } }, { json: resolve }, reject
+  ))
+  assert.equal(response.source_content_hash, 'b'.repeat(64))
+  assert.equal(response.items[0].reader_href, 'OPS/one.xhtml')
+  assert.equal(response.items[0].href, 'one.xhtml')
+})

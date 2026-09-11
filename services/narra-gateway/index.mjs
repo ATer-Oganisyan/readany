@@ -1545,7 +1545,9 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
 })
 
 // --- SaluteSpeech: синтез сегмента ---
-app.post('/v2/speech/synthesize', speechLimit, speechDailyLimit, express.json({ limit: '1mb' }), async (req, res) => {
+// Чтение запрашивает отдельное аудио для каждого фрагмента; минутный лимит
+// обрывает непрерывную озвучку. Нагрузку регулирует speechGate, расходы — суточный бюджет.
+app.post('/v2/speech/synthesize', speechDailyLimit, express.json({ limit: '1mb' }), async (req, res) => {
   const clientSignal = requestAbortSignal(req, res)
   let release
   try {

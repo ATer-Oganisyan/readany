@@ -1,3 +1,4 @@
+import { useAudiobookArtwork } from "./use-audiobook-artwork";
 import { BookCoverTypography } from "@/components/library/book-cover-typography";
 import { BookSurface } from "@/components/library/perspective-book";
 import { shouldRenderCoverTypography } from "@/lib/book/cover-display";
@@ -16,7 +17,7 @@ export function AudiobookCover({
 }: { height: number; showShadow?: boolean }) {
   const bookId = useTTSStore((s) => s.currentBookId);
   const title = useTTSStore((s) => s.currentBookTitle);
-  const artwork = useTTSStore((s) => s.currentArtwork);
+  const artwork = useAudiobookArtwork();
   const book = useLibraryStore((s) => s.books.find((item) => item.id === bookId));
   const bundled = findBundledCatalogBookByTitle(title);
   const author = book?.meta.author ?? bundled?.author;

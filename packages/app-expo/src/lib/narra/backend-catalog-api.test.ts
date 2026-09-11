@@ -255,3 +255,60 @@ describe("backend catalog API", () => {
     expect(adapter).not.toHaveBeenCalled();
   });
 });
+
+describe("server book TOC", () => {
+  const hash = "b".repeat(64);
+  const payload = {
+    contract_version: "book-content-toc-v1",
+    book_edition_id: "edition",
+    source_content_hash: hash,
+    content_hash: "a".repeat(64),
+    items: [
+      { key: "part", title: "Часть I", level: 0, parent_key: null, reader_href: "OPS/one.xhtml" },
+      {
+        key: "chapter",
+        title: "Глава I",
+        level: 1,
+        parent_key: "part",
+        reader_href: "OPS/one.xhtml#chapter",
+      },
+    ],
+  };
+  it("requests the server list and preserves hierarchy and archive-root chapter links", async () => {
+    const { fetchBackendBookToc } = await import("./backend-catalog-api");
+    setNarraGatewayAdapter(adapter);
+    adapter.mockResolvedValueOnce(jsonResponse(payload));
+    const controller = new AbortController();
+    const result = await fetchBackendBookToc("edition", hash, controller.signal);
+    expect(adapter.mock.calls.at(-1)?.[0]).toBe("/v2/books/edition/content/toc");
+    expect(result.items).toEqual([
+      {
+        id: "part",
+        title: "Часть I",
+        level: 0,
+        href: "OPS/one.xhtml",
+        subitems: [{ id: "chapter", title: "Глава I", level: 1, href: "OPS/one.xhtml#chapter" }],
+      },
+    ]);
+    setNarraGatewayAdapter(null);
+  });
+  it("rejects another file revision and legacy nav-relative links", async () => {
+    const { parseBackendBookToc } = await import("./backend-catalog-api");
+    expect(() => parseBackendBookToc(payload, "edition", "c".repeat(64))).toThrow();
+    expect(() =>
+      parseBackendBookToc(
+        { ...payload, items: [{ ...payload.items[0], reader_href: null, href: "one.xhtml" }] },
+        "edition",
+        hash,
+      ),
+    ).toThrow();
+  });
+  it("rejects malformed hierarchy and external chapter URLs", async () => {
+    const { parseBackendBookToc } = await import("./backend-catalog-api");
+    for (const item of [
+      { ...payload.items[0], parent_key: "missing" },
+      { ...payload.items[0], reader_href: "https://example.com/book" },
+    ])
+      expect(() => parseBackendBookToc({ ...payload, items: [item] }, "edition", hash)).toThrow();
+  });
+});

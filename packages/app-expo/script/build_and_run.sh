@@ -74,6 +74,8 @@ Modes:
 Optional environment variables:
   READANY_SIMULATOR_NAME       Simulator name (default: iPhone 17 Pro)
   READANY_SIMULATOR_ID         Exact simulator UDID (takes precedence over name)
+  READANY_DEVICE_ID            Physical devicectl device ID for rebuild-ios (otherwise Simulator)
+  READANY_METRO_HOST           LAN host for the physical dev-client (defaults to en0 IP)
   READANY_METRO_PORT           Metro port (default: 8081)
   READANY_NARRA_BACKEND        Backend profile: test (default) or production
   READANY_DERIVED_DATA_PATH    Canonical DerivedData directory
@@ -554,7 +556,37 @@ run_simulator() {
   run_metro
 }
 
+run_rebuild_device() {
+  check_common_prerequisites
+  assert_simulator_ui_matches_toolchain
+  assert_pasteboard_sync_is_safe
+  prepare_development_variant
+  local device_build_path="$APP_ROOT/ios/build/codex-physical"
+  local device_app="$device_build_path/Build/Products/Debug-iphoneos/Narra.app"
+  local metro_host="${READANY_METRO_HOST:-$(ipconfig getifaddr en0)}"
+  [[ -n "$metro_host" ]] || die "No LAN address. Connect the Mac and phone to Wi-Fi."
+  log "Building dev-client for physical device $READANY_DEVICE_ID"
+  APP_VARIANT=development xcodebuild \
+    -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Debug \
+    -destination "generic/platform=iOS" -derivedDataPath "$device_build_path" \
+    -allowProvisioningUpdates build
+  [[ -d "$device_app" ]] || die "Built device app not found: $device_app"
+  xcrun devicectl device install app --device "$READANY_DEVICE_ID" "$device_app"
+  if metro_is_running; then
+    local launch_url
+    launch_url="$(node -e 'console.log("readany-dev://expo-development-client/?url="+encodeURIComponent("http://"+process.argv[1]+":"+process.argv[2]))' "$metro_host" "$METRO_PORT")"
+    xcrun devicectl device process launch --device "$READANY_DEVICE_ID" \
+      --terminate-existing --payload-url "$launch_url" "$BUNDLE_ID"
+  else
+    log "Installed. Start Metro with READANY_NARRA_BACKEND=${READANY_NARRA_BACKEND:-test} ./script/build_and_run.sh start-lan"
+  fi
+}
+
 run_rebuild_ios() {
+  if [[ -n "${READANY_DEVICE_ID:-}" ]]; then
+    run_rebuild_device
+    return
+  fi
   local expected_build
   local current_fingerprint
   local launcher_pid=""
