@@ -463,50 +463,6 @@ export function createPostgresBookMarkupRepository(pool, {
     }
   }
 
-  /**
-   * Готовая сцена интервала, в который попал читатель, — если она есть.
-   *
-   * Предгенерация рисует одну картинку на интервал книги, чтение просит
-   * картинку к точной позиции, и ключи у них разные по построению. Без этой
-   * проверки заранее оплаченная картинка не достаётся никому: читатель всегда
-   * запускал рисование заново и ждал его двадцать секунд. Берём прогретую
-   * только когда она действительно готова — незаконченная ничем не лучше
-   * собственной, а ждать чужую очередь читателю незачем.
-   */
-  async function warmSceneAt(client, context, readerTextOffset) {
-    const slot = bookSceneSlotAt(context.policy, context.textLength, readerTextOffset)
-    const result = await client.query(
-      `SELECT scene.scene_key, scene.slot_index, scene.anchor_text_offset,
-              job.id AS job_id, job.status,
-              asset.id AS asset_id, asset.object_key, asset.type,
-              asset.content_hash, asset.mime_type, asset.byte_size
-       FROM book_scene_slots AS scene
-       JOIN generation_jobs AS job ON job.id = scene.job_id
-       JOIN media_assets AS asset
-         ON asset.id = scene.asset_id AND asset.status = 'ready'
-       WHERE scene.markup_version_id = $1 AND scene.slot_index = $2
-         AND scene.policy_version = $3`,
-      [context.markupVersionId, slot.slotIndex, context.policy.version]
-    )
-    const row = result.rows[0]
-    if (!row) return null
-    return {
-      sceneKey: row.scene_key,
-      jobId: row.job_id,
-      slotIndex: Number(row.slot_index),
-      anchorTextOffset: Number(row.anchor_text_offset),
-      status: 'ready',
-      asset: {
-        assetId: row.asset_id,
-        objectKey: row.object_key,
-        type: row.type,
-        contentHash: row.content_hash,
-        mimeType: row.mime_type,
-        byteSize: Number(row.byte_size)
-      }
-    }
-  }
-
   function identityJobSpec(edition) {
     const targetVersion = bookIdentityTargetVersion({
       contentSha256: edition.content_sha256,
@@ -1652,16 +1608,10 @@ export function createPostgresBookMarkupRepository(pool, {
         const canonicalOffset = progressFraction != null
           ? Math.round(context.textLength * Math.min(1, Math.max(0, progressFraction)))
           : readerTextOffset
-        const anchorTextOffset = Math.min(
-          context.textLength - 1,
-          Math.max(0, canonicalOffset ?? 0)
+        const slot = bookReaderSceneAt(
+          context.textLength,
+          Math.min(context.textLength - 1, Math.max(0, canonicalOffset ?? 0))
         )
-        const warm = await warmSceneAt(client, context, anchorTextOffset)
-        if (warm) {
-          if (context.scope === 'private') await touchPrivateRetention(client, bookEditionId)
-          return warm
-        }
-        const slot = bookReaderSceneAt(context.textLength, anchorTextOffset)
         const scene = await ensureSceneSlot(
           client,
           context,
