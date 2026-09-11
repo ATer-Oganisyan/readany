@@ -16,7 +16,10 @@ function generationError(code, message) {
 function decodeFb2Markup(bytes) {
   const header = bytes.subarray(0, 1_024).toString('latin1')
   const declared = header.match(/<\?xml\b[^>]*\bencoding\s*=\s*["']([^"']+)["']/i)?.[1]
-  const encoding = String(declared || 'utf-8').trim()
+  const bom = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le'
+    : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be'
+    : bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 'utf-8' : null
+  const encoding = String(bom || declared || 'utf-8').trim()
   if (!XML_ENCODING_LABEL.test(encoding)) {
     throw generationError('BOOK_TEXT_INVALID', 'FB2 declares an invalid XML encoding')
   }
@@ -52,6 +55,30 @@ function decodePlainText(bytes) {
     }
     // Preserve existing validation for unsupported or damaged input.
     return bytes.toString('utf8')
+  }
+}
+
+function unpackFb2(bytes) {
+  let selected = 0
+  try {
+    const entries = unzipSync(new Uint8Array(bytes), {
+      filter(entry) {
+        if (!/\.fb2$/i.test(entry.name) || entry.name.startsWith('__MACOSX/') || entry.name.split('/').pop().startsWith('._')) return false
+        if (++selected > 1) throw generationError('BOOK_PARSE_FAILED', 'FB2 archive must contain exactly one FB2 document')
+        if (entry.originalSize > MAX_EXTRACTED_BYTES) {
+          throw generationError('BOOK_TOO_LARGE', 'FB2 expanded text exceeds 64 MiB')
+        }
+        return true
+      }
+    })
+    const names = Object.keys(entries)
+    if (names.length !== 1) {
+      throw generationError('BOOK_PARSE_FAILED', 'FB2 archive must contain exactly one FB2 document')
+    }
+    return Buffer.from(entries[names[0]])
+  } catch (error) {
+    if (typeof error.code === 'string' && error.code.startsWith('BOOK_')) throw error
+    throw generationError('BOOK_PARSE_FAILED', `FB2 archive could not be read: ${error.message}`)
   }
 }
 
@@ -480,7 +507,7 @@ function epubStructuredText(bytes) {
     return actual ? strFromU8(entries[actual]) : ''
   }
   const container = readEntry('META-INF/container.xml')
-  const rootfile = parseAttributes(container.match(/<rootfile\b([^>]*)>/i)?.[1] || '')['full-path']
+  const rootfile = parseAttributes(container.match(/<(?:[\w.-]+:)?rootfile\b([^>]*)>/i)?.[1] || '')['full-path']
   const opfName = rootfile
     ? byLowerName.get(rootfile.toLowerCase())
     : entryNames.find((name) => /\.opf$/i.test(name))
@@ -493,7 +520,7 @@ function epubStructuredText(bytes) {
   if (opfName) {
     opf = strFromU8(entries[opfName])
     const manifest = new Map()
-    for (const match of opf.matchAll(/<item\b([^>]*)\/?\s*>/gi)) {
+    for (const match of opf.matchAll(/<(?:[\w.-]+:)?item\b([^>]*)\/?\s*>/gi)) {
       const attributes = parseAttributes(match[1])
       if (attributes.id && attributes.href) {
         manifest.set(attributes.id, attributes.href)
@@ -501,7 +528,7 @@ function epubStructuredText(bytes) {
       }
     }
     const base = path.posix.dirname(opfName)
-    for (const match of opf.matchAll(/<itemref\b([^>]*)\/?\s*>/gi)) {
+    for (const match of opf.matchAll(/<(?:[\w.-]+:)?itemref\b([^>]*)\/?\s*>/gi)) {
       const idref = parseAttributes(match[1]).idref
       const href = manifest.get(idref)
       if (!href) continue
@@ -521,7 +548,7 @@ function epubStructuredText(bytes) {
       }
     }
     if (!rawNavigationItems.length) {
-      const spineTocId = parseAttributes(opf.match(/<spine\b([^>]*)>/i)?.[1] || '').toc
+      const spineTocId = parseAttributes(opf.match(/<(?:[\w.-]+:)?spine\b([^>]*)>/i)?.[1] || '').toc
       const ncxItem = manifestItems.find(item =>
         (spineTocId && item.id === spineTocId) ||
         item['media-type'] === 'application/x-dtbncx+xml')
@@ -566,7 +593,16 @@ function epubStructuredText(bytes) {
 
 function processOutput(command, args, input, signal) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason || generationError('CANCELLED', 'book extraction cancelled'))
     const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] })
+    // A parser may exit before consuming a corrupt/locked PDF. The close handler
+    // reports its failure; an unhandled EPIPE would otherwise crash the worker.
+    child.stdin.on('error', (error) => {
+      if (error.code !== 'EPIPE' && error.code !== 'ERR_STREAM_DESTROYED') {
+        child.kill('SIGKILL')
+        reject(generationError('BOOK_PARSE_FAILED', `book input failed: ${error.message}`))
+      }
+    })
     const output = []
     const errors = []
     let outputBytes = 0
@@ -597,7 +633,7 @@ function processOutput(command, args, input, signal) {
 export async function extractStructuredBookText({ bytes: rawBytes, format, mimeType, signal }) {
   const bytes = Buffer.from(rawBytes)
   if (!bytes.byteLength) throw generationError('BOOK_PARSE_FAILED', 'book source is empty')
-  const normalizedFormat = String(format || '').toLowerCase()
+  const normalizedFormat = String(format || '').trim().toLowerCase()
   const normalizedMime = String(mimeType || '').split(';')[0].trim().toLowerCase()
   let result
   if (normalizedFormat === 'epub' || normalizedMime === 'application/epub+zip') {
@@ -605,8 +641,9 @@ export async function extractStructuredBookText({ bytes: rawBytes, format, mimeT
   } else if (normalizedFormat === 'pdf' || normalizedMime === 'application/pdf') {
     const text = (await processOutput('pdftotext', ['-enc', 'UTF-8', '-', '-'], bytes, signal)).trim()
     result = { text, sections: pdfSections(text) }
-  } else if (normalizedFormat === 'fb2' || /(?:xml|fb2)/.test(normalizedMime)) {
-    const markup = stripFb2Binary(decodeFb2Markup(bytes))
+  } else if (normalizedFormat === 'fb2' || normalizedFormat === 'fbz' || /(?:xml|fb2)/.test(normalizedMime)) {
+    const compressed = normalizedFormat === 'fbz' || normalizedMime === 'application/x-zip-compressed-fb2'
+    const markup = stripFb2Binary(decodeFb2Markup(compressed ? unpackFb2(bytes) : bytes))
     const text = markupToText(markup)
     const sections = headingSections(text, 'fb2-section')
     result = {

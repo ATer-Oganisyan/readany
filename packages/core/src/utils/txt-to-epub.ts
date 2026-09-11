@@ -368,7 +368,7 @@ export class TxtToEpubConverter {
         isVolume = /\b(Part|Volume|Book)\b/i.test(title);
       }
 
-      const headTitle = isVolume ? `<h1>${title}</h1>` : `<h2>${title}</h2>`;
+      const headTitle = isVolume ? `<h1>${escapeXml(title)}</h1>` : `<h2>${escapeXml(title)}</h2>`;
       const formattedSegment = this.formatSegment(content);
       segmentChapters.push({
         title: escapeXml(title),
@@ -509,22 +509,22 @@ export class TxtToEpubConverter {
       "Afterword",
     ];
 
-    const numberPattern = String.raw`(\d+|(?:[IVXLCDM]{2,}|V|X|L|C|D|M)\b)`;
+    const numberPattern = String.raw`(?:\d+|(?:[IVXLCDM]{2,}|V|X|L|C|D|M)\b)`;
     const dotNumberPattern = String.raw`\.\d{1,4}`;
     const titlePattern = String.raw`[^\n]{0,50}`;
 
     const normalChapterPattern = chapterKeywords
       .map(
         (k) =>
-          String.raw`${k}\s*(?:${numberPattern}|${dotNumberPattern})(?:[:.\-–—]?\s*${titlePattern})?`,
+          String.raw`${k}[ \t]*(?:${numberPattern}|${dotNumberPattern})(?:[:.\-–—]?[ \t]*${titlePattern})?`,
       )
       .join("|");
 
     const prefacePattern = prefaceKeywords
-      .map((k) => String.raw`${k}(?:[:.\-–—]?\s*${titlePattern})?`)
+      .map((k) => String.raw`${k}(?:[:.\-–—]?[ \t]*${titlePattern})?`)
       .join("|");
 
-    const combinedPattern = String.raw`(?:^|\n|\s)(?:${normalChapterPattern}|${prefacePattern})(?=\s|$)`;
+    const combinedPattern = String.raw`(?:^|\n)[ \t]*(${normalChapterPattern}|${prefacePattern})(?=\r?\n|$)`;
     chapterRegexps.push(new RegExp(combinedPattern, "gi"));
 
     return chapterRegexps;
@@ -606,6 +606,10 @@ export class TxtToEpubConverter {
   // ── Encoding detection ──
 
   private detectEncoding(buffer: ArrayBuffer): string | undefined {
+    const bom = new Uint8Array(buffer, 0, Math.min(3, buffer.byteLength));
+    if (bom[0] === 0xff && bom[1] === 0xfe) return "utf-16le";
+    if (bom[0] === 0xfe && bom[1] === 0xff) return "utf-16be";
+    if (bom[0] === 0xef && bom[1] === 0xbb && bom[2] === 0xbf) return "utf-8";
     const utf8HeadSampleSize = Math.min(buffer.byteLength, ENCODING_HEAD_SAMPLE_BYTES);
     const utf8HeadSample = buffer.slice(0, utf8HeadSampleSize);
 
@@ -683,6 +687,9 @@ export class TxtToEpubConverter {
     const headSampleSize = Math.min(file.size, ENCODING_HEAD_SAMPLE_BYTES);
     const headBuffer = await file.slice(0, headSampleSize).arrayBuffer();
     const headSample = new Uint8Array(headBuffer);
+    if (headSample[0] === 0xff && headSample[1] === 0xfe) return "utf-16le";
+    if (headSample[0] === 0xfe && headSample[1] === 0xff) return "utf-16be";
+    if (headSample[0] === 0xef && headSample[1] === 0xbb && headSample[2] === 0xbf) return "utf-8";
 
     try {
       this.assertStrictUtf8Sample(headSample);

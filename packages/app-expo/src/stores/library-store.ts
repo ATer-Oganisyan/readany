@@ -1,3 +1,5 @@
+import { PolyfillTextDecoder } from "@/lib/book/legacy-text-decoder";
+import { getBookImportFormat, getBookImportName } from "@readany/core/utils/book-import-format";
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
 import { ensureTxtUtf8Bytes } from "@/lib/book/txt-encoding";
 import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
@@ -42,32 +44,6 @@ import { create } from "zustand";
 import { useNarraStore } from "./narra-store";
 import { debouncedSave, loadFromFS } from "./persist";
 import { useVectorModelStore } from "./vector-model-store";
-
-// Hermes (React Native) only supports UTF-8 in TextDecoder.
-// text-encoding polyfill detects the native TextDecoder and skips installing
-// its own full-encoding version. Workaround: temporarily hide the native
-// TextDecoder so the polyfill installs unconditionally, then restore native.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const _nativeTD = globalThis.TextDecoder;
-const _nativeTE = globalThis.TextEncoder;
-// @ts-expect-error — temporarily remove native TextDecoder/TextEncoder
-globalThis.TextDecoder = undefined;
-// @ts-expect-error
-globalThis.TextEncoder = undefined;
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { TextDecoder: PolyfillTextDecoder } = require("text-encoding") as {
-  TextDecoder: typeof TextDecoder;
-};
-// Restore native TextDecoder/TextEncoder for rest of the app
-globalThis.TextDecoder = _nativeTD;
-globalThis.TextEncoder = _nativeTE;
-
-// Verify polyfill can decode non-UTF-8 at module load time
-try {
-  new PolyfillTextDecoder("gb18030");
-} catch (e) {
-  console.error("[text-encoding] Polyfill BROKEN: gb18030 not supported!", e);
-}
 
 export type LibraryViewMode = "grid" | "list";
 export interface RemoveBookOptions {
@@ -733,24 +709,9 @@ async function restoreDeletedMobileBook(
   if (!originalBook) return null;
 
   const filePath = fileInfo.uri;
-  const originalName = fileInfo.name
-    ? decodeURIComponent(fileInfo.name)
-    : decodeURIComponent(filePath.split("/").pop() || "book");
-  const ext = originalName.split(".").pop()?.toLowerCase();
-  const formatMap: Record<string, Book["format"]> = {
-    epub: "epub",
-    pdf: "pdf",
-    mobi: "mobi",
-    azw: "azw",
-    azw3: "azw3",
-    cbz: "cbz",
-    cbr: "cbz",
-    fb2: "fb2",
-    fbz: "fbz",
-    txt: "txt",
-    umd: "umd",
-  };
-  const format: Book["format"] = formatMap[ext || ""] || "epub";
+  const originalName = getBookImportName(filePath, fileInfo.name);
+  const format = getBookImportFormat(originalName);
+  const ext = format;
   const fileName = originalName;
   const platform = getPlatformService();
   const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
@@ -936,24 +897,9 @@ async function inspectDeletedMobileBookCandidate(
   if (!originalBook) return null;
 
   const filePath = fileInfo.uri;
-  const originalName = fileInfo.name
-    ? decodeURIComponent(fileInfo.name)
-    : decodeURIComponent(filePath.split("/").pop() || "book");
-  const ext = originalName.split(".").pop()?.toLowerCase();
-  const formatMap: Record<string, Book["format"]> = {
-    epub: "epub",
-    pdf: "pdf",
-    mobi: "mobi",
-    azw: "azw",
-    azw3: "azw3",
-    cbz: "cbz",
-    cbr: "cbz",
-    fb2: "fb2",
-    fbz: "fbz",
-    txt: "txt",
-    umd: "umd",
-  };
-  const format: Book["format"] = formatMap[ext || ""] || "epub";
+  const originalName = getBookImportName(filePath, fileInfo.name);
+  const format = getBookImportFormat(originalName);
+  const ext = format;
   const fileName = originalName;
   const { size: fileSize, md5: fileHash } = await getMobileFileStat(filePath);
 
@@ -1250,33 +1196,19 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       for (const fileInfo of files) {
         const filePath = fileInfo.uri;
         const knownBook = fileInfo.knownBook;
-        const originalName = fileInfo.name
-          ? decodeURIComponent(fileInfo.name)
-          : decodeURIComponent(filePath.split("/").pop() || "book");
+        const originalName = getBookImportName(filePath, fileInfo.name);
         try {
           // L0-модерация: запрещённые в РФ материалы не импортируются вовсе.
           if (findBannedImport(undefined, undefined, originalName)) {
             result.failures.push({ name: originalName, error: BANNED_IMPORT_MESSAGE });
             continue;
           }
-          const ext = originalName.split(".").pop()?.toLowerCase();
-          const formatMap: Record<string, Book["format"]> = {
-            epub: "epub",
-            pdf: "pdf",
-            mobi: "mobi",
-            azw: "azw",
-            azw3: "azw3",
-            cbz: "cbz",
-            cbr: "cbz",
-            fb2: "fb2",
-            fbz: "fbz",
-            txt: "txt",
-            umd: "umd",
-          };
-          const format: Book["format"] = formatMap[ext || ""] || "epub";
+          const format = getBookImportFormat(originalName);
+          const ext = format;
           const fileName = originalName;
           const platform = getPlatformService();
           const { size: fileSize, md5 } = await getMobileFileStat(filePath);
+          if (!fileSize) throw new Error("Book source is empty or unavailable");
           // MD5 is unavailable for some iOS document-provider URLs. Try the
           // backend SHA-256 identity, but never block import if that provider
           // does not expose the temporary URL to the hashing module.

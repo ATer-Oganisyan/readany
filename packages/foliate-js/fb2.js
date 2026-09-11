@@ -171,20 +171,24 @@ class FB2Converter {
   }
 }
 
+export const decodeFB2 = (buffer) => {
+  const bytes = new Uint8Array(buffer);
+  const bom =
+    bytes[0] === 0xff && bytes[1] === 0xfe
+      ? "utf-16le"
+      : bytes[0] === 0xfe && bytes[1] === 0xff
+        ? "utf-16be"
+        : bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf
+          ? "utf-8"
+          : null;
+  const header = new TextDecoder(bom || "utf-8").decode(bytes.subarray(0, 1024));
+  const declared = header.match(/<\?xml\b[^>]*\bencoding\s*=\s*["']([^"']+)["']/i)?.[1];
+  return new TextDecoder(bom || declared || "utf-8", { fatal: true }).decode(bytes);
+};
+
 const parseXML = async (blob) => {
-  const buffer = await blob.arrayBuffer();
-  const str = new TextDecoder("utf-8").decode(buffer);
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(str, MIME.XML);
-  const encoding =
-    doc.xmlEncoding ||
-    // `Document.xmlEncoding` is deprecated, and already removed in Firefox
-    // so parse the XML declaration manually
-    str.match(/^<\?xml\s+version\s*=\s*["']1.\d+"\s+encoding\s*=\s*["']([A-Za-z0-9._-]*)["']/)?.[1];
-  if (encoding && encoding.toLowerCase() !== "utf-8") {
-    const str = new TextDecoder(encoding).decode(buffer);
-    return parser.parseFromString(str, MIME.XML);
-  }
+  const doc = new DOMParser().parseFromString(decodeFB2(await blob.arrayBuffer()), MIME.XML);
+  if (doc.querySelector("parsererror")) throw new Error("Invalid FB2 XML");
   return doc;
 };
 

@@ -20,7 +20,7 @@ async function extractEpubOpfMetadata(bytes: Uint8Array): Promise<ExtractedBookM
   const { configure, ZipReader, BlobReader, TextWriter } = await import("@zip.js/zip.js");
   configure({ useWebWorkers: false });
 
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const buffer = Uint8Array.from(bytes).buffer;
   const reader = new ZipReader(new BlobReader(new Blob([buffer])));
 
   try {

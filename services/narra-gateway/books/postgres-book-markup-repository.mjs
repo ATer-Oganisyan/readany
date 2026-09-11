@@ -44,6 +44,7 @@ import {
 const BOOK_MIME_TYPES = Object.freeze({
   epub: 'application/epub+zip',
   fb2: 'application/x-fictionbook+xml',
+  fbz: 'application/zip',
   txt: 'text/plain',
   pdf: 'application/pdf'
 })

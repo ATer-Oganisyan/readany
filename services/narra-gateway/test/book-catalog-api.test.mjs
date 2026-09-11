@@ -464,3 +464,9 @@ test('local markup accepts derived profiles but rejects text excerpts', () => {
     }]
   }), /unknown field/)
 })
+
+test('local book registration accepts FBZ from mobile imports', () => {
+  assert.equal(parseLocalBookBody({
+    content_sha256: 'a'.repeat(64), title: 'Книга', author: '', format: 'fbz'
+  }).format, 'fbz')
+})
