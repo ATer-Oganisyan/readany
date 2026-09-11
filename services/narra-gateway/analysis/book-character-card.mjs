@@ -20,6 +20,7 @@ import {
   findCharacterNameMatches
 } from './character-name-matcher.mjs'
 import {
+  fragmentBelongsToWindow,
   CARD_TRAIT_CANDIDATE_TARGET,
   CHARACTER_CARD_CONTRACT_VERSION,
   CHARACTER_CARD_PROMPT_VERSION,
@@ -144,7 +145,9 @@ export function buildCharacterCardRequest({
     throw cardError('CARD_FRAGMENTS_MISSING', `character ${characterKey} has no fragments in its window`)
   }
   for (const fragment of list) {
-    if (fragment.startOffset < window.startOffset || fragment.endOffset > window.endOffset) {
+    // Проверяется начало абзаца, а не его конец: абзац принадлежит окну, в
+    // котором начался, и барьер отсекает главы, а не режет абзацы посередине.
+    if (!fragmentBelongsToWindow(fragment, window)) {
       throw cardError(
         'CARD_FRAGMENT_OUT_OF_WINDOW',
         `fragment ${fragment.fragmentId} lies outside the card window`
@@ -301,9 +304,8 @@ export function finalizeCharacterCard({
   createdAt = new Date().toISOString()
 }) {
   if (!input) throw cardError('CARD_REQUEST_INVALID', 'input is required')
-  const windowFragments = (Array.isArray(fragments) ? fragments : []).filter((fragment) =>
-    fragment.startOffset >= input.cardWindow.startOffset &&
-    fragment.endOffset <= input.cardWindow.endOffset)
+  const windowFragments = (Array.isArray(fragments) ? fragments : [])
+    .filter((fragment) => fragmentBelongsToWindow(fragment, input.cardWindow))
   const mentionCountInWindow = windowFragments.reduce(
     (sum, fragment) => sum + (fragment.mentionOffsets?.length ?? fragment.mentionCount ?? 1),
     0

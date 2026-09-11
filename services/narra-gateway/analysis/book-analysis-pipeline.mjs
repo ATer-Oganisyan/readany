@@ -37,7 +37,9 @@ export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
 //     склейку тридцати трёх кандидатов «Обломова» в одного человека.
 // v5: со-упоминание стало уликой для модели, у стадии своя модель и потолок
 //     размера склейки.
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v5'
+// v6: абзац принадлежит окну, в котором начинается, — одинаково при постановке
+//     задания и при сборке карточки.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v6'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'

@@ -303,3 +303,29 @@ test('a window that counted more mentions than the roster raises the book count'
   assert.ok(finalized.card.mentionCountInWindow > 2)
   assert.equal(finalized.card.mentionCount, finalized.card.mentionCountInWindow)
 })
+
+test('a paragraph that straddles the window belongs to the window it starts in', () => {
+  // Барьер отсекает главы, а не разрезает абзацы. Пока постановка задания и
+  // сборка карточки расходились в этом, персонаж с единственным абзацем на
+  // границе сначала падал на CARD_FRAGMENTS_MISSING, а потом стал пропадать
+  // молча: «Александр Троекуров» с четырнадцатью фрагментами остался без
+  // карточки вовсе.
+  const straddling = {
+    ...fragment(99, 'Элизабет вышла, и глава кончилась на полуслове.', WINDOW.endOffset - 10),
+    endOffset: WINDOW.endOffset + 500
+  }
+  const built = request({ fragments: [straddling] })
+  assert.equal(built.fragments.length, 1)
+  const finalized = finalizeCharacterCard({
+    input: built,
+    result: {
+      card: {
+        bio: { value: 'Элизабет уходит.', fragmentIds: [built.fragments[0].id], confidence: 0.9 },
+        traits: []
+      }
+    },
+    fragments: [straddling],
+    createdAt: '2026-09-11T10:00:00Z'
+  })
+  assert.equal(finalized.card.bio.value, 'Элизабет уходит.')
+})
