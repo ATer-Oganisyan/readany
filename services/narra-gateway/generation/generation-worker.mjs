@@ -1,4 +1,5 @@
 import {
+  CHARACTER_MEDIA_ASSET_TYPES,
   CHARACTER_MEDIA_JOB_TYPES,
   REQUIRED_CHARACTER_MEDIA,
   normalizeCharacterAnchor
@@ -248,8 +249,11 @@ export function normalizeCharacterBundleResult(value, requiredMedia = REQUIRED_C
     }
     byType.set(asset.type, { ...asset })
   }
+  // Сверка с полным списком умений, а не с текущим составом: в очереди лежат
+  // задания, поставленные когда состав был другим, и отвергать их незачем —
+  // сделать такой артефакт система по-прежнему умеет.
   if (!Array.isArray(requiredMedia) || !requiredMedia.length ||
-      requiredMedia.some((type) => !REQUIRED_CHARACTER_MEDIA.includes(type))) {
+      requiredMedia.some((type) => !CHARACTER_MEDIA_ASSET_TYPES.includes(type))) {
     throw invalidResult('required character media contract is invalid')
   }
   for (const type of requiredMedia) {

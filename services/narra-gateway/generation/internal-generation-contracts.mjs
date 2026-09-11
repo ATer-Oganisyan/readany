@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { REQUIRED_CHARACTER_MEDIA, sectionAnchorForTextOffset } from '../books/book-markup.mjs'
+import { CHARACTER_MEDIA_ASSET_TYPES, sectionAnchorForTextOffset } from '../books/book-markup.mjs'
 import { voiceForGender } from '../providers/voices.mjs'
 import {
   BOOK_ANALYSIS_GENDER_EVIDENCE_TYPES,
@@ -398,7 +398,7 @@ export function normalizeBundleRequest(input) {
   if (!Array.isArray(body.requiredMedia) || body.requiredMedia.length < 1) {
     invalid('requiredMedia must contain at least one character media type')
   }
-  const requiredMedia = REQUIRED_CHARACTER_MEDIA.filter((type) => body.requiredMedia.includes(type))
+  const requiredMedia = CHARACTER_MEDIA_ASSET_TYPES.filter((type) => body.requiredMedia.includes(type))
   if (requiredMedia.length !== body.requiredMedia.length) {
     invalid('requiredMedia contains an unsupported or duplicate media type')
   }

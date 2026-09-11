@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
 import {
   CARD_MEDIA_PRIORITY,
   characterCardMediaPriority
@@ -271,7 +272,6 @@ test('publishing a card queues its media from the card hash at the window priori
     () => ({ rows: [{ count: 0 }] }),                           // completeness
     (sql, params) => { inserts.push(params); return { rows: [mediaJob('job-portrait', 'character_portrait', 'primary_portrait')] } },
     (sql, params) => { inserts.push(params); return { rows: [mediaJob('job-audio', 'character_audio', 'greeting_audio')] } },
-    (sql, params) => { inserts.push(params); return { rows: [mediaJob('job-animation', 'character_animation', 'idle_animation')] } },
     () => ({ rows: [] }),                                       // bundle job_id
     () => ({ rows: [] })                                        // finish the card job
   ])
@@ -295,7 +295,13 @@ test('publishing a card queues its media from the card hash at the window priori
   )
   assert.equal(result.status, 'published')
   assert.equal(result.media.status, 'queued')
-  assert.equal(inserts.length, 3, 'портрет, голос и анимация ставятся как прежде')
+  // Ставится ровно заказанный состав: idle-анимации в нём нет, и вызова
+  // видеогенерации на каждого персонажа тоже.
+  assert.equal(inserts.length, REQUIRED_CHARACTER_MEDIA.length)
+  assert.deepEqual(
+    inserts.map((params) => JSON.parse(params[7]).asset_type),
+    [...REQUIRED_CHARACTER_MEDIA]
+  )
   for (const params of inserts) {
     assert.equal(params[6], 65, 'приоритет окна 1')
     const payload = JSON.parse(params[7])

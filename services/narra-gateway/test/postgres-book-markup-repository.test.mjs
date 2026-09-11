@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
 import { bookIdentityTargetVersion } from '../books/book-identity.mjs'
 import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
 
@@ -51,8 +52,6 @@ test('durable character ensure returns existing independent media jobs', async (
     () => ({ rows: [job('job-portrait', 'character_portrait', 'primary_portrait')] }),
     () => ({ rows: [] }),
     () => ({ rows: [job('job-audio', 'character_audio', 'greeting_audio')] }),
-    () => ({ rows: [] }),
-    () => ({ rows: [job('job-animation', 'character_animation', 'idle_animation')] }),
     () => ({ rows: [] })
   ])
   const repository = createPostgresBookMarkupRepository(pool, {
@@ -65,7 +64,7 @@ test('durable character ensure returns existing independent media jobs', async (
   assert.equal(result.created, false)
   assert.equal(result.id, 'job-portrait')
   assert.equal(result.status, 'queued')
-  assert.equal(result.jobs.length, 3)
+  assert.equal(result.jobs.length, REQUIRED_CHARACTER_MEDIA.length)
   assert.equal(
     result.idempotencyKey,
     'book-42:anna:character-bundle-v1:r1:primary_portrait'

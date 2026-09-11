@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
+import {
+  CHARACTER_MEDIA_ASSET_TYPES,
+  REQUIRED_CHARACTER_MEDIA
+} from '../books/book-markup.mjs'
 import {
   createGenerationWorker,
   normalizeBookIdentityResult,
@@ -26,8 +29,8 @@ test('book markup worker can be restricted to portrait jobs', () => {
   assert.ok(parseBookMarkupWorkerJobTypes().includes('scene_image'))
 })
 
-function generatedAssets() {
-  return REQUIRED_CHARACTER_MEDIA.map((type) => ({
+function generatedAssets(types = REQUIRED_CHARACTER_MEDIA) {
+  return types.map((type) => ({
     type,
     objectKey: `books/book-1/characters/anna/${type}`,
     contentHash: HASH,
@@ -139,9 +142,9 @@ test('worker publishes a character bundle only when all required media are prese
   }
   const worker = createGenerationWorker({ repository, generator, workerId: 'worker-1', logger: silentLogger })
   assert.deepEqual(await worker.runOnce(), {
-    status: 'completed', jobId: 'job-3', result: { assetCount: 3 }
+    status: 'completed', jobId: 'job-3', result: { assetCount: REQUIRED_CHARACTER_MEDIA.length }
   })
-  assert.deepEqual(published.bundle.assets.map((asset) => asset.type), REQUIRED_CHARACTER_MEDIA)
+  assert.deepEqual(published.bundle.assets.map((asset) => asset.type), [...REQUIRED_CHARACTER_MEDIA])
 })
 
 test('worker publishes a portrait job without waiting for audio or animation', async () => {
@@ -466,9 +469,23 @@ test('normalizers reject duplicate characters and incomplete bundles', () => {
     }),
     /appears after textLength/
   )
+  // Проверка идёт по заказанному составу: не хватает первого из него.
   assert.throws(
-    () => normalizeCharacterBundleResult({ assets: generatedAssets().slice(0, 2) }),
-    /missing idle_animation/
+    () => normalizeCharacterBundleResult({ assets: generatedAssets().slice(1) }),
+    new RegExp(`missing ${REQUIRED_CHARACTER_MEDIA[0]}`)
+  )
+  // А неподдерживаемый тип остаётся ошибкой контракта, даже если его заказали.
+  assert.throws(
+    () => normalizeCharacterBundleResult({ assets: generatedAssets() }, ['portret']),
+    /required character media contract is invalid/
+  )
+  // Задание, поставленное при другом составе, всё ещё принимается: сделать
+  // такой артефакт система умеет.
+  assert.doesNotThrow(
+    () => normalizeCharacterBundleResult(
+      { assets: generatedAssets(['idle_animation']) },
+      ['idle_animation']
+    )
   )
   assert.throws(
     () => normalizeCharacterBundleInput(null),
