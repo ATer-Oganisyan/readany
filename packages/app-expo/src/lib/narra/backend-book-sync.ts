@@ -52,7 +52,8 @@ const bindings = new Map<
 
 async function sourcePath(book: Book) {
   const original = useNarraStore.getState().books[book.id]?.backendOriginalSource;
-  if (original) return `${FileSystem.documentDirectory}${original.path}`;
+  if (original && original.format !== "umd")
+    return `${FileSystem.documentDirectory}${original.path}`;
   const path = book.filePath;
   if (path.startsWith("/") || path.startsWith("file://")) return path;
   const platform = getPlatformService();
@@ -66,10 +67,10 @@ export async function preserveBackendOriginalSource(
   format: string,
 ) {
   const directory = `${FileSystem.documentDirectory}narra-backend-sources`;
-  const hash = await sha256BackendFile(source);
   const path = `narra-backend-sources/${encodeURIComponent(bookId)}.${format}`;
   await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
   await FileSystem.copyAsync({ from: source, to: `${FileSystem.documentDirectory}${path}` });
+  const hash = await sha256BackendFile(`${FileSystem.documentDirectory}${path}`);
   useNarraStore.getState().setBackendOriginalSource(bookId, { path, format, hash });
 }
 
@@ -88,7 +89,9 @@ const mimeTypes: Record<string, string> = {
 
 async function bindBook(book: Book, signal: AbortSignal) {
   const store = useNarraStore.getState();
-  const original = store.books[book.id]?.backendOriginalSource;
+  const preserved = store.books[book.id]?.backendOriginalSource;
+  // UMD is converted locally; the backend accepts the resulting EPUB.
+  const original = preserved?.format === "umd" ? undefined : preserved;
   let binding = store.books[book.id]?.backendBinding;
   if (binding && expiredEditions.has(binding.bookEditionId)) binding = undefined;
   // A cancelled upload can have reached the server without its response reaching
@@ -108,10 +111,13 @@ async function bindBook(book: Book, signal: AbortSignal) {
   }
   if (!binding) {
     const path = await sourcePath(book);
-    const hash = original?.hash ?? book.contentHash ?? (await sha256BackendFile(path));
+    const hash =
+      original?.hash ??
+      (preserved?.format === "umd" ? undefined : book.contentHash) ??
+      (await sha256BackendFile(path));
     if (signal.aborted) throw new Error("Book binding cancelled");
     // Persist once; subsequent resolve/open never hashes unchanged bytes again.
-    if (!book.contentHash)
+    if (book.contentHash !== hash)
       await useLibraryStore.getState().updateBook(book.id, { contentHash: hash });
     let response = await backendBookRequest(
       "/v2/books/resolve",

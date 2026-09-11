@@ -33,6 +33,7 @@ export function ImportDropZone() {
             ext === "azw3" ||
             ext === "fb2" ||
             ext === "fbz" ||
+            ext === "zip" ||
             ext === "txt" ||
             ext === "umd" ||
             ext === "cbz"

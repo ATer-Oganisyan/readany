@@ -26,4 +26,12 @@ describe("Android reader chrome contract", () => {
     expect(loadingChrome).toContain("showTrailingActions={false}");
     expect(loadingChrome).toContain("onClosePress={() => navigation.goBack()}");
   });
+
+  it("removes the unused animated SVG only in Android WebView", () => {
+    const reader = read("../../screens/ReaderScreen.tsx");
+
+    expect(reader).toContain('Platform.OS === "android"');
+    expect(reader).toContain('document.getElementById("book-page-loader")?.remove()');
+    expect(reader).toContain("injectedJavaScript={ANDROID_READER_BOOTSTRAP_SCRIPT}");
+  });
 });

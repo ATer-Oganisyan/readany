@@ -10,6 +10,7 @@
  * (container.xml, OPF, cover image) instead of the entire EPUB.
  */
 import pako from "pako";
+import { PolyfillTextDecoder } from "./legacy-text-decoder";
 
 export interface ExtractedMeta {
   title: string;
@@ -41,9 +42,13 @@ const FB2_METADATA_MAX_BYTES = 2 * 1024 * 1024;
 
 // ─── FB2 extraction ────────────────────────────────────────────────
 
-export function extractFb2Metadata(fileBytes: Uint8Array, fileName = "book.fb2"): ExtractedMeta {
+export function extractFb2Metadata(
+  fileBytes: Uint8Array,
+  fileName = "book.fb2",
+  partial = false,
+): ExtractedMeta {
   const fallbackTitle = fileName.replace(/\.fb2$/i, "") || "Untitled";
-  const xml = decodeXmlBytes(fileBytes);
+  const xml = decodeXmlBytes(fileBytes, partial);
   const titleInfo = extractElementInnerXml(xml, "title-info") || xml;
   const title = cleanXmlText(extractElementInnerXml(titleInfo, "book-title")) || fallbackTitle;
   const authorXml = extractElementInnerXml(titleInfo, "author");
@@ -78,7 +83,7 @@ export async function extractFb2MetadataFromFile(
 ): Promise<ExtractedMeta> {
   const end = Math.min(file.size || FB2_METADATA_MAX_BYTES, FB2_METADATA_MAX_BYTES);
   const bytes = new Uint8Array(await file.slice(0, end).arrayBuffer());
-  return extractFb2Metadata(bytes, fileName);
+  return extractFb2Metadata(bytes, fileName, end < (file.size ?? end));
 }
 
 // ─── EPUB extraction ────────────────────────────────────────────────
@@ -912,14 +917,19 @@ function extractElementInnerXml(xml: string, tagName: string): string {
   return xml.match(regex)?.[1] ?? "";
 }
 
-function decodeXmlBytes(bytes: Uint8Array): string {
+function decodeXmlBytes(bytes: Uint8Array, partial: boolean): string {
   if (bytes[0] === 0xff && bytes[1] === 0xfe) {
     return decodeUtf16(bytes.subarray(2), true);
   }
   if (bytes[0] === 0xfe && bytes[1] === 0xff) {
     return decodeUtf16(bytes.subarray(2), false);
   }
-  return new TextDecoder("utf-8").decode(bytes);
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: partial });
+  }
+  const header = Array.from(bytes.subarray(0, 1024), (byte) => String.fromCharCode(byte)).join("");
+  const encoding = header.match(/<\?xml\b[^>]*\bencoding\s*=\s*["']([^"']+)["']/i)?.[1] || "utf-8";
+  return new PolyfillTextDecoder(encoding, { fatal: true }).decode(bytes, { stream: partial });
 }
 
 function decodeUtf16(bytes: Uint8Array, littleEndian: boolean): string {

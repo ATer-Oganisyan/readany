@@ -209,11 +209,6 @@
       transform: translateY(0) scale(1);
     }
 
-    /* Suppress iOS selection callout */
-    * {
-      -webkit-touch-callout: none !important;
-    }
-
     ::selection {
       background: rgba(250, 204, 21, 0.4) !important;
     }
@@ -1688,6 +1683,9 @@
 
     // ─── Book loading ───
     async function openBook(msg) {
+      _readerCopyText = '';
+      _characterReaderLoadId = msg.loadId;
+      _encounteredCharacterIds = new Set();
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
       if (loading) loading.classList.remove('hidden');
@@ -1734,10 +1732,10 @@
             })}`
           });
 
-          // Try Range-based lazy loading for ZIP-based formats (EPUB, CBZ, FBZ)
+          // Try Range-based lazy loading for EPUB; other archives use makeBook.
           // This avoids loading the entire file into memory — only reads
           // the ZIP central directory (~few KB) then fetches entries on demand.
-          const isZipFormat = /\.(epub|cbz|fb2\.zip|fbz)$/i.test(msg.fileName || '');
+          const isZipFormat = /\.epub$/i.test(msg.fileName || '');
           let lazyBook = null;
 
           if (isZipFormat) {
@@ -1916,6 +1914,7 @@
           // Extract text after page render settles
           if (snippetTimer) clearTimeout(snippetTimer);
           snippetTimer = setTimeout(() => {
+            reportVisibleCharacters();
             var snippet = getVisibleTextSnippet(80);
             if (snippet) postToRN('pageSnippet', { textSnippet: snippet });
           }, 300);
@@ -2685,7 +2684,7 @@ a { color: ${primary} !important; }
       const style = doc.createElement('style');
       const { bg, fg, primary } = currentThemeColors;
       style.textContent = `
-        * { -webkit-touch-callout: none !important; -webkit-user-select: text !important; user-select: text !important; }
+        * { -webkit-user-select: text !important; user-select: text !important; }
         html, body { background-color: transparent !important; color: ${fg} !important; }
         img, picture, svg, image, canvas {
           -webkit-user-drag: none !important;
@@ -2706,7 +2705,6 @@ a { color: ${primary} !important; }
         );
         syncReaderOverrideStylesForDoc(doc, themedStyles);
       }
-      doc.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); return false; }, true);
     }
 
     function isImageOnlyAnchor(anchor) {
@@ -3034,21 +3032,36 @@ a { color: ${primary} !important; }
     }
 
     // ─── Selection detection ───
+    var _readerCopyText = '';
+    window.copyReaderSelection = function () {
+      for (const { doc } of getRendererContents()) {
+        const selection = doc.getSelection();
+        const range = getSelectionRange(selection);
+        if (range) {
+          _readerCopyText = selection.toString();
+          break;
+        }
+      }
+      if (_readerCopyText) postToRN('copySelection', { text: _readerCopyText });
+      _readerCopyText = '';
+    };
+
     function attachSelectionListener(doc) {
       if (doc.__readany_selection) return;
       doc.__readany_selection = true;
 
+      // WKWebView owns the system Copy action, including after dragging handles.
+      // Do not prevent its default clipboard write; notify RN for the copied toast.
+      doc.addEventListener('copy', (event) => {
+        if (!event.isTrusted) return;
+        const text = doc.getSelection()?.toString();
+        setTimeout(() => {
+          if (text && !event.defaultPrevented) postToRN('copySelection', { text, nativeCopied: true });
+        }, 0);
+      });
+
       let selTimer = null;
-      let iosHackPending = false;
       let selectionClearTimer = null;
-      const isIOSLike = (() => {
-        try {
-          return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        } catch {
-          return false;
-        }
-      })();
 
       function markSelectionInteraction(active) {
         doc.__readany_selection_interaction = !!active;
@@ -3063,31 +3076,12 @@ a { color: ${primary} !important; }
         }, 120);
       }
 
-      doc.addEventListener('touchend', () => {
-        if (!isIOSLike) return;
-        setTimeout(() => {
-          if (iosHackPending) return;
-          const sel = doc.getSelection();
-          if (!sel || sel.isCollapsed || !sel.toString().trim() || !sel.rangeCount) return;
-          if (dismissSceneSelection(doc, sel)) return;
-          const range = sel.getRangeAt(0);
-          // iOS hack: remove and re-add to dismiss system menu
-          iosHackPending = true;
-          doc.__readany_isJiggling = true;
-          sel.removeAllRanges();
-          setTimeout(() => {
-            sel.addRange(range);
-            doc.__readany_isJiggling = false;
-            iosHackPending = false;
-            emitSelection(doc, sel, range);
-          }, 30);
-        }, 50);
-      }, { passive: true });
-
       doc.addEventListener('selectionchange', () => {
         if (dismissSceneSelection(doc)) return;
-        if (doc.__readany_isJiggling) return;
-        if (iosHackPending) return;
+        // Snapshot immediately: native menus may dismiss selection before RN handles Copy.
+        const currentSelection = doc.getSelection();
+        const currentRange = getSelectionRange(currentSelection);
+        if (currentRange) _readerCopyText = currentSelection.toString();
         if (selTimer) clearTimeout(selTimer);
         selTimer = setTimeout(() => {
           const sel = doc.getSelection();
@@ -3680,8 +3674,9 @@ a { color: ${primary} !important; }
       });
     }
 
+    const TTS_BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
     function getReadableBlocksForTTS(doc) {
-      const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, pre, td, th";
+      const blockSelector = TTS_BLOCK_SELECTOR;
       return Array.from(doc.querySelectorAll(blockSelector)).filter((block) => {
         if (!block || !block.textContent || !block.textContent.trim()) return false;
         if (shouldSkipTTSNode(block)) return false;
@@ -3794,6 +3789,23 @@ a { color: ${primary} !important; }
       });
     }
 
+    function getTTSParagraphId(doc, index, range) {
+      try {
+        const node = range.startContainer;
+        const element = node.nodeType === 3 ? node.parentElement : node;
+        const block = element.closest(TTS_BLOCK_SELECTOR);
+        if (!block) return undefined;
+        const paragraphRange = doc.createRange();
+        paragraphRange.selectNodeContents(block);
+        return view.getCFI(index, paragraphRange);
+      } catch { return undefined; }
+    }
+
+    function getTTSParagraphIdFromCfi(cfi) {
+      const resolved = resolveRangeForCfi(cfi);
+      return resolved ? getTTSParagraphId(resolved.doc, resolved.index, resolved.range) : undefined;
+    }
+
     function collectTTSSegmentsFromEngine(count, alignCfi, alignRange) {
       const tts = view && view.tts;
       if (!tts) return [];
@@ -3849,7 +3861,7 @@ a { color: ${primary} !important; }
         const identity = getTTSSegmentIdentity(detail.cfi, text);
         if (!text || seen.has(identity)) continue;
         seen.add(identity);
-        result.push({ text, cfi: detail.cfi });
+        result.push({ text, cfi: detail.cfi, paragraphId: getTTSParagraphIdFromCfi(detail.cfi) });
       }
       return result;
     }
@@ -3894,7 +3906,7 @@ a { color: ${primary} !important; }
             const identity = getTTSSegmentIdentity(detail.cfi, text);
             if (!text || (currentIdentity && identity === currentIdentity) || seen.has(identity)) continue;
             seen.add(identity);
-            result.push({ text, cfi: detail.cfi });
+            result.push({ text, cfi: detail.cfi, paragraphId: getTTSParagraphIdFromCfi(detail.cfi) });
           }
           return result;
         };
@@ -4074,7 +4086,8 @@ a { color: ${primary} !important; }
               const identity = getTTSSegmentIdentity(cfi, text);
               if (!cfi || seen.has(identity)) continue;
               seen.add(identity);
-              segments.push({ text, cfi });
+              const paragraphId = getTTSParagraphId(doc, sectionIndex, range);
+              segments.push({ text, cfi, paragraphId });
               if (segments.length >= limit) return segments;
             } catch (e) {
               console.log('[hrefTTSSegments] failed to convert range to CFI:', e);
@@ -4128,42 +4141,29 @@ a { color: ${primary} !important; }
         const resolved = startLocation.resolved;
         const sectionIndex = startLocation.sectionIndex;
         if (sectionIndex < 0 || sectionIndex >= currentBook.sections.length) return [];
-        const section = currentBook.sections[sectionIndex];
-        if (!section || typeof section.createDocument !== 'function') return [];
-
-        const doc = await section.createDocument();
-        let anchorRange = null;
-        if (resolved && typeof resolved.anchor === 'function') {
-          try {
-            anchorRange = anchorToRange(doc, resolved.anchor(doc));
-          } catch (e) {
-            anchorRange = null;
-          }
+        const endLocation = endHref && String(endHref) !== String(startHref)
+          ? await resolveHrefForTTSSegments(endHref)
+          : null;
+        const lastSection = endLocation ? endLocation.sectionIndex : currentBook.sections.length - 1;
+        const limit = Number.isFinite(maxCount) ? Math.max(0, Math.floor(maxCount)) : 24;
+        if (lastSection < sectionIndex || !limit) return [];
+        const segments = [];
+        for (let index = sectionIndex; index <= lastSection; index++) {
+          const section = currentBook.sections[index];
+          if (!section || typeof section.createDocument !== 'function') return [];
+          const doc = await section.createDocument();
+          const start = index === sectionIndex && typeof resolved?.anchor === 'function'
+            ? anchorToRange(doc, resolved.anchor(doc)) : null;
+          const end = index === lastSection && typeof endLocation?.resolved?.anchor === 'function'
+            ? anchorToRange(doc, endLocation.resolved.anchor(doc)) : null;
+          // A following chapter at a new document's start contributes no text.
+          if (endLocation && index === lastSection && index > sectionIndex && !end) break;
+          segments.push(...extractTTSSegmentsFromDocument(
+            doc, index, limit - segments.length, start, end,
+          ));
+          if (segments.length >= limit) break;
         }
-
-        let endAnchorRange = null;
-        if (endHref && String(endHref) !== String(startHref)) {
-          const endLocation = await resolveHrefForTTSSegments(endHref);
-          if (
-            endLocation.sectionIndex === sectionIndex &&
-            endLocation.resolved &&
-            typeof endLocation.resolved.anchor === 'function'
-          ) {
-            try {
-              endAnchorRange = anchorToRange(doc, endLocation.resolved.anchor(doc));
-            } catch (e) {
-              endAnchorRange = null;
-            }
-          }
-        }
-
-        return extractTTSSegmentsFromDocument(
-          doc,
-          sectionIndex,
-          maxCount,
-          anchorRange,
-          endAnchorRange,
-        );
+        return segments;
       } catch (e) {
         console.log('[chapterTTSSegments] error:', e);
         return [];
@@ -5464,11 +5464,31 @@ a { color: ${primary} !important; }
     // Спека приходит из RN (window.setCharacterNames), матчинг делает
     // window._readanyFindCharacterNameMatches из бандла (общий модуль с RN).
     var _characterNameSpec = null;
+    var _characterReaderLoadId = null;
+    var _encounteredCharacterIds = new Set();
     var CHARACTER_NAME_STYLE_ID = 'readany-character-name-style';
     var CHARACTER_NAME_CLASS = 'readany-character-name';
     var CHARACTER_NAME_ATTR = 'data-readany-character-id';
     var CHARACTER_NAME_BLOCK_ATTR = 'data-readany-charnames';
     var CHARACTER_NAME_CHUNK = 24;
+
+    function reportVisibleCharacters() {
+      if (!view || !view.lastLocation || !view.lastLocation.range) return;
+      var visible = view.lastLocation.range;
+      var doc = visible.startContainer.ownerDocument;
+      if (!doc) return;
+      var ids = [];
+      var spans = doc.querySelectorAll('[' + CHARACTER_NAME_ATTR + ']');
+      for (var span of spans) {
+        var id = span.getAttribute(CHARACTER_NAME_ATTR);
+        if (!id || _encounteredCharacterIds.has(id) || !visible.intersectsNode(span)) continue;
+        _encounteredCharacterIds.add(id);
+        ids.push(id);
+      }
+      if (ids.length) postToRN('charactersEncountered', {
+        characterIds: ids, loadId: _characterReaderLoadId,
+      });
+    }
 
     function characterNameInjectStyles(doc) {
       if (!doc || doc.getElementById(CHARACTER_NAME_STYLE_ID)) return;
@@ -5569,6 +5589,7 @@ a { color: ${primary} !important; }
         for (; index < limit; index++) {
           try { markCharacterNamesInBlock(doc, pending[index]); } catch (e) {}
         }
+        reportVisibleCharacters();
         if (index < pending.length) setTimeout(step, 0);
       }
       setTimeout(step, 0);

@@ -814,4 +814,17 @@ describe("book TTS backend contract", () => {
       technicalDetail: "Speech HTTP 429",
     });
   });
+  it.each(["ratelimit-daily-remaining", "ratelimit-global-remaining"])(
+    "marks exhausted %s as terminal without exposing provider details",
+    async (header) => {
+      vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
+        new Response("private provider detail", { status: 429, headers: { [header]: "0" } }),
+      );
+      await expect(synthesizeNarraBookSpeech("Текст.", "Che")).rejects.toMatchObject({
+        code: "RATE",
+        backendCode: "DAILY_LIMIT",
+        message: "Дневной лимит озвучки исчерпан. Повторите после обновления лимита.",
+      });
+    },
+  );
 });

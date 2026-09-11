@@ -1,5 +1,15 @@
 {
   "tts": {
+    "previousParagraph": "Previous paragraph",
+    "volume": "Volume",
+    "openAudiobookPlayer": "Open player: {{title}}",
+    "playerOptions": "Audiobook options",
+    "returnToBook": "Read along",
+    "forward15": "Forward 15 seconds",
+    "backward15": "Back 15 seconds",
+    "speedValue": "Speed {{value}}×",
+    "narrationProgress": "Narration progress",
+    "customTimer": "Custom time…",
     "title": "Text-to-Speech",
     "closePlayer": "Close text-to-speech",
     "settingsTitle": "Text-to-speech settings",

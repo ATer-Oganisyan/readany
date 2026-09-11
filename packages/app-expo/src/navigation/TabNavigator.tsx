@@ -1,3 +1,5 @@
+import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
+import { AudiobookPlayerAccessory } from "@/components/tts/audiobook-player-accessory";
 import { getFilledIconImageSource, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
@@ -6,6 +8,7 @@ import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
 import { ProfileScreen } from "@/screens/ProfileScreen";
 import { SearchScreen } from "@/screens/SearchScreen";
+import { useTTSStore } from "@/stores/tts-store";
 import { useTheme } from "@/styles/ThemeContext";
 import {
   fontFamily,
@@ -25,7 +28,8 @@ import {
 import { useSyncStore } from "@readany/core/stores";
 import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Platform } from "react-native";
+import { Platform, View } from "react-native";
+import { SafeAreaView } from "react-native-screens/experimental";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
 export type LibraryTabStackParamList = {
@@ -259,9 +263,33 @@ function ProfileTabStackNavigator() {
 export function TabNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const hasPlayer = useTTSStore(
+    (state) => AUDIOBOOK_PLAYER_ENABLED && state.playState !== "stopped" && Boolean(state.currentBookId),
+  );
+  const nativeAccessory =
+    Platform.OS === "ios" && Number.parseInt(String(Platform.Version), 10) >= 26;
 
   return (
     <Tab.Navigator
+      screenLayout={
+        nativeAccessory
+          ? undefined
+          : ({ children }) => (
+              <View style={{ flex: 1 }}>
+                <View style={{ flex: 1 }}>{children}</View>
+                {hasPlayer && (
+                  <SafeAreaView
+                    edges={{ bottom: true, top: false, left: true, right: true }}
+                    style={{ backgroundColor: colors.card }}
+                  >
+                    <View style={{ height: 60 }}>
+                      <AudiobookPlayerAccessory />
+                    </View>
+                  </SafeAreaView>
+                )}
+              </View>
+            )
+      }
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
@@ -271,7 +299,11 @@ export function TabNavigator() {
         tabBarStyle: Platform.OS === "ios" ? undefined : { backgroundColor: colors.background },
         tabBarBlurEffect: "systemDefault",
         tabBarControllerMode: "auto",
-        tabBarMinimizeBehavior: "none",
+        tabBarMinimizeBehavior: hasPlayer && nativeAccessory ? "onScrollDown" : "none",
+        bottomAccessory:
+          hasPlayer && nativeAccessory
+            ? ({ placement }) => <AudiobookPlayerAccessory placement={placement} />
+            : undefined,
       }}
     >
       <Tab.Screen
@@ -299,7 +331,6 @@ export function TabNavigator() {
           title: t("tabs.profile", "Профиль"),
           tabBarLabel: "",
           tabBarIcon: tabIcon(TAB_ICONS.Profile),
-          tabBarMinimizeBehavior: "none",
         }}
       />
       <Tab.Screen
@@ -311,7 +342,6 @@ export function TabNavigator() {
           tabBarSystemItem: Platform.OS === "ios" ? "search" : undefined,
           tabBarLabel: "",
           tabBarIcon: tabIcon(TAB_ICONS.Search),
-          tabBarMinimizeBehavior: "none",
         }}
       />
     </Tab.Navigator>

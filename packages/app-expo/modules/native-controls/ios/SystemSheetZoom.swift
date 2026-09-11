@@ -15,6 +15,29 @@ final class SystemSheetZoomSourceRepository: NSObject {
 
   private var sources: [String: WeakBarButtonItem] = [:]
   private var pendingIdentifier: String?
+  private let views = NSMapTable<NSString, UIView>.strongToWeakObjects()
+
+  func register(identifier: String, view: UIView) {
+    guard !identifier.isEmpty else { return }
+    views.setObject(view, forKey: identifier as NSString)
+  }
+
+  func unregister(identifier: String, matching view: UIView) {
+    guard views.object(forKey: identifier as NSString) === view else { return }
+    views.removeObject(forKey: identifier as NSString)
+  }
+
+  @available(iOS 26.0, *)
+  func transition(identifier: String) -> UIViewController.Transition {
+    if views.object(forKey: identifier as NSString) != nil {
+      return .zoom(options: nil, sourceViewProvider: { _ in
+        self.views.object(forKey: identifier as NSString)
+      })
+    }
+    return .zoom(options: nil, sourceBarButtonItemProvider: { _ in
+      self.item(identifier: identifier)
+    })
+  }
 
   private override init() {
     super.init()
@@ -49,7 +72,7 @@ final class SystemSheetZoomSourceRepository: NSObject {
   }
 
   func preparePresentation(identifier: String) {
-    pendingIdentifier = item(identifier: identifier) == nil ? nil : identifier
+    pendingIdentifier = identifier.isEmpty ? nil : identifier
   }
 
   @objc private func handleWillPresentFormSheet(_ notification: Notification) {
@@ -60,12 +83,7 @@ final class SystemSheetZoomSourceRepository: NSObject {
       return
     }
 
-    controller.preferredTransition = .zoom(
-      options: nil,
-      sourceBarButtonItemProvider: { _ in
-        SystemSheetZoomSourceRepository.shared.item(identifier: identifier)
-      }
-    )
+    controller.preferredTransition = transition(identifier: identifier)
   }
 }
 
@@ -130,12 +148,7 @@ final class SystemSheetZoomDestinationView: ExpoView {
 
     clearTransition()
     let identifier = sourceIdentifier
-    screen.preferredTransition = .zoom(
-      options: nil,
-      sourceBarButtonItemProvider: { _ in
-        SystemSheetZoomSourceRepository.shared.item(identifier: identifier)
-      }
-    )
+    screen.preferredTransition = SystemSheetZoomSourceRepository.shared.transition(identifier: identifier)
     configuredScreen = screen
     configuredSourceIdentifier = identifier
   }
@@ -187,5 +200,25 @@ final class SystemSheetZoomDestinationView: ExpoView {
 
     return screen.sheetPresentationController
       ?? screen.navigationController?.sheetPresentationController
+  }
+}
+
+final class SystemSheetZoomSourceView: ExpoView {
+  var sourceIdentifier = "" {
+    didSet {
+      SystemSheetZoomSourceRepository.shared.unregister(identifier: oldValue, matching: self)
+      if window != nil {
+        SystemSheetZoomSourceRepository.shared.register(identifier: sourceIdentifier, view: self)
+      }
+    }
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    if window != nil {
+      SystemSheetZoomSourceRepository.shared.register(identifier: sourceIdentifier, view: self)
+    } else {
+      SystemSheetZoomSourceRepository.shared.unregister(identifier: sourceIdentifier, matching: self)
+    }
   }
 }

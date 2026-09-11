@@ -42,6 +42,8 @@
     "noToc": "Нет оглавления",
     "noBookOpen": "Ни одна книга не открыта",
     "loadFailed": "Не удалось загрузить",
+    "openFailedTitle": "Не удалось открыть книгу",
+    "openFailedDescription": "Попробуйте ещё раз",
     "pageOfBook": "стр. {{current}} из {{total}}",
     "hibernated": "Вкладка была переведена в спящий режим для экономии памяти",
     "resumeReading": "Возобновить чтение",
@@ -96,6 +98,7 @@
     "language": "Язык",
     "discussWithAI": "Обсудить с ИИ",
     "listen": "Слушать",
+    "audio": "Аудио",
     "textSettings": "Текст",
     "searchTimedOut": "Поиск занял слишком долго. Попробуйте фразу покороче."
   },

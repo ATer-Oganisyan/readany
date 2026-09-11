@@ -98,6 +98,7 @@ import {
 import { createLocalIdleAnimation } from './generation/local-idle-animation.mjs'
 import { createPrivateMaterialCleanup } from './platform/private-material-cleanup.mjs'
 import { withChatCompliance, withImageCompliance } from './providers/rf-compliance.mjs'
+import { withChatLanguage } from './providers/chat-language.mjs'
 
 // ================= Конфигурация =================
 const {
@@ -1362,7 +1363,7 @@ app.post('/v2/ai/chat/stream', aiLimit, aiDailyLimit, express.json({ limit: '1mb
     const input = parseChatBody(req.body, { stream: true })
     // Правовые рамки РФ — обязанность сервера: старый или модифицированный
     // клиент не может их обойти. Идемпотентно к рамке, присланной клиентом.
-    const messages = withChatCompliance(input.messages, input.purpose)
+    const messages = withChatLanguage(withChatCompliance(input.messages, input.purpose), input.purpose, input.origin)
     analyticsOrigin = input.origin
     recordActorAnalytics = input.analyticsTier !== 'none'
     requestPurpose = input.purpose
@@ -1476,7 +1477,7 @@ app.post('/v2/ai/chat/complete', aiLimit, aiDailyLimit, express.json({ limit: '1
     release = await llmGate.acquire(clientSignal)
     const input = parseChatBody(req.body)
     // Диалоговые purposes и здесь получают серверную правовую рамку.
-    const messages = withChatCompliance(input.messages, input.purpose)
+    const messages = withChatLanguage(withChatCompliance(input.messages, input.purpose), input.purpose, input.origin)
     analyticsOrigin = input.origin
     recordActorAnalytics = input.analyticsTier !== 'none'
     requestPurpose = input.purpose

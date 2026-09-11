@@ -959,3 +959,19 @@ test('a reader inside a warmed interval gets the picture that is already paid fo
   assert.equal(pool.queries.some(({ sql }) => /INSERT INTO generation_jobs/.test(sql)), false)
   assert.equal(reservations, 0)
 })
+
+test('FBZ uploads keep checksum and MIME validation before staging source bytes', async () => {
+  const hash = 'a'.repeat(64)
+  const edition = { id: 'book', scope: 'private', content_sha256: hash, format: 'fbz', title: 'Book', author: '' }
+  const input = { subjectId: 'user', bookEditionId: 'book', contentSha256: hash, objectKey: 'source', mimeType: 'application/zip', byteSize: 100 }
+  const pool = scriptedPool([() => ({ rows: [edition] })])
+  const result = await createPostgresBookMarkupRepository(pool).beginPrivateBookUpload(input)
+  assert.equal(result.uploadRequired, true)
+  assert.equal(result.file.mimeType, 'application/zip')
+  assert.ok(pool.queries.some(({ sql }) => sql.includes('INSERT INTO book_files')))
+  for (const delta of [{ mimeType: 'application/epub+zip' }, { contentSha256: 'b'.repeat(64) }]) {
+    const rejectedPool = scriptedPool([() => ({ rows: [edition] })])
+    await assert.rejects(createPostgresBookMarkupRepository(rejectedPool).beginPrivateBookUpload({ ...input, ...delta }), { code: 'UPLOAD_INTEGRITY' })
+    assert.equal(rejectedPool.queries.some(({ sql }) => sql.includes('INSERT INTO book_files')), false)
+  }
+})

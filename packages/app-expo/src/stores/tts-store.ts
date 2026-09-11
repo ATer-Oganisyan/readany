@@ -1,4 +1,10 @@
 import {
+  type ChapterSegment,
+  type NarrationChapter,
+  chapterSegmentIndex,
+  findNarrationChapter,
+} from "@/lib/tts-chapter-progress";
+import {
   DEFAULT_TTS_CONFIG,
   type ITTSPlayer,
   type TTSConfig,
@@ -139,13 +145,20 @@ function detachAndStopAllPlayers(): void {
   detachAndStopPlayer(_openAICompatibleTTS);
 }
 
-function normalizeSegments(text: string | string[]): string[] {
-  if (Array.isArray(text)) {
-    return text.map((segment) => segment.trim()).filter(Boolean);
-  }
-  return splitNarrationText(text)
-    .map((segment) => segment.trim())
-    .filter(Boolean);
+export type NarrationInput = string | Array<string | ChapterSegment>;
+
+function inputSegments(text: NarrationInput): ChapterSegment[] {
+  return (typeof text === "string" ? splitNarrationText(text) : text)
+    .map((segment) =>
+      typeof segment === "string"
+        ? { text: segment.trim() }
+        : { ...segment, text: segment.text.trim() },
+    )
+    .filter((segment) => segment.text.length > 0);
+}
+
+function normalizeSegments(text: NarrationInput): string[] {
+  return inputSegments(text).map((segment) => segment.text);
 }
 
 function previewSessionSegments(segments: string[], limit = 8) {
@@ -292,6 +305,7 @@ function startPlayback(
     });
     set({
       currentChunkIndex: absoluteIndex,
+      currentLocationCfi: get().segmentCfis[absoluteIndex] ?? get().currentLocationCfi,
       totalChunks: _sessionSegments.length,
       currentSegmentText: _sessionSegments[absoluteIndex] || "",
     });
@@ -352,11 +366,19 @@ export interface TTSState {
   currentLocationCfi: string;
   currentChunkIndex: number;
   totalChunks: number;
+  paragraphIds: (string | undefined)[];
+  segmentCfis: (string | undefined)[];
+  narrationChapters: NarrationChapter[];
+  onSeekChapterSegment: ((segment: ChapterSegment) => void | Promise<void>) | null;
+  setNarrationChapter: (chapter: NarrationChapter) => void;
+  seekChapterSegment: (chapterId: string, index: number) => void;
+  skipSentence: (direction: -1 | 1) => void;
+
   sleepTimerEndsAt: number | null;
   sleepTimerDurationMinutes: number | null;
 
-  play: (text: string | string[]) => void;
-  append: (text: string | string[]) => boolean;
+  play: (text: NarrationInput) => void;
+  append: (text: NarrationInput) => boolean;
   pause: () => void;
   resume: () => void;
   stop: () => void;
@@ -388,10 +410,14 @@ export const useTTSStore = create<TTSState>()(
       currentLocationCfi: "",
       currentChunkIndex: 0,
       totalChunks: 0,
+      paragraphIds: [],
+      segmentCfis: [],
+      narrationChapters: [],
+      onSeekChapterSegment: null,
       sleepTimerEndsAt: null,
       sleepTimerDurationMinutes: null,
 
-      play: (text: string | string[]) => {
+      play: (text: NarrationInput) => {
         clearRespeakTimer();
         const segments = normalizeSegments(text);
         const joinedText = segments.join(" ").trim();
@@ -422,12 +448,15 @@ export const useTTSStore = create<TTSState>()(
           currentSegmentText: segments[0] || "",
           currentChunkIndex: 0,
           totalChunks: segments.length,
+          paragraphIds: inputSegments(text).map((segment) => segment.paragraphId),
+          segmentCfis: inputSegments(text).map((segment) => segment.cfi),
+          currentLocationCfi: inputSegments(text)[0]?.cfi ?? get().currentLocationCfi,
         });
 
         startPlayback(segments, config, 0, set, get);
       },
 
-      append: (text: string | string[]) => {
+      append: (text: NarrationInput) => {
         const segments = normalizeSegments(text);
         const joinedText = segments.join(" ").trim();
         if (!joinedText || !_activeTTS || typeof _activeTTS.append !== "function") {
@@ -450,6 +479,14 @@ export const useTTSStore = create<TTSState>()(
           set((state) => ({
             currentText: [state.currentText, joinedText].filter(Boolean).join(" ").trim(),
             totalChunks: _sessionSegments.length,
+            segmentCfis: [
+              ...state.segmentCfis,
+              ...inputSegments(text).map((segment) => segment.cfi),
+            ],
+            paragraphIds: [
+              ...state.paragraphIds,
+              ...inputSegments(text).map((segment) => segment.paragraphId),
+            ],
             currentSegmentText:
               _sessionSegments[_sessionCurrentIndex] || state.currentSegmentText || "",
           }));
@@ -527,6 +564,10 @@ export const useTTSStore = create<TTSState>()(
           onEnd: null,
           currentChunkIndex: 0,
           totalChunks: 0,
+          paragraphIds: [],
+          segmentCfis: [],
+          narrationChapters: [],
+          onSeekChapterSegment: null,
           currentBookTitle: "",
           currentChapterTitle: "",
           currentBookId: "",
@@ -538,13 +579,19 @@ export const useTTSStore = create<TTSState>()(
 
       toggle: (text?: string) => {
         console.log("[TTSStore] toggle called, playState:", get().playState);
-        const { playState, currentText, play } = get();
+        const { playState, currentText, play, segmentCfis, paragraphIds } = get();
         if (playState === "playing" || playState === "loading") {
           get().pause();
         } else if (playState === "paused") {
           get().resume();
         } else if (text) {
           play(text);
+        } else if (_sessionSegments.length) {
+          play(_sessionSegments.map((text, index) => ({
+            text,
+            cfi: segmentCfis[index],
+            paragraphId: paragraphIds[index],
+          })));
         } else if (currentText) {
           play(currentText);
         }
@@ -576,6 +623,8 @@ export const useTTSStore = create<TTSState>()(
       },
 
       setCurrentBook: (title, chapter, bookId, artwork) => {
+        if (get().currentBookId !== bookId)
+          set({ narrationChapters: [], onSeekChapterSegment: null });
         set({
           currentBookTitle: title,
           currentChapterTitle: chapter,
@@ -597,11 +646,54 @@ export const useTTSStore = create<TTSState>()(
           .catch((err) => console.warn("[TTS] Failed to get active track index:", err));
       },
 
+      setNarrationChapter: (chapter) =>
+        set((state) => ({
+          narrationChapters: [
+            ...state.narrationChapters.filter((item) => item.id !== chapter.id),
+            chapter,
+          ],
+        })),
+
+      skipSentence: (direction) => {
+        const state = get();
+        const current = findNarrationChapter(
+          state.narrationChapters,
+          state.currentLocationCfi || state.segmentCfis[state.currentChunkIndex],
+        );
+        if (!current) return;
+        const target = current.index + direction;
+        if (target < 0 || target >= current.chapter.segments.length) return;
+        state.seekChapterSegment(current.chapter.id, target);
+      },
+
+      seekChapterSegment: (chapterId, index) => {
+        const state = get();
+        const chapter = state.narrationChapters.find((item) => item.id === chapterId);
+        if (!chapter || !Number.isFinite(index)) return;
+        const target = Math.max(0, Math.min(Math.floor(index), chapter.segments.length - 1));
+        const segment = chapter.segments[target];
+        if (!segment?.cfi) return;
+        if (state.onSeekChapterSegment) {
+          void state.onSeekChapterSegment(segment);
+          return;
+        }
+        const queuedIndex = chapterSegmentIndex(
+          state.segmentCfis.map((cfi) => ({ text: "", cfi })),
+          segment.cfi,
+        );
+        if (queuedIndex >= 0) {
+          state.jumpToChunk(queuedIndex);
+        } else {
+          state.play(chapter.segments.slice(target));
+        }
+      },
+
       setCurrentLocation: (cfi) => set({ currentLocationCfi: cfi ?? "" }),
 
       setChunkProgress: (index, total) =>
         set({
           currentChunkIndex: index,
+          currentLocationCfi: get().segmentCfis[index] ?? get().currentLocationCfi,
           totalChunks: total,
           currentSegmentText: _sessionSegments[index] || "",
         }),
@@ -631,6 +723,7 @@ export const useTTSStore = create<TTSState>()(
           playState: "loading",
           currentSegmentText: _sessionSegments[index] || "",
           currentChunkIndex: index,
+          currentLocationCfi: get().segmentCfis[index] ?? get().currentLocationCfi,
           totalChunks: _sessionSegments.length,
         });
 
@@ -670,6 +763,10 @@ export const useTTSStore = create<TTSState>()(
       currentSegmentText: "",
       currentChunkIndex: 0,
       totalChunks: 0,
+      paragraphIds: [],
+      segmentCfis: [],
+      narrationChapters: [],
+      onSeekChapterSegment: null,
       currentLocationCfi: "",
       sleepTimerEndsAt: null,
       sleepTimerDurationMinutes: null,

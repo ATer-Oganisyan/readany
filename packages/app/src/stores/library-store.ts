@@ -14,6 +14,7 @@ import {
 import { debouncedSave, loadFromFS } from "@readany/core/stores/persist";
 import { useVectorModelStore } from "@readany/core/stores/vector-model-store";
 import type { Book, BookGroup, LibraryFilter, SortField, SortOrder } from "@readany/core/types";
+import { getBookImportFormat, getBookImportName } from "@readany/core/utils/book-import-format";
 import { create } from "zustand";
 
 interface EpubMeta {
@@ -389,22 +390,9 @@ async function restoreDeletedDesktopBook(bookId: string, filePath: string): Prom
   const originalBook = await db.getBook(bookId, { includeDeleted: true });
   if (!originalBook) return null;
 
-  const fileName = decodeURIComponent(filePath.replace(/\\/g, "/").split("/").pop() || "book");
-  const ext = filePath.split(".").pop()?.toLowerCase() || "epub";
-  const formatMap: Record<string, Book["format"]> = {
-    epub: "epub",
-    pdf: "pdf",
-    mobi: "mobi",
-    azw: "azw",
-    azw3: "azw3",
-    cbz: "cbz",
-    cbr: "cbz",
-    fb2: "fb2",
-    fbz: "fbz",
-    txt: "txt",
-    umd: "umd",
-  };
-  const format: Book["format"] = formatMap[ext] || "epub";
+  const fileName = getBookImportName(filePath);
+  const format = getBookImportFormat(fileName);
+  const ext = format;
   let title = originalBook.meta.title || fileName.replace(/\.\w+$/i, "") || "Untitled";
   let author = originalBook.meta.author || "";
   let coverUrl = originalBook.meta.coverUrl;
@@ -492,9 +480,7 @@ async function restoreDeletedDesktopBook(bookId: string, filePath: string): Prom
       const { readFile } = await import("@tauri-apps/plugin-fs");
       const fileBytes = await readFile(destPath);
       const blob = new Blob([fileBytes]);
-      const effectiveFileName =
-        ext === "txt" || ext === "umd" ? fileName.replace(/\.\w+$/i, ".epub") : fileName;
-      const file = new File([blob], effectiveFileName, {
+      const file = new File([blob], fileName, {
         type: blob.type || "application/octet-stream",
       });
       const { DocumentLoader } = await import("@/lib/reader/document-loader");
@@ -569,22 +555,9 @@ async function inspectDeletedDesktopBookCandidate(
   const originalBook = await db.getBook(bookId, { includeDeleted: true });
   if (!originalBook) return null;
 
-  const fileName = decodeURIComponent(filePath.replace(/\\/g, "/").split("/").pop() || "book");
-  const ext = filePath.split(".").pop()?.toLowerCase() || "epub";
-  const formatMap: Record<string, Book["format"]> = {
-    epub: "epub",
-    pdf: "pdf",
-    mobi: "mobi",
-    azw: "azw",
-    azw3: "azw3",
-    cbz: "cbz",
-    cbr: "cbz",
-    fb2: "fb2",
-    fbz: "fbz",
-    txt: "txt",
-    umd: "umd",
-  };
-  const format: Book["format"] = formatMap[ext] || "epub";
+  const fileName = getBookImportName(filePath);
+  const format = getBookImportFormat(fileName);
+  const ext = format;
   let title = fileName.replace(/\.\w+$/i, "") || originalBook.meta.title || "Untitled";
   let author = "";
   let fileHash: string | undefined;
@@ -871,25 +844,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       const { DocumentLoader } = await import("@/lib/reader/document-loader");
 
       for (const filePath of filePaths) {
-        const fileName = decodeURIComponent(
-          filePath.replace(/\\/g, "/").split("/").pop() || "book",
-        );
+        const fileName = getBookImportName(filePath);
         try {
-          const ext = filePath.split(".").pop()?.toLowerCase() || "epub";
-          const formatMap: Record<string, Book["format"]> = {
-            epub: "epub",
-            pdf: "pdf",
-            mobi: "mobi",
-            azw: "azw",
-            azw3: "azw3",
-            cbz: "cbz",
-            cbr: "cbz",
-            fb2: "fb2",
-            fbz: "fbz",
-            txt: "txt",
-            umd: "umd",
-          };
-          const format: Book["format"] = formatMap[ext] || "epub";
+          const format = getBookImportFormat(fileName);
+          const ext = format;
           let title = fileName.replace(/\.\w+$/i, "") || "Untitled";
           let author = "";
           let coverUrl: string | undefined;
@@ -912,11 +870,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
 
           let deletedMatch = fileHash
-            ? await db.getDeletedBookByFileHash(fileHash).catch((err) => { console.warn("[Library] Failed to check deleted book by hash:", err); return null; })
+            ? await db.getDeletedBookByFileHash(fileHash).catch((err) => {
+                console.warn("[Library] Failed to check deleted book by hash:", err);
+                return null;
+              })
             : null;
           // Fallback: match by title if hash lookup failed (e.g. hash was null on first import)
           if (!deletedMatch && title) {
-            deletedMatch = await db.getDeletedBookByTitle(title).catch((err) => { console.warn("[Library] Failed to check deleted book by title:", err); return null; });
+            deletedMatch = await db.getDeletedBookByTitle(title).catch((err) => {
+              console.warn("[Library] Failed to check deleted book by title:", err);
+              return null;
+            });
           }
           const bookId = deletedMatch?.id ?? crypto.randomUUID();
 
@@ -1119,9 +1083,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           ) {
             triggerVectorizeBook(book.id, relativePath, (progress) => {
               // Update book's vectorizeProgress so BookCard can show it
-              const pct = progress.totalChunks > 0
-                ? progress.processedChunks / progress.totalChunks
-                : 0;
+              const pct =
+                progress.totalChunks > 0 ? progress.processedChunks / progress.totalChunks : 0;
               get().updateBook(book.id, { vectorizeProgress: pct });
             }).catch((err) => {
               console.warn(`[importBooks] Auto-vectorize failed for ${title}:`, err);
@@ -1301,7 +1264,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     // Persist book tag changes to DB
     const books = get().books;
     for (const b of books) {
-      db.updateBook(b.id, { tags: b.tags }).catch((err) => console.warn("[Library] Failed to update book tags:", err));
+      db.updateBook(b.id, { tags: b.tags }).catch((err) =>
+        console.warn("[Library] Failed to update book tags:", err),
+      );
     }
   },
 
@@ -1321,7 +1286,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     });
     for (const b of get().books) {
       if (b.tags.includes(trimmed)) {
-        db.updateBook(b.id, { tags: b.tags }).catch((err) => console.warn("[Library] Failed to update book tags:", err));
+        db.updateBook(b.id, { tags: b.tags }).catch((err) =>
+          console.warn("[Library] Failed to update book tags:", err),
+        );
       }
     }
   },
@@ -1338,7 +1305,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       return { books, allTags };
     });
     const book = get().books.find((b) => b.id === bookId);
-    if (book) db.updateBook(bookId, { tags: book.tags }).catch((err) => console.warn("[Library] Failed to update book tags:", err));
+    if (book)
+      db.updateBook(bookId, { tags: book.tags }).catch((err) =>
+        console.warn("[Library] Failed to update book tags:", err),
+      );
   },
 
   removeTagFromBook: (bookId, tag) => {
@@ -1350,6 +1320,9 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       return { books };
     });
     const book = get().books.find((b) => b.id === bookId);
-    if (book) db.updateBook(bookId, { tags: book.tags }).catch((err) => console.warn("[Library] Failed to update book tags:", err));
+    if (book)
+      db.updateBook(bookId, { tags: book.tags }).catch((err) =>
+        console.warn("[Library] Failed to update book tags:", err),
+      );
   },
 }));

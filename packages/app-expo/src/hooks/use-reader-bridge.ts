@@ -32,6 +32,7 @@ export interface SelectionEvent {
 export interface VisibleTTSSegment {
   text: string;
   cfi: string;
+  paragraphId?: string;
 }
 
 export interface CharacterTapEvent {
@@ -80,6 +81,7 @@ export interface ReaderBridgeCallbacks {
   onTocReady?: (items: TOCItem[]) => void;
   onSelection?: (detail: SelectionEvent) => void;
   onSelectionCleared?: () => void;
+  onCopySelection?: (text: string, nativeCopied: boolean) => void;
   onTap?: () => void;
   onSearchResult?: (index: number, count: number) => void;
   onSearchComplete?: (count: number, results?: ReaderSearchResultItem[]) => void;
@@ -98,6 +100,7 @@ export interface ReaderBridgeCallbacks {
   }) => void;
   onPageSnippet?: (text: string) => void;
   onBookmarkSnippet?: (text: string) => void;
+  onCharactersEncountered?: (detail: { characterIds: string[]; loadId?: string }) => void;
   onCharacterTap?: (detail: CharacterTapEvent) => void;
   /** Тап по слоту «Сгенерировать сцену» (или по слоту в состоянии ошибки). */
   onSceneSlotTap?: (detail: SceneSlotEvent) => void;
@@ -879,6 +882,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         case "selection":
           cb.onSelection?.(msg);
           break;
+        case "copySelection":
+          if (typeof msg.text === "string" && msg.text) cb.onCopySelection?.(msg.text, msg.nativeCopied === true);
+          break;
         case "selectionCleared":
           cb.onSelectionCleared?.();
           break;
@@ -920,6 +926,13 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "bookmarkSnippet":
           cb.onBookmarkSnippet?.(msg.textSnippet || "");
+          break;
+        case "charactersEncountered":
+          if (Array.isArray(msg.characterIds))
+            cb.onCharactersEncountered?.({
+              characterIds: msg.characterIds.filter((id: unknown) => typeof id === "string"),
+              loadId: msg.loadId,
+            });
           break;
         case "characterTap":
           if (msg.characterId) {
