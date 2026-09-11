@@ -1103,6 +1103,17 @@ export function createBookCatalogService({
           sceneWarmup = { requested: 0, ready: 0, pending: 0, failed: 0, error: error.code ?? 'UNKNOWN' }
         }
       }
+      // Окна карточек приватной книги открываются за читателем, но двигает их
+      // завершение карточки — а когда карточек в работе не осталось, двигать
+      // цепочку некому. Она так и стоит на окне, до которого хватило фронта в
+      // момент последней готовой карточки, сколько бы человек ни прочитал.
+      // Шаг читателя — второй повод её разбудить, и единственный, который
+      // приходит сам.
+      //
+      // Сбой здесь, как и у сцен, не должен ронять запись позиции.
+      if (typeof store.advanceCardWindows === 'function') {
+        await store.advanceCardWindows({ bookEditionId }).catch(() => {})
+      }
       return {
         bookEditionId,
         readerTextOffset: progress.readerTextOffset,

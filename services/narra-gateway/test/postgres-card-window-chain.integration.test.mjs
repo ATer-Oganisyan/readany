@@ -37,7 +37,10 @@ async function seedBook(pool, {
   // Цепочка окон в проде трогается только после полного захода: до него roster
   // знает лишь героев первых глав. Фикстура повторяет это, иначе тест
   // проверял бы механику, которой в жизни не бывает.
-  bookRosterConfirmed = true
+  bookRosterConfirmed = true,
+  // Происхождение прогона неизменяемо, поэтому карточным он должен родиться:
+  // поменять `pipeline_id` после вставки не даёт триггер.
+  pipelineId = 'narra'
 } = {}) {
   const bookEditionId = randomUUID()
   const runId = randomUUID()
@@ -52,12 +55,13 @@ async function seedBook(pool, {
     `INSERT INTO book_analysis_runs (
        id, idempotency_key, book_edition_id, pipeline_version, prompt_version,
        input_hash, normalized_text_object_key, normalized_text_hash, text_length,
-       sections, stage, status, completed_at
+       sections, stage, status, completed_at, pipeline_id
      ) VALUES ($1, $2, $3, 'book-analysis-v51', 'book-scan-v17', $4, $5, $6, $7,
-       '[]'::jsonb, 'publish', 'ready', now())`,
+       '[]'::jsonb, 'publish', 'ready', now(), $8)`,
     [
       runId, `chain:${runId}`, bookEditionId, hash(runId),
-      `analysis/${runId}/normalized-text-v2.txt`, hash(`text:${runId}`), textLength
+      `analysis/${runId}/normalized-text-v2.txt`, hash(`text:${runId}`), textLength,
+      pipelineId
     ]
   )
   // Окна строит та же функция, что в продакшене, а не ручные непересекающиеся
@@ -738,6 +742,54 @@ test('a window whose last card is failing right now still closes', {
     })
     assert.deepEqual(advanced.closed, [0])
     assert.equal(advanced.enqueued?.windowIndex, 1)
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('шаг читателя двигает цепочку: ни прогона, ни позиции вызывающий не знает', {
+  skip: !connectionString
+}, async () => {
+  // Фронт приватной книги считается от позиции читателя, но она приходила
+  // аргументом со значением 0: ни воркер карточки, ни операторская команда её
+  // не знают. Цепочка навсегда вставала на «нулевая глава плюс две» — на трёх
+  // живых книгах подряд ровно на третьем окне, сколько бы человек ни прочитал.
+  // Прогон по той же причине: читатель знает только книгу.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const book = await seedBook(pool, { chapterCount: 8, pipelineId: 'cards' })
+    const owner = randomUUID()
+    await pool.query(
+      `UPDATE book_editions
+          SET scope = 'private', catalog_key = NULL, owner_subject_id = $2,
+              source_storage = 'temporary', expires_at = now() + interval '7 days'
+        WHERE id = $1`,
+      [book.bookEditionId, owner]
+    )
+    for (const windowIndex of [0, 1, 2]) {
+      await pool.query(
+        `UPDATE book_card_windows SET status = 'ready', finished_at = now()
+         WHERE run_id = $1 AND window_index = $2`,
+        [book.runId, windowIndex]
+      )
+    }
+
+    // Читателя ещё нет — фронт закрывает главы до третьей, окно 3 за ним.
+    const held = await repository.advanceCardWindows({ bookEditionId: book.bookEditionId })
+    assert.equal(held.enqueued, null)
+
+    await pool.query(
+      `INSERT INTO reader_book_positions (subject_id, book_edition_id, text_offset)
+       VALUES ($1, $2, 45000)`,
+      [owner, book.bookEditionId]
+    )
+
+    // Тот же вызов без единого аргумента, кроме книги: прогон, область
+    // видимости и позиция берутся из базы.
+    const moved = await repository.advanceCardWindows({ bookEditionId: book.bookEditionId })
+    assert.equal(moved.enqueued?.windowIndex, 3)
   } finally {
     await isolated.release()
   }

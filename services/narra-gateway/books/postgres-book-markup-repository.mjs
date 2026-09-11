@@ -2798,10 +2798,19 @@ export function createPostgresBookMarkupRepository(pool, {
      * следующей книги будет ждать за ними.
      */
     async advanceCardWindows({
-      runId,
+      // Прогон тоже можно не называть: читатель знает только книгу, а карточный
+      // прогон у неё один — последний. Без этого шаг читателя не мог бы
+      // разбудить цепочку, потому что идентификатор прогона ему взять неоткуда.
+      runId: requestedRunId = null,
       bookEditionId,
       scope,
-      readerTextOffset = 0,
+      // Позиция читателя по умолчанию читается здесь же, а не приходит нулём от
+      // вызывающего. Ни воркер карточки, ни операторская команда её не знают, и
+      // пока она была аргументом со значением 0, фронт приватной книги навсегда
+      // оставался «нулевая глава плюс две»: цепочка вставала на третьем окне,
+      // сколько бы человек ни прочитал. Область видимости берётся тут же и по
+      // той же причине.
+      readerTextOffset = null,
       // Задание, которое прямо сейчас падает. Воркер пометит его провалившимся
       // только после того, как раннер вернёт управление, поэтому здесь оно ещё
       // `running` — и окно, где оно было последним, считало бы себя незакрытым
@@ -2809,6 +2818,13 @@ export function createPostgresBookMarkupRepository(pool, {
       // завершению карточки, а не по её успеху.
       failingJobId = null
     }) {
+      const runId = requestedRunId ?? (await pool.query(
+        `SELECT id FROM book_analysis_runs
+          WHERE book_edition_id = $1 AND pipeline_id = 'cards'
+          ORDER BY run_sequence DESC, created_at DESC LIMIT 1`,
+        [bookEditionId]
+      )).rows[0]?.id
+      if (!runId) return { closed: [], enqueued: null }
       const windows = await pool.query(
         `SELECT window_index, start_offset, end_offset, chapter_indexes,
                 priority_class, status
@@ -2824,6 +2840,11 @@ export function createPostgresBookMarkupRepository(pool, {
         [bookEditionId]
       )).rows[0]?.scope
       if (!bookScope) return { closed: [], enqueued: null }
+      const frontierTextOffset = readerTextOffset ?? Number((await pool.query(
+        `SELECT COALESCE(MAX(text_offset), 0)::bigint AS text_offset
+         FROM reader_book_positions WHERE book_edition_id = $1`,
+        [bookEditionId]
+      )).rows[0]?.text_offset ?? 0)
       const closed = []
       for (const row of windows.rows) {
         if (row.status !== 'running') continue
@@ -2862,7 +2883,7 @@ export function createPostgresBookMarkupRepository(pool, {
       const maxChapterIndex = cardWindowChapterFrontier({
         scope: bookScope,
         windows: scheduleWindows,
-        readerTextOffset
+        readerTextOffset: frontierTextOffset
       })
       const next = nextCardWindow({ windows: scheduleWindows, maxChapterIndex })
       if (!next) return { closed, enqueued: null, maxChapterIndex }
