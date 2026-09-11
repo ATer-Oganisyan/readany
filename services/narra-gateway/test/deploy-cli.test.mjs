@@ -28,7 +28,7 @@ test('default test deploy recreates only gateway', () => {
   assert.match(result.stdout, /environment=test mode=default/)
   assert.match(result.stdout, /services= gateway\n/)
   assert.match(result.stdout, /up -d --force-recreate --wait .* --no-deps gateway/)
-  assert.doesNotMatch(result.stdout, /book-analysis-prepare/)
+  assert.doesNotMatch(result.stdout, /book-analysis-worker/)
   assert.doesNotMatch(result.stdout, /services=.*postgres/)
 })
 
@@ -41,8 +41,7 @@ test('selected mode expands worker components without databases', () => {
   ])
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /mode=selected/)
-  assert.match(result.stdout, /book-analysis-prepare/)
-  assert.match(result.stdout, /book-analysis-publish/)
+  assert.match(result.stdout, /book-analysis-worker/)
   assert.match(result.stdout, /book-scene-worker/)
   assert.doesNotMatch(result.stdout, /services=.*postgres/)
 })
@@ -90,7 +89,7 @@ test('diff mode maps a gateway file to gateway only', () => {
   ])
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /services= gateway\n/)
-  assert.doesNotMatch(result.stdout, /book-analysis-prepare/)
+  assert.doesNotMatch(result.stdout, /book-analysis-worker/)
 })
 
 test('migration changes conservatively select the complete application runtime', () => {
@@ -103,7 +102,7 @@ test('migration changes conservatively select the complete application runtime',
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /services= gateway book-markup-worker/)
   assert.match(result.stdout, /book-tts-markup-worker/)
-  assert.match(result.stdout, /migrate node migrate\.mjs --check/)
+  assert.match(result.stdout, /migrate node db\/migrate\.mjs --check/)
 })
 
 test('production migration apply requires a separate confirmation', () => {
@@ -141,7 +140,7 @@ test('remote deploy uploads only the fixed deployment bundle', () => {
   assert.match(result.stdout, /scp .*deploy\.sh .*migrate\.sh .*compose\.i167\.yml/s)
   assert.match(result.stdout, /deploy\.sh.*--environment.*test.*--component.*gateway/s)
   assert.match(result.stdout, /ssh -tt .*sudo/)
-  assert.doesNotMatch(result.stdout, /Dockerfile|package\.json|index\.mjs|migrate\.mjs/)
+  assert.doesNotMatch(result.stdout, /Dockerfile|package\.json|index\.mjs|db\/migrate\.mjs/)
   assert.match(result.stdout, /no connection was made/)
 })
 

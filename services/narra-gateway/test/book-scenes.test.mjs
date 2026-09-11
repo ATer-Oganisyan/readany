@@ -11,7 +11,7 @@ import {
   bookScenePolicy,
   bookSceneSlotAt,
   bookSceneSlotsThrough
-} from '../book-scenes.mjs'
+} from '../generation/book-scenes.mjs'
 
 test('scene policy is compact and deterministic for the whole markup', () => {
   assert.deepEqual(bookScenePolicy(25_000), {

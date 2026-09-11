@@ -1,4 +1,5 @@
 import i18n from "@readany/core/i18n";
+import { getSystemLocale } from "./system-locale";
 /**
  * ExpoPlatformService — IPlatformService implementation for Expo / React Native.
  *
@@ -113,7 +114,7 @@ export class ExpoPlatformService implements IPlatformService {
   // ---- Language / Locale ----
 
   async getLocale(): Promise<string> {
-    return Intl.DateTimeFormat().resolvedOptions().locale || "ru-RU";
+    return getSystemLocale();
   }
 
   // ---- File picker (expo-document-picker) ----

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertSafeImportUrl, fetchWithRedirectPolicy, readBoundedBody } from '../safe-fetch.mjs'
+import { assertSafeImportUrl, fetchWithRedirectPolicy, readBoundedBody } from '../platform/safe-fetch.mjs'
 
 const hosts = new Set(['example.test', 'download.example.test'])
 const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }]

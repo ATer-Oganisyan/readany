@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
-import { createInstallationRegistry } from '../installation-registry.mjs'
+import { createInstallationRegistry } from '../platform/installation-registry.mjs'
 
 const INSTALLATION_ID = '123e4567-e89b-42d3-a456-426614174000'
 const SECOND_INSTALLATION_ID = '223e4567-e89b-42d3-a456-426614174000'

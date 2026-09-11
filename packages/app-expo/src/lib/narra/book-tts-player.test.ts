@@ -395,3 +395,42 @@ describe("full chapter timeline", () => {
     }
   });
 });
+
+
+describe("replaying structured narration", () => {
+  it.each(["end", "failure"])("preserves sentence coordinates after %s", async (reason) => {
+    const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+    const fake = {
+      speak: vi.fn(async () => {}), stop: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+      onEnd: undefined as (() => void) | undefined,
+      onStateChange: undefined as ((state: "stopped" | "playing" | "paused") => void) | undefined,
+      onChunkChange: undefined as ((index: number) => void) | undefined,
+    };
+    const segments = [0, 1].map((i) => ({
+      text: `sentence ${i}`, cfi: `epubcfi(/6/2!/4/${i * 2 + 2},/1:0,/1:10)`, paragraphId: `p${i}`,
+    }));
+    setTTSPlayerFactories({ createEdgeTTS: () => fake });
+    useTTSStore.getState().stop();
+    useTTSStore.setState({ config: DEFAULT_TTS_CONFIG });
+    try {
+      useTTSStore.getState().setNarrationChapter({ id: "chapter", title: "Chapter", segments });
+      useTTSStore.getState().play(segments);
+      await Promise.resolve();
+      fake.onChunkChange?.(1);
+      if (reason === "end") fake.onEnd?.();
+      else fake.onStateChange?.("stopped");
+      expect(useTTSStore.getState().playState).toBe("stopped");
+      useTTSStore.getState().toggle();
+      expect(fake.speak).toHaveBeenLastCalledWith(segments.map((s) => s.text), expect.anything());
+      expect(useTTSStore.getState()).toMatchObject({
+        currentChunkIndex: 0, currentLocationCfi: segments[0].cfi,
+        segmentCfis: segments.map((s) => s.cfi), paragraphIds: ["p0", "p1"],
+      });
+      useTTSStore.getState().skipSentence(1);
+      expect(useTTSStore.getState().currentLocationCfi).toBe(segments[1].cfi);
+    } finally {
+      useTTSStore.getState().stop();
+      setTTSPlayerFactories({});
+    }
+  });
+});

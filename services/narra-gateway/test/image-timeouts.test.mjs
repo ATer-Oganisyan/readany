@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from '../image-timeouts.mjs'
+import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from '../providers/image-timeouts.mjs'
 
 test('Kandinsky image polling allows normal jobs to run longer than the old 120 second limit', () => {
   assert.equal(kandinskyImageTimeoutMs({}), 300_000)

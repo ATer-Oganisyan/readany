@@ -4,9 +4,9 @@ import test from 'node:test'
 import {
   auditCharacterAppearanceDistribution,
   CHARACTER_APPEARANCE_CLUSTER_CODE
-} from '../book-analysis-appearance-audit.mjs'
-import { assembleBookMarkupV3 } from '../book-analysis-assembler.mjs'
-import { validateBookMarkupV3 } from '../book-analysis-validator.mjs'
+} from '../analysis/book-analysis-appearance-audit.mjs'
+import { assembleBookMarkupV3 } from '../analysis/book-analysis-assembler.mjs'
+import { validateBookMarkupV3 } from '../analysis/book-analysis-validator.mjs'
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical)

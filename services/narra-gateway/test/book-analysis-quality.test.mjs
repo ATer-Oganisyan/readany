@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assessBookAnalysisCoverage } from '../book-analysis-quality.mjs'
+import { assessBookAnalysisCoverage } from '../analysis/book-analysis-quality.mjs'
 
 function observation({
   id,

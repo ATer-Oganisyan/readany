@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
-import { EVENT_NAMES as GATEWAY_CLIENT_EVENTS } from '../events.mjs'
+import { EVENT_NAMES as GATEWAY_CLIENT_EVENTS } from '../platform/events.mjs'
 
 const ROOT = new URL('../../../', import.meta.url)
 

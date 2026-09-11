@@ -43,6 +43,8 @@
     "noToc": "No table of contents",
     "noBookOpen": "No book open",
     "loadFailed": "Failed to load",
+    "openFailedTitle": "Couldn’t open the book",
+    "openFailedDescription": "Please try again",
     "hibernated": "Tab was hibernated to save memory",
     "resumeReading": "Continue reading",
     "settings": "Reading settings",

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { retrieveNarrativeSubgraph } from '../book-graph-retrieval.mjs'
+import { retrieveNarrativeSubgraph } from '../search/book-graph-retrieval.mjs'
 
 function snapshot() {
   return {

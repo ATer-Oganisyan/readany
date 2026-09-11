@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { assembleBookMarkupV3 } from '../book-analysis-assembler.mjs'
-import { createPostgresBookAnalysisRepository } from '../book-analysis-repository.mjs'
-import { resolveBookAnalysisEntities } from '../book-analysis-resolver.mjs'
-import { validateBookMarkupV3 } from '../book-analysis-validator.mjs'
-import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
+import { assembleBookMarkupV3 } from '../analysis/book-analysis-assembler.mjs'
+import { createPostgresBookAnalysisRepository } from '../analysis/book-analysis-repository.mjs'
+import { resolveBookAnalysisEntities } from '../analysis/book-analysis-resolver.mjs'
+import { validateBookMarkupV3 } from '../analysis/book-analysis-validator.mjs'
+import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 
@@ -832,6 +832,56 @@ test('PostgreSQL analysis workers claim different scan shards and reclaim an exp
       }),
       (error) => error.code === 'LEASE_LOST'
     )
+  } finally {
+    await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
+    await pool.end()
+  }
+})
+
+test('a named canary edition overrides the pipeline inherited from its previous run', {
+  skip: !connectionString
+}, async () => {
+  // Канареечная книга уже разобрана прежним конвейером, и перезапуск наследует
+  // его конвейер от предыдущего прогона. Без назначения поимённо книга осталась
+  // бы на нём навсегда, и включение списка не дало бы карточек вообще.
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString, ssl: false, max: 2 })
+  const bookEditionId = randomUUID()
+  const inputHash = createHash('sha256').update(`canary-${bookEditionId}`).digest('hex')
+  try {
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    await pool.query(
+      `INSERT INTO book_editions (
+         id, scope, catalog_key, content_sha256, title, author, format, status
+       ) VALUES ($1, 'catalog', $2, $3, 'Canary Test', '', 'epub', 'marking_up')`,
+      [bookEditionId, `canary-${bookEditionId}`, inputHash]
+    )
+    await pool.query(
+      `INSERT INTO book_files (
+         book_edition_id, object_key, mime_type, byte_size, content_hash, status
+       ) VALUES ($1, $2, 'application/epub+zip', 10, $3, 'ready')`,
+      [bookEditionId, `books/${bookEditionId}.epub`, inputHash]
+    )
+
+    const withoutList = createPostgresBookAnalysisRepository(pool)
+    const narra = await withoutList.ensureAnalysisRun({ bookEditionId, inputHash })
+    assert.equal(narra.run.pipelineId, 'narra')
+
+    const assigned = createPostgresBookAnalysisRepository(pool, {
+      pipelineForEdition: (id) => (id === bookEditionId ? 'cards' : null)
+    })
+    const restarted = await assigned.restartAnalysisRun({ bookEditionId })
+    assert.equal(restarted.run.pipelineId, 'cards')
+    // Первый прогон книги, названной поимённо, тоже идёт по карточкам.
+    const fresh = await assigned.ensureAnalysisRun({ bookEditionId, inputHash })
+    assert.equal(fresh.run.pipelineId, 'cards')
+    // Явный аргумент сильнее списка: список задаёт умолчание, а не запрет.
+    const explicit = await assigned.ensureAnalysisRun({
+      bookEditionId,
+      inputHash,
+      pipelineId: 'narra'
+    })
+    assert.equal(explicit.run.pipelineId, 'narra')
   } finally {
     await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
     await pool.end()

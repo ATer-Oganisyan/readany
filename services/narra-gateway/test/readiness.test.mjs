@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseEnvBool, parseEnvUuidList } from '../env.mjs'
-import { gatewayReadiness } from '../readiness.mjs'
+import { parseEnvBool, parseEnvUuidList } from '../platform/env.mjs'
+import { gatewayReadiness } from '../platform/readiness.mjs'
 
 const base = {
   llmReady: true,

@@ -8,7 +8,7 @@ import {
   CATALOG_GENRE_IDS,
   genresForCatalogBook,
   normalizeCatalogSourceKey
-} from '../catalog-book-genres.mjs'
+} from '../catalog/catalog-book-genres.mjs'
 
 test('hardcoded catalog data covers all RU and EN books with no more than 20 genres', () => {
   assert.equal(CATALOG_GENRES.length, 20)

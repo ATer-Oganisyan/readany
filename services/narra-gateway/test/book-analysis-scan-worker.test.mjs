@@ -4,7 +4,7 @@ import test from 'node:test'
 import {
   createBookAnalysisScanWorker,
   normalizeScanObservations
-} from '../book-analysis-scan-worker.mjs'
+} from '../analysis/book-analysis-scan-worker.mjs'
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex')

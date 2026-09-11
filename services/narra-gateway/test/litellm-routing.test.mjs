@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { llmRouteReadiness, requestChat, routeForPurpose } from '../providers.mjs'
+import { llmRouteReadiness, requestChat, routeForPurpose } from '../providers/providers.mjs'
 
 const LITELLM_ENV = {
   LLM_ROUTE_STRUCTURED_TASK: 'litellm',

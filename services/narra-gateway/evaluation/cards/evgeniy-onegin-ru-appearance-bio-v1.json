@@ -1,0 +1,455 @@
+{
+  "schemaVersion": 1,
+  "id": "evgeniy-onegin-ru-appearance-bio-v1",
+  "identityFixture": "evgeniy-onegin-ru-v1",
+  "cardFixture": "evgeniy-onegin-ru-card-v1",
+  "source": {
+    "language": "ru",
+    "title": "Евгений Онегин",
+    "author": "Александр Пушкин",
+    "bookEditionId": "3c1ab592-0228-4931-ba74-5003fb463c1b",
+    "normalizedTextSha256": "dd0275d4ab15332ed585dfc23c49a1762a8b28a09b311306f33c5e4ef83c219c",
+    "scope": "только главные персонажи; проверяется внешность и биография",
+    "factProtocol": "каждый core-факт подтверждён либо дословной цитатой с offset в нормализованном тексте, либо ссылкой из references[]; offset указывает на место, где факт впервые раскрыт",
+    "references": [
+      "https://ru.wikipedia.org/wiki/Список_персонажей_романа_«Евгений_Онегин»",
+      "https://www.literaturus.ru/2015/06/harakteristika-tatjany-larinoj-evgenij-onegin-citaty-pushkin.html",
+      "https://obrazovaka.ru/sochinenie/evgeniy-onegin/harakteristika-larinoy-olgi.html",
+      "https://litfest.ru/writings/lenskiy.html"
+    ]
+  },
+  "gates": {
+    "appearanceCoreCoverage": 0.7,
+    "appearanceMajorContradictions": 0,
+    "appearanceInventionRate": 0.1,
+    "portraitUsableRate": 0.9,
+    "bioCoreCoverage": 0.6,
+    "bioMajorContradictions": 0,
+    "bioInventionRate": 0.1
+  },
+  "characters": [
+    {
+      "id": "evgeny_onegin",
+      "name": "Евгений Онегин",
+      "appearance": {
+        "describedInText": true,
+        "note": "Пушкин даёт Онегину не лицо, а костюм и повадку светского франта; черт лица, роста и цвета волос в тексте нет.",
+        "facts": [
+          {
+            "id": "haircut_latest_fashion",
+            "value": "острижен по последней моде",
+            "importance": "core",
+            "quote": "Острижен по последней моде; Как dandy лондонской одет",
+            "quoteOffset": 2195
+          },
+          {
+            "id": "london_dandy",
+            "value": "одет как лондонский денди",
+            "importance": "core",
+            "quote": "Как dandy лондонской одет",
+            "quoteOffset": 2195
+          },
+          {
+            "id": "bolivar_hat",
+            "value": "носит широкий боливар (шляпу)",
+            "importance": "detail",
+            "quote": "Надев широкий боливар, Онегин едет на бульвар",
+            "quoteOffset": 5443
+          },
+          {
+            "id": "fop_at_the_mirror",
+            "value": "педант в одежде и франт; по три часа проводит перед зеркалом",
+            "importance": "detail",
+            "quote": "В своей одежде был педант И то, что мы назвали франт. Он три часа по крайней мере Пред зеркалами проводил",
+            "quoteOffset": 9206
+          },
+          {
+            "id": "beaver_collar",
+            "value": "бобровый воротник, серебрящийся морозной пылью",
+            "importance": "detail",
+            "quote": "Морозной пылью серебрится Его бобровый воротник",
+            "quoteOffset": 5645
+          }
+        ],
+        "forbidden": [
+          {
+            "id": "invented_face",
+            "value": "конкретные черты лица, цвет глаз, цвет волос, рост",
+            "reason": "в тексте отсутствуют; любое такое утверждение — выдумка"
+          }
+        ]
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "born_on_neva",
+            "value": "родился на брегах Невы, в Петербурге",
+            "importance": "core",
+            "revealedAtOffset": 1200
+          },
+          {
+            "id": "french_tutor",
+            "value": "воспитан французским гувернёром Monsieur l'Abbé, учился шутя и без строгой морали",
+            "importance": "core",
+            "revealedAtOffset": 1900
+          },
+          {
+            "id": "petersburg_society_life",
+            "value": "ведёт светскую жизнь Петербурга: балы, театр, рестораны, наука страсти нежной",
+            "importance": "core",
+            "revealedAtOffset": 3000
+          },
+          {
+            "id": "spleen",
+            "value": "охладел к свету, им овладела хандра (русская хандра, сплин)",
+            "importance": "core",
+            "revealedAtOffset": 11000
+          },
+          {
+            "id": "inherits_uncle_estate",
+            "value": "едет к умирающему дяде и наследует его деревенское имение",
+            "importance": "core",
+            "revealedAtOffset": 942
+          },
+          {
+            "id": "friendship_with_lensky",
+            "value": "в деревне сходится с Ленским, хотя они противоположны",
+            "importance": "core",
+            "revealedAtOffset": 26500
+          },
+          {
+            "id": "rejects_tatyana_letter",
+            "value": "получает письмо Татьяны и отвечает отповедью в саду",
+            "importance": "core",
+            "revealedAtOffset": 48000
+          },
+          {
+            "id": "kills_lensky",
+            "value": "убивает Ленского на дуэли",
+            "importance": "core",
+            "revealedAtOffset": 99848
+          },
+          {
+            "id": "falls_for_tatyana",
+            "value": "после странствий встречает Татьяну княгиней и влюбляется",
+            "importance": "core",
+            "revealedAtOffset": 131315
+          }
+        ]
+      }
+    },
+    {
+      "id": "tatyana_larina",
+      "name": "Татьяна Ларина",
+      "appearance": {
+        "describedInText": false,
+        "note": "Портрета Татьяны в романе нет: Пушкин прямо противопоставляет её красоте сестры, но ни глаз, ни волос, ни лица не описывает. Единственные внешние приметы — бледность и распущенные волосы в ночной сцене письма.",
+        "facts": [
+          {
+            "id": "not_beautiful_like_olga",
+            "value": "не привлекает взгляда ни красотой сестры, ни её румяной свежестью",
+            "importance": "core",
+            "quote": "Ни красотой сестры своей, Ни свежестью ее румяной Не привлекла б она очей",
+            "quoteOffset": 25200
+          },
+          {
+            "id": "pale",
+            "value": "бледна; в ночной сцене письма — бледные красы и распущенные волосы",
+            "importance": "core",
+            "quote": "Татьяны бледные красы, И распущенные власы",
+            "quoteOffset": 43986
+          },
+          {
+            "id": "sad_look",
+            "value": "бледный цвет лица и унылый вид",
+            "importance": "detail",
+            "quote": "И вспомнил он Татьяны милой И бледный цвет, и вид унылый",
+            "quoteOffset": 56479
+          }
+        ],
+        "forbidden": [
+          {
+            "id": "invented_eye_hair_colour",
+            "value": "цвет глаз, цвет волос, черты лица",
+            "reason": "Пушкин их не даёт; источники это подчёркивают отдельно"
+          }
+        ]
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "elder_larin_daughter",
+            "value": "старшая дочь Лариных, сестра Ольги, живёт в деревне с матерью",
+            "importance": "core",
+            "revealedAtOffset": 30271
+          },
+          {
+            "id": "silent_and_wild",
+            "value": "дика, печальна, молчалива, боязлива как лань; чужая в собственной семье",
+            "importance": "core",
+            "revealedAtOffset": 30400
+          },
+          {
+            "id": "loves_novels",
+            "value": "с детства зачитывается романами (Ричардсон, Руссо), верит преданиям и гаданиям",
+            "importance": "core",
+            "revealedAtOffset": 31000
+          },
+          {
+            "id": "nurse",
+            "value": "близка с няней, которой поверяет свою любовь",
+            "importance": "detail",
+            "revealedAtOffset": 50965
+          },
+          {
+            "id": "writes_letter",
+            "value": "влюбляется в Онегина и первой пишет ему письмо",
+            "importance": "core",
+            "revealedAtOffset": 43000
+          },
+          {
+            "id": "rebuked_in_garden",
+            "value": "получает от Онегина отповедь в саду",
+            "importance": "core",
+            "revealedAtOffset": 48000
+          },
+          {
+            "id": "dream_and_nameday",
+            "value": "видит вещий сон и переживает ссору на своих именинах",
+            "importance": "detail",
+            "revealedAtOffset": 75000
+          },
+          {
+            "id": "moscow_bride_fair",
+            "value": "увезена матерью в Москву на ярмарку невест",
+            "importance": "core",
+            "revealedAtOffset": 118000
+          },
+          {
+            "id": "marries_general",
+            "value": "выдана за важного генерала и становится петербургской княгиней",
+            "importance": "core",
+            "revealedAtOffset": 123710
+          },
+          {
+            "id": "stays_faithful",
+            "value": "признаётся, что любит Онегина, но остаётся верна мужу",
+            "importance": "core",
+            "revealedAtOffset": 144125
+          }
+        ]
+      }
+    },
+    {
+      "id": "vladimir_lensky",
+      "name": "Владимир Ленский",
+      "appearance": {
+        "describedInText": true,
+        "facts": [
+          {
+            "id": "black_curls",
+            "value": "чёрные кудри до плеч",
+            "importance": "core",
+            "quote": "Всегда восторженную речь И кудри черные до плеч",
+            "quoteOffset": 23945
+          },
+          {
+            "id": "handsome_in_prime",
+            "value": "красавец в полном цвете лет",
+            "importance": "core",
+            "quote": "Красавец, в полном цвете лет",
+            "quoteOffset": 23700
+          }
+        ],
+        "forbidden": []
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "age_eighteen",
+            "value": "ему около восемнадцати лет",
+            "importance": "core",
+            "revealedAtOffset": 23700
+          },
+          {
+            "id": "from_germany",
+            "value": "приехал из Германии, где учился в Гёттингене; поклонник Канта",
+            "importance": "core",
+            "revealedAtOffset": 23600
+          },
+          {
+            "id": "poet",
+            "value": "поэт, пишет романтические стихи",
+            "importance": "core",
+            "revealedAtOffset": 23800
+          },
+          {
+            "id": "wealthy_neighbour",
+            "value": "богатый помещик, сосед Лариных и Онегина",
+            "importance": "detail",
+            "revealedAtOffset": 24500
+          },
+          {
+            "id": "loves_olga",
+            "value": "влюблён в Ольгу Ларину, с детства предназначен ей в женихи",
+            "importance": "core",
+            "revealedAtOffset": 29142
+          },
+          {
+            "id": "friend_of_onegin",
+            "value": "сдружился с Онегиным несмотря на противоположность характеров",
+            "importance": "core",
+            "revealedAtOffset": 26500
+          },
+          {
+            "id": "challenges_onegin",
+            "value": "приревновав Ольгу на именинах, вызывает Онегина на дуэль",
+            "importance": "core",
+            "revealedAtOffset": 88000
+          },
+          {
+            "id": "killed",
+            "value": "убит Онегиным на дуэли",
+            "importance": "core",
+            "revealedAtOffset": 99848
+          }
+        ]
+      }
+    },
+    {
+      "id": "olga_larina",
+      "name": "Ольга Ларина",
+      "appearance": {
+        "describedInText": true,
+        "note": "Канонический портрет — строфа XXIII второй главы. Строка «Кругла, красна лицом она» принадлежит не повествователю, а Онегину, и звучит как пренебрежительная реплика.",
+        "facts": [
+          {
+            "id": "blue_eyes",
+            "value": "глаза голубые, как небо",
+            "importance": "core",
+            "quote": "Глаза как небо голубые",
+            "quoteOffset": 30012
+          },
+          {
+            "id": "flaxen_curls",
+            "value": "льняные локоны",
+            "importance": "core",
+            "quote": "Улыбка, локоны льняные",
+            "quoteOffset": 30012
+          },
+          {
+            "id": "light_figure",
+            "value": "лёгкий стан, лёгкие движения",
+            "importance": "core",
+            "quote": "Движенья, голос, легкий стан",
+            "quoteOffset": 30012
+          },
+          {
+            "id": "round_red_face",
+            "value": "кругла и красна лицом — но это слова Онегина, а не портрет от автора",
+            "importance": "detail",
+            "quote": "Кругла, красна лицом она, Как эта глупая луна",
+            "quoteOffset": 38446
+          }
+        ],
+        "forbidden": []
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "younger_sister",
+            "value": "младшая дочь Лариных, сестра Татьяны",
+            "importance": "core",
+            "revealedAtOffset": 29142
+          },
+          {
+            "id": "lensky_fiancee",
+            "value": "невеста Владимира Ленского, предназначенная ему с детства",
+            "importance": "core",
+            "revealedAtOffset": 29200
+          },
+          {
+            "id": "no_inner_life",
+            "value": "мила и весела, но пуста: «в чертах у Ольги жизни нет»",
+            "importance": "core",
+            "revealedAtOffset": 38400
+          },
+          {
+            "id": "flirts_with_onegin",
+            "value": "на именинах танцует с Онегиным и тем провоцирует ссору",
+            "importance": "core",
+            "revealedAtOffset": 84000
+          },
+          {
+            "id": "grieves_briefly",
+            "value": "недолго горюет о погибшем Ленском",
+            "importance": "core",
+            "revealedAtOffset": 106000
+          },
+          {
+            "id": "marries_uhlan",
+            "value": "выходит замуж за улана и уезжает с ним в полк",
+            "importance": "core",
+            "revealedAtOffset": 107431
+          }
+        ]
+      }
+    },
+    {
+      "id": "praskovya_larina",
+      "name": "Прасковья Ларина",
+      "appearance": {
+        "describedInText": false,
+        "note": "Внешность матери Лариных в тексте не описана вовсе.",
+        "facts": [],
+        "forbidden": [
+          {
+            "id": "any_appearance",
+            "value": "любое описание внешности",
+            "reason": "в тексте нет ни одной приметы; appearancePrompt должен остаться пустым"
+          }
+        ]
+      },
+      "biography": {
+        "facts": [
+          {
+            "id": "loved_richardson",
+            "value": "в девичестве бредила Ричардсоном под влиянием московской кузины княжны Алины",
+            "importance": "core",
+            "revealedAtOffset": 32400
+          },
+          {
+            "id": "loved_a_sergeant",
+            "value": "была влюблена в другого — сержанта гвардии",
+            "importance": "detail",
+            "revealedAtOffset": 32900
+          },
+          {
+            "id": "married_without_consent",
+            "value": "выдана замуж за Дмитрия Ларина без её согласия",
+            "importance": "core",
+            "revealedAtOffset": 33200
+          },
+          {
+            "id": "got_used_to_it",
+            "value": "сначала плакала, потом привыкла, занялась хозяйством и стала самодержавно управлять мужем",
+            "importance": "core",
+            "revealedAtOffset": 33600
+          },
+          {
+            "id": "widowed",
+            "value": "овдовела: Дмитрий Ларин умер",
+            "importance": "core",
+            "revealedAtOffset": 34886
+          },
+          {
+            "id": "takes_tatyana_to_moscow",
+            "value": "везёт Татьяну в Москву выдавать замуж",
+            "importance": "core",
+            "revealedAtOffset": 118000
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import {
   cosineSimilarity,
   reciprocalRankFusion,
   searchSnippet
-} from '../book-search-ranking.mjs'
+} from '../search/book-search-ranking.mjs'
 
 test('cosine similarity validates dimensions and ranks aligned vectors first', () => {
   assert.equal(cosineSimilarity([1, 0], [1, 0]), 1)

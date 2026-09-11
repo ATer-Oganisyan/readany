@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBookObjectStorage } from '../book-object-storage.mjs'
+import { createBookObjectStorage } from '../books/book-object-storage.mjs'
 
 const HASH = 'a'.repeat(64)
 

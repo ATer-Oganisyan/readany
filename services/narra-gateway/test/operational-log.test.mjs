@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createOperationalLogger, formatOperationalLog } from '../operational-log.mjs'
+import { createOperationalLogger, formatOperationalLog } from '../platform/operational-log.mjs'
 
 test('operational log is readable, single-line and safely escapes user-controlled fields', () => {
   const line = formatOperationalLog('book-worker', 'markup.started', 'Начинаю разметку книги', {

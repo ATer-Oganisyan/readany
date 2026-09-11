@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   createBookAnalysisScanPolicy,
   createBookAnalysisScanPolicyFromEnv
-} from '../book-analysis-scan-policy.mjs'
+} from '../analysis/book-analysis-scan-policy.mjs'
 
 test('balanced ScanPolicy is the default and keeps the former chunk boundaries', () => {
   const policy = createBookAnalysisScanPolicy()

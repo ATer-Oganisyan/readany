@@ -1,0 +1,230 @@
+[
+  {
+    "judgeId": "evgeny_onegin::онегин",
+    "goldId": "evgeny_onegin",
+    "goldName": "Евгений Онегин",
+    "rowName": "Онегин",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "haircut_latest_fashion",
+          "london_dandy",
+          "bolivar_hat",
+          "beaver_collar"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "Молодой мужчина",
+            "why": "В эталоне возраст не указан, но это соответствует тексту."
+          }
+        ],
+        "portraitUsable": true,
+        "score": 0.8,
+        "rationale": "Внешность покрыта хорошо, кроме поведения у зеркала и педантичности, но нет выдумок."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "inherits_uncle_estate",
+          "spleen",
+          "petersburg_society_life"
+        ],
+        "contradictions": [
+          {
+            "factId": null,
+            "cardClaim": "преданный мечтам",
+            "goldSays": "В книге 'преданный мечтам' — характеристика Ленского, а не Онегина.",
+            "severity": "major"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "наследник всех своих родных",
+            "why": "В эталоне только наследование имения дяди, но в тексте он действительно наследник всех родных."
+          }
+        ],
+        "score": 0.33,
+        "rationale": "Покрыты три ключевых факта, но много важных событий отсутствует; противоречие с чертой 'преданный мечтам'."
+      }
+    }
+  },
+  {
+    "judgeId": "tatyana_larina::татьяна",
+    "goldId": "tatyana_larina",
+    "goldName": "Татьяна Ларина",
+    "rowName": "Татьяна",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "pale"
+        ],
+        "contradictions": [
+          {
+            "factId": "sad_look",
+            "cardClaim": "задумчивый и сдержанный взгляд",
+            "goldSays": "вид унылый",
+            "severity": "minor"
+          }
+        ],
+        "unsupportedClaims": [
+          {
+            "cardClaim": "задумчивый и сдержанный взгляд",
+            "why": "В эталоне дано только 'вид унылый', а не 'задумчивый и сдержанный взгляд'."
+          }
+        ],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.33,
+        "rationale": "Покрыт только факт бледности и распущенных волос; выражение лица дано неточно (задумчивый вместо унылого), что снижает достоверность."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "elder_larin_daughter",
+          "silent_and_wild"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.2,
+        "rationale": "Покрыты только факты о старшей дочери и замкнутости; остальные ключевые события биографии отсутствуют."
+      }
+    }
+  },
+  {
+    "judgeId": "vladimir_lensky::владимир",
+    "goldId": "vladimir_lensky",
+    "goldName": "Владимир Ленский",
+    "rowName": "Владимир",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "black_curls",
+          "handsome_in_prime"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 1,
+        "rationale": "Карточка точно передаёт оба факта внешности: чёрные кудри до плеч и красавец. Противоречий нет."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "from_germany",
+          "poet",
+          "loves_olga"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "его называют сердцем милым невеждой и задумчивым мечтателем",
+            "why": "Эта характеристика отсутствует в эталонных биографических фактах, но взята из книги."
+          },
+          {
+            "cardClaim": "был красавцем с чёрными кудрями до плеч",
+            "why": "Это факт внешности, а не биографии, и он не входит в эталонный список биографических фактов, хотя и соответствует книге."
+          }
+        ],
+        "score": 0.375,
+        "rationale": "Карточка упоминает происхождение из Германии, профессию поэта и любовь к Ольге, но упускает возраст, богатство, дружбу с Онегиным, вызов на дуэль и гибель."
+      }
+    }
+  },
+  {
+    "judgeId": "olga_larina::ольга",
+    "goldId": "olga_larina",
+    "goldName": "Ольга Ларина",
+    "rowName": "Ольга",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [
+          "blue_eyes",
+          "flaxen_curls",
+          "light_figure",
+          "round_red_face"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "Молодая Ольга",
+            "why": "В эталоне внешности прямого упоминания возраста нет, но это общеизвестный контекст."
+          }
+        ],
+        "portraitUsable": true,
+        "score": 1,
+        "rationale": "Промпт точно передаёт все четыре эталонные черты внешности, включая круглое румяное лицо."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "no_inner_life"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [
+          {
+            "cardClaim": "скромная, послушная",
+            "why": "В эталонных фактах нет указаний на скромность или послушность; Ольга описана как весёлая и пустая, но не как послушная."
+          }
+        ],
+        "notInGold": [
+          {
+            "cardClaim": "возлюбленная Владимира Ленского",
+            "why": "В эталоне указано «невеста», то есть официальная помолвка; карточка использует менее точное слово."
+          },
+          {
+            "cardClaim": "позднее её называют кокеткой и ветреным ребёнком",
+            "why": "Эталонная биография не содержит прямой цитаты о таком прозвище, но это соответствует её поведению (флирт с Онегиным, пустота)."
+          }
+        ],
+        "score": 0.17,
+        "rationale": "Карточка отражает только поверхностные черты (весёлость, ветреность), но упускает ключевые биографические факты: сестра Татьяны, невеста Ленского, флирт с Онегиным, недолгое горе, брак с уланом."
+      }
+    }
+  },
+  {
+    "judgeId": "praskovya_larina::мать-татьяны",
+    "goldId": "praskovya_larina",
+    "goldName": "Прасковья Ларина",
+    "rowName": "Мать Татьяны",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 1,
+        "rationale": "Внешность в тексте не описана, карточка не содержит никаких примет, appearancePrompt пуст."
+      },
+      "biography": {
+        "coveredFactIds": [
+          "loved_richardson",
+          "married_without_consent",
+          "got_used_to_it"
+        ],
+        "contradictions": [],
+        "unsupportedClaims": [
+          {
+            "cardClaim": "отказалась от прежних светских привычек",
+            "why": "Эталон не содержит информации об отказе от светских привычек, в тексте такое утверждение отсутствует."
+          },
+          {
+            "cardClaim": "со слезами умоляла Татьяну выйти замуж",
+            "why": "Эталон не содержит этого факта; в тексте мать плакала при прощании с деревней, но не умоляла со слезами выходить замуж."
+          }
+        ],
+        "notInGold": [],
+        "score": 0.5,
+        "rationale": "Покрыто 3 из 6 ключевых фактов, противоречий нет, но присутствуют два неподтверждённых утверждения."
+      }
+    }
+  }
+]

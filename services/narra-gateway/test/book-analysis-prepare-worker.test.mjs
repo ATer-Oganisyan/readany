@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { createBookAnalysisPrepareWorker } from '../book-analysis-prepare-worker.mjs'
+import { createBookAnalysisPrepareWorker } from '../analysis/book-analysis-prepare-worker.mjs'
 
 const bytes = Buffer.from('source book')
 const hash = createHash('sha256').update(bytes).digest('hex')

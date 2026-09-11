@@ -579,13 +579,19 @@ export const useTTSStore = create<TTSState>()(
 
       toggle: (text?: string) => {
         console.log("[TTSStore] toggle called, playState:", get().playState);
-        const { playState, currentText, play } = get();
+        const { playState, currentText, play, segmentCfis, paragraphIds } = get();
         if (playState === "playing" || playState === "loading") {
           get().pause();
         } else if (playState === "paused") {
           get().resume();
         } else if (text) {
           play(text);
+        } else if (_sessionSegments.length) {
+          play(_sessionSegments.map((text, index) => ({
+            text,
+            cfi: segmentCfis[index],
+            paragraphId: paragraphIds[index],
+          })));
         } else if (currentText) {
           play(currentText);
         }

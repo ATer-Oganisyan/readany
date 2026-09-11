@@ -1,4 +1,7 @@
 import { openAudiobookPlayerFromReader } from "@/lib/audiobook-player";
+import { useReaderCopy } from "@/hooks/use-reader-copy";
+import { recordCharacterEncounters } from "@/lib/narra/character-encounters";
+import { useReaderErrorToast } from "@/hooks/use-reader-error-toast";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
@@ -29,11 +32,11 @@ import {
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
 import { BackendSceneError, isBackendSceneReady } from "@/lib/narra/backend-scene";
+import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
 import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
 import { generateBackendReaderScene, readSceneDataUri } from "@/lib/narra/backend-scene-reader";
 import { backendSceneForAnchor } from "@/lib/narra/backend-scene-state";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
-import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { narraBackendCode } from "@/lib/narra/errors";
 import { sceneInsertAnchors, sceneSourceKeyForAnchor } from "@/lib/narra/scene-inserts";
 import {
@@ -61,7 +64,6 @@ import {
   useSettingsStore,
   useTTSStore,
 } from "@/stores";
-import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import { darkColors, lightColors, useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import { useIsFocused } from "@react-navigation/native";
@@ -73,7 +75,6 @@ import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import type { Book, ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
-import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 /**
@@ -110,17 +111,6 @@ const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
 const CONTROLS_VISIBILITY_ANIMATION_MS = 220;
-const BOOK_MIME_TYPES = [
-  "application/epub+zip",
-  "application/pdf",
-  "application/x-mobipocket-ebook",
-  "application/vnd.amazon.ebook",
-  "application/vnd.comicbook+zip",
-  "application/x-fictionbook+xml",
-  "text/plain",
-  "application/octet-stream",
-];
-
 const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
   epub: "application/epub+zip",
   pdf: "application/pdf",
@@ -134,41 +124,6 @@ const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
   txt: "text/plain",
 };
 
-function normalizeBookIdentityText(value?: string): string {
-  return (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
-}
-
-function authorsLikelyMatch(a?: string, b?: string): boolean {
-  const left = normalizeBookIdentityText(a);
-  const right = normalizeBookIdentityText(b);
-  if (!left || !right) return true;
-  if (left === right || left.includes(right) || right.includes(left)) return true;
-  const leftParts = left.split(/[,，、/&]+/).filter((part) => part.length > 1);
-  const rightParts = right.split(/[,，、/&]+/).filter((part) => part.length > 1);
-  return leftParts.some((part) =>
-    rightParts.some((candidate) => part.includes(candidate) || candidate.includes(part)),
-  );
-}
-
-function shouldConfirmReimportCandidate(
-  originalBook: { meta: { title: string; author: string }; format: string; fileHash?: string },
-  candidate: { title: string; author: string; format: string; fileHash?: string },
-): boolean {
-  if (candidate.fileHash && originalBook.fileHash && candidate.fileHash === originalBook.fileHash) {
-    return false;
-  }
-  const originalTitle = normalizeBookIdentityText(originalBook.meta.title);
-  const candidateTitle = normalizeBookIdentityText(candidate.title);
-  const titleMismatch =
-    !!originalTitle &&
-    !!candidateTitle &&
-    originalTitle !== candidateTitle &&
-    !originalTitle.includes(candidateTitle) &&
-    !candidateTitle.includes(originalTitle);
-  const authorMismatch = !authorsLikelyMatch(originalBook.meta.author, candidate.author);
-  const formatMismatch = originalBook.format !== candidate.format;
-  return titleMismatch || (formatMismatch && authorMismatch);
-}
 const NOTE_TOOLTIP_WIDTH = 300;
 const NOTE_TOOLTIP_SIDE_PADDING = 12;
 const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
@@ -523,7 +478,6 @@ function ReaderContent({ route, navigation }: Props) {
   const [showTranslation, setShowTranslation] = useState(false);
   const [translationText, setTranslationText] = useState("");
   const [showChapterTranslation, setShowChapterTranslation] = useState(false);
-  const [isReimporting, setIsReimporting] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const restartHostRef = useRef(false);
   const automaticRecoveryRef = useRef(false);
@@ -543,7 +497,6 @@ function ReaderContent({ route, navigation }: Props) {
   const [readerHtmlUri, setReaderHtmlUri] = useState<string | null>(null);
   const [currentCfi, setCurrentCfi] = useState("");
   const [selection, setSelection] = useState<SelectionEvent | null>(null);
-  const selectionRef = useRef<SelectionEvent | null>(null);
   const [defaultReaderFontFaceCSS, setDefaultReaderFontFaceCSS] = useState("");
   const [noteViewHighlight, setNoteViewHighlight] = useState<{
     id: string;
@@ -727,22 +680,12 @@ function ReaderContent({ route, navigation }: Props) {
     () => (narraBookCharacters ?? []).filter((item) => item.backendManaged),
     [narraBookCharacters],
   );
-  // Ключ состава открытых персонажей: спека пересобирается только при unlock,
-  // а не на каждом изменении прогресса
-  const unlockedCharacterIdsKey = useMemo(
-    () =>
-      characters
-        .filter((character) => isCharacterUnlocked(progress, character))
-        .map((character) => character.id)
-        .join(","),
-    [characters, progress],
+  // Match the complete cast: a visible name can open its character before the
+  // approximate backend progress threshold. Matching still rejects ambiguous names.
+  const characterNameSpecJson = useMemo(
+    () => (characters.length ? JSON.stringify(buildCharacterNameMatcherSpec(characters)) : null),
+    [characters],
   );
-  const characterNameSpecJson = useMemo(() => {
-    const unlockedIds = new Set(unlockedCharacterIdsKey.split(",").filter(Boolean));
-    if (unlockedIds.size === 0) return null;
-    const unlocked = characters.filter((character) => unlockedIds.has(character.id));
-    return JSON.stringify(buildCharacterNameMatcherSpec(unlocked));
-  }, [characters, unlockedCharacterIdsKey]);
 
   // ── Narra: врезки сцен внутри текста раз в N страниц (P6 → P14) ─────────────
   // Счётчик перелистываний прежний (scene-suggestion.ts); по сигналу в конец
@@ -1035,6 +978,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Focus & foreground state for volume paging whitelist
   const isFocused = useIsFocused();
+  useReaderErrorToast(error, isFocused, navigation, `${bookId}:${loadAttempt}`);
   useBackendBook(book, isFocused, progress);
   const [appActive, setAppActive] = useState(true);
 
@@ -1121,6 +1065,7 @@ function ReaderContent({ route, navigation }: Props) {
     setLoadAttempt((value) => value + 1);
   }, []);
 
+  const copySelection = useReaderCopy();
   const bridge = useReaderBridge({
     onDiagnosticPong: (id) => {
       if (id !== diagnosticPingRef.current) return;
@@ -1353,7 +1298,6 @@ function ReaderContent({ route, navigation }: Props) {
       setToc(items);
     },
     onSelection: (detail: SelectionEvent) => {
-      selectionRef.current = detail;
       setSelection(detail);
       // Sync selection for AI tools
       if (detail.cfi) {
@@ -1365,6 +1309,7 @@ function ReaderContent({ route, navigation }: Props) {
         });
       }
     },
+    onCopySelection: copySelection,
     onSelectionCleared: () => {
       setSelection(null);
       readingContextService.clearSelection();
@@ -1376,16 +1321,20 @@ function ReaderContent({ route, navigation }: Props) {
       }
       sendEvent({ type: "activity" });
       if (selection) {
-        selectionRef.current = null;
         setSelection(null);
         return;
       }
       toggleControls();
     },
+    onCharactersEncountered: ({ characterIds, loadId }) => {
+      if (recordCharacterEncounters(bookId, characterIds, loadId, activeReaderLoadIdRef.current)) {
+        void loadBackendCharacterMedia(bookId, progress).catch(() => undefined);
+      }
+    },
     onCharacterTap: ({ characterId }) => {
       const character = characters.find((item) => item.id === characterId);
-      // Запертые персонажи не размечаются, но на случай гонки — двойная проверка
-      if (!character || !isCharacterUnlocked(progress, character)) return;
+      if (!character) return;
+      useNarraStore.getState().updateCharacter(bookId, character.id, { encounteredInReader: true });
       suppressReaderTapUntilRef.current = Date.now() + 400;
       publishCharacterProgress();
       navigation.navigate("NarraCharacterProfile", {
@@ -1466,7 +1415,6 @@ function ReaderContent({ route, navigation }: Props) {
       webViewReady &&
       !loading &&
       !error &&
-      !isReimporting &&
       !showTOC &&
       !showSettings &&
       !showNotebook &&
@@ -1485,7 +1433,6 @@ function ReaderContent({ route, navigation }: Props) {
       webViewReady,
       loading,
       error,
-      isReimporting,
       showTOC,
       showSettings,
       showNotebook,
@@ -1589,66 +1536,9 @@ function ReaderContent({ route, navigation }: Props) {
     [book?.meta.title, bookId, bookTitle, currentChapter, navigation],
   );
 
-  const handleSelectionMenuAction = useCallback(
-    (event: { nativeEvent: { key: string; selectedText: string } }) => {
-      const activeSelection = selectionRef.current ?? selection;
-      const selectedText = (activeSelection?.text || event.nativeEvent.selectedText).trim();
-      if (!selectedText) return;
-
-      const cfi = activeSelection?.cfi ?? "";
-      selectionRef.current = null;
-      setSelection(null);
-
-      switch (event.nativeEvent.key) {
-        case "add-note":
-          navigation.navigate("ManualNote", {
-            bookId,
-            cfi,
-            text: selectedText,
-            chapterTitle: currentChapter,
-          });
-          break;
-        case "copy":
-          void Clipboard.setStringAsync(selectedText);
-          break;
-        case "translate":
-          setTranslationText(selectedText);
-          setShowTranslation(true);
-          break;
-        case "summarize":
-          navigation.navigate("NarraSummary", {
-            bookId,
-            chapter:
-              currentChapter ||
-              bookTitle ||
-              book?.meta.title ||
-              t("reader.currentExcerpt", "Текущий фрагмент"),
-            excerpt: selectedText,
-            sourceKey: `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
-          });
-          break;
-        case "generate-scene":
-          openScene(
-            selectedText,
-            `selection:${cfi || `${currentChapter}:${selectedText.slice(0, 120)}`}`,
-          );
-          break;
-        case "speak":
-          tts.startSelectionTTS(selectedText, cfi);
-          break;
-      }
-    },
-    [
-      book?.meta.title,
-      bookId,
-      bookTitle,
-      currentChapter,
-      navigation,
-      openScene,
-      selection,
-      tts.startSelectionTTS,
-    ],
-  );
+  const handleSelectionMenuAction = useCallback(() => {
+    bridge.webViewRef.current?.injectJavaScript("window.copyReaderSelection?.(); true;");
+  }, [bridge.webViewRef]);
 
   const handleOpenCharacters = useCallback(() => {
     publishCharacterProgress();
@@ -2029,64 +1919,6 @@ function ReaderContent({ route, navigation }: Props) {
     return () => clearInterval(timer);
   }, [isFocused, appActive, webViewReady, loading, bridge.webViewRef]);
 
-  const handleReimportMissingBook = useCallback(async () => {
-    if (isReimporting) return;
-    setIsReimporting(true);
-
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: BOOK_MIME_TYPES,
-        multiple: false,
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-      const selectedUri = result.assets[0].uri;
-      if (book) {
-        const candidate = await useLibraryStore.getState().inspectDeletedBookCandidate(bookId, {
-          uri: selectedUri,
-          name: result.assets[0].name,
-        });
-        if (candidate && shouldConfirmReimportCandidate(book, candidate)) {
-          const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
-            title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
-            description: t(
-              "reader.reimportMismatchDescription",
-              "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
-              {
-                originalTitle: book.meta.title,
-                candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
-              },
-            ),
-            confirmLabel: t("reader.reimportContinue", "继续接回"),
-            cancelLabel: t("reader.reimportPickAnotherFile", "重新选择"),
-          });
-          if (!shouldContinue) return;
-        }
-      }
-
-      const restoredBook = await useLibraryStore
-        .getState()
-        .reimportDeletedBook(bookId, { uri: selectedUri, name: result.assets[0].name });
-
-      if (!restoredBook) {
-        setError(t("reader.reimportFailed", "重新导入失败，请稍后再试。"));
-        return;
-      }
-
-      setError(null);
-      setLoading(true);
-    } catch (err) {
-      console.error("[ReaderScreen] Failed to re-import missing book:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : t("reader.reimportFailed", "重新导入失败，请稍后再试。"),
-      );
-    } finally {
-      setIsReimporting(false);
-    }
-  }, [bookId, isReimporting, t]);
-
   // Apply theme colors when theme changes
   useEffect(() => {
     if (!webViewReady) return;
@@ -2269,63 +2101,7 @@ function ReaderContent({ route, navigation }: Props) {
     );
   }
 
-  if (error) {
-    return (
-      <View
-        style={[
-          s.container,
-          {
-            paddingBottom: insets.bottom,
-            backgroundColor: readerThemeColors.background,
-          },
-        ]}
-      >
-        <View style={s.readerStage}>
-          <View style={s.loadingWrap}>
-            <Text style={s.errorText}>{t("reader.loadFailed", "加载失败")}</Text>
-            <Text style={[s.loadingText, { textAlign: "center", maxWidth: 320 }]}>{error}</Text>
-            <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
-              <TouchableOpacity
-                style={s.backButton}
-                onPress={() => {
-                  if (book?.filePath) {
-                    automaticRecoveryRef.current = false;
-                    retryReader();
-                    return;
-                  }
-                  navigation.reset({ routes: [{ name: "Tabs" }] });
-                }}
-              >
-                <Text style={s.backButtonText}>
-                  {book?.filePath ? t("common.retry", "重试") : t("common.back", "返回")}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  s.backButton,
-                  {
-                    backgroundColor: colors.background,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => void handleReimportMissingBook()}
-                disabled={isReimporting}
-              >
-                <Text style={[s.backButtonText, { color: colors.foreground }]}>
-                  {isReimporting
-                    ? t("reader.reimporting", "正在重新导入...")
-                    : t("reader.reimport", "重新导入")}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        {readerTopBarDock}
-        {readerToolbarDock}
-      </View>
-    );
-  }
+  if (error) return null;
 
   if (!readerHtmlUri) {
     return (
@@ -2400,14 +2176,12 @@ function ReaderContent({ route, navigation }: Props) {
               ]}
               pointerEvents={isPanelOpen ? "none" : "auto"}
               onMessage={bridge.handleMessage}
-              menuItems={[
-                { key: "add-note", label: t("reader.addNote", "Добавить заметку") },
-                { key: "copy", label: t("reader.copySelection", "Скопировать") },
-                { key: "translate", label: t("reader.translate", "Перевести") },
-                { key: "summarize", label: t("reader.summarize", "Кратко пересказать") },
-                { key: "generate-scene", label: t("reader.drawScene", "Нарисовать сцену") },
-                { key: "speak", label: t("reader.speak", "Озвучить") },
-              ]}
+              menuItems={Platform.OS === "android"
+                ? [{ key: "copy", label: t("reader.copySelection", "Скопировать") }]
+                : undefined}
+              suppressMenuItems={Platform.OS === "ios"
+                ? ["cut", "paste", "replace", "bold", "italic", "underline", "select", "selectAll", "translate", "lookup", "share"]
+                : undefined}
               onCustomMenuSelection={handleSelectionMenuAction}
               onError={(e) => {
                 console.error("[ReaderScreen] WebView error:", e.nativeEvent);

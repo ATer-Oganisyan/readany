@@ -1,8 +1,12 @@
 import express from 'express'
+import { loadGatewayConfig } from './platform/gateway-config.mjs'
+import { httpErr, statusFor } from './platform/gateway-errors.mjs'
+import { createKandinskyImageClient } from './providers/provider-kandinsky-image.mjs'
+import { createKandinskyVideoClient } from './providers/provider-kandinsky-video.mjs'
 import cors from 'cors'
 import { createHmac, randomUUID } from 'crypto'
 import path from 'node:path'
-import { httpsRequest } from './http.mjs'
+import { httpsRequest } from './platform/http.mjs'
 import {
   parseAvatarBody,
   parseChatBody,
@@ -12,49 +16,40 @@ import {
   parsePortraitBody,
   parseSynthesisBody,
   validationErrors
-} from './contracts.mjs'
+} from './platform/contracts.mjs'
 import {
-  coverImageConfig,
-  coverRouteReadiness,
   llmRouteReadiness,
   mediaImageQualityForDimensions,
-  normalizeImageQuality,
   requestChat,
   requestCoverImageWithFallback
-} from './providers.mjs'
+} from './providers/providers.mjs'
 import {
   settleProviderResponse,
   validateChatCompletionPayload
-} from './provider-response.mjs'
-import { parseEventBatch } from './events.mjs'
-import { createEventStore } from './event-store.mjs'
-import { readBoundedBody } from './safe-fetch.mjs'
-import { fetchImportSource, importSourceFailure } from './import-source.mjs'
-import { createConcurrencyGate, requestAbortSignal, withTimeout } from './concurrency.mjs'
-import { parseEnvBool, parseEnvInt } from './env.mjs'
+} from './providers/provider-response.mjs'
+import { parseEventBatch } from './platform/events.mjs'
+import { createEventStore } from './platform/event-store.mjs'
+import { readBoundedBody } from './platform/safe-fetch.mjs'
+import { fetchImportSource, importSourceFailure } from './platform/import-source.mjs'
+import { requestAbortSignal, withTimeout } from './platform/concurrency.mjs'
 import {
   analyticsRoute,
   completionProperties,
   createSseUsageCollector,
   providerAttemptProperties
-} from './analytics-properties.mjs'
-import {
-  insecureVideoEnvironmentAllowed,
-  isSecureServiceUrl,
-  serviceUrl
-} from './service-url.mjs'
+} from './platform/analytics-properties.mjs'
 import {
   shouldRetryKandinsky,
   shouldRetryKandinskyStatus,
   videoRetryDelay
-} from './retry-policy.mjs'
+} from './providers/retry-policy.mjs'
 import {
   imageEmptyResultError,
   imageUpstreamError,
   simplifiedScenePrompt,
   shouldFallbackAfterImageError
-} from './image-policy.mjs'
-import { sberCaBundle, verifiedSberCertificates } from './sber-tls.mjs'
+} from './providers/image-policy.mjs'
+import { sberCaBundle } from './providers/sber-tls.mjs'
 import {
   createFixedWindowLimiter,
   createPersistentBudgetMiddleware,
@@ -65,53 +60,74 @@ import {
   requireGatewayAuth,
   requireOperatorAuth,
   resolveTokenSecret
-} from './security.mjs'
-import { createInstallationRegistry } from './installation-registry.mjs'
-import { gatewayReadiness } from './readiness.mjs'
-import { createCoverJobStore } from './cover-job-store.mjs'
-import { createCoverJobRunner } from './cover-job-runner.mjs'
-import { bookCoverPrompt } from './catalog-cover-prompt.mjs'
-import { parseSceneJobBody, sceneGenerationPrompt } from './scene-generation.mjs'
-import { createBookCatalogRouter } from './book-catalog-api.mjs'
-import { createBookEmbeddingClientFromEnv } from './book-embedding-client.mjs'
-import { createBookSearchRouter } from './book-search-api.mjs'
-import { createPostgresBookSearchRepository } from './book-search-repository.mjs'
-import { createBookSearchService } from './book-search-service.mjs'
-import { createCatalogIngestRouter } from './catalog-ingest-api.mjs'
-import { createCatalogIngestService } from './catalog-ingest-service.mjs'
-import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
-import { bookAnalysisPipelineFromEnv } from './book-analysis-pipeline.mjs'
-import { createBookAnalysisScanPolicyFromEnv } from './book-analysis-scan-policy.mjs'
-import { createBookOperatorRouter } from './book-operator-api.mjs'
-import { createPostgresBookOperatorRepository } from './book-operator-repository.mjs'
-import { createPostgresBookCharacterCorrectionRepository } from './book-character-correction-repository.mjs'
-import { createPostgresBookMarkupRepository } from './postgres-book-markup-repository.mjs'
-import { createPostgresBookTtsMarkupRepository } from './book-tts-markup-repository.mjs'
-import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './postgres-runtime.mjs'
-import { createBookObjectStorageFromEnv } from './book-object-storage.mjs'
+} from './platform/security.mjs'
+import { createInstallationRegistry } from './platform/installation-registry.mjs'
+import { gatewayReadiness } from './platform/readiness.mjs'
+import { createCoverJobStore } from './generation/cover-job-store.mjs'
+import { createCoverJobRunner } from './generation/cover-job-runner.mjs'
+import { bookCoverPrompt } from './generation/catalog-cover-prompt.mjs'
+import { parseSceneJobBody, sceneGenerationPrompt } from './generation/scene-generation.mjs'
+import { createBookCatalogRouter } from './catalog/book-catalog-api.mjs'
+import { createBookEmbeddingClientFromEnv } from './search/book-embedding-client.mjs'
+import { createBookSearchRouter } from './search/book-search-api.mjs'
+import { createPostgresBookSearchRepository } from './search/book-search-repository.mjs'
+import { createBookSearchService } from './search/book-search-service.mjs'
+import { createCatalogIngestRouter } from './catalog/catalog-ingest-api.mjs'
+import { createCatalogIngestService } from './catalog/catalog-ingest-service.mjs'
+import { createPostgresBookAnalysisRepository } from './analysis/book-analysis-repository.mjs'
+import { createBookOperatorRouter } from './books/book-operator-api.mjs'
+import { createPostgresBookOperatorRepository } from './books/book-operator-repository.mjs'
+import { createPostgresBookCharacterCorrectionRepository } from './books/book-character-correction-repository.mjs'
+import { createPostgresBookMarkupRepository } from './books/postgres-book-markup-repository.mjs'
+import { createPostgresBookTtsMarkupRepository } from './tts/book-tts-markup-repository.mjs'
+import { createPostgresPoolFromEnv, runBookMarkupMigrations } from './db/postgres-runtime.mjs'
+import { createBookObjectStorageFromEnv } from './books/book-object-storage.mjs'
 import {
   createInternalGenerationRouter,
   createInternalGenerationService
-} from './internal-generation-service.mjs'
-import { createGenerationCostLedger } from './generation-cost-ledger.mjs'
-import { createBestEffortGenerationCostRecorder } from './generation-cost-recorder.mjs'
-import { createOperationalMetricsRepository } from './operational-metrics-repository.mjs'
+} from './generation/internal-generation-service.mjs'
+import { createGenerationCostLedger } from './generation/generation-cost-ledger.mjs'
+import { createBestEffortGenerationCostRecorder } from './generation/generation-cost-recorder.mjs'
+import { createOperationalMetricsRepository } from './db/operational-metrics-repository.mjs'
 import {
   operationalRuntimeMetrics,
   recordProviderFailure
-} from './operational-runtime-metrics.mjs'
-import { createLocalIdleAnimation } from './local-idle-animation.mjs'
-import { createPrivateMaterialCleanup } from './private-material-cleanup.mjs'
-import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from './image-timeouts.mjs'
-import { withChatCompliance, withImageCompliance } from './rf-compliance.mjs'
+} from './platform/operational-runtime-metrics.mjs'
+import { createLocalIdleAnimation } from './generation/local-idle-animation.mjs'
+import { createPrivateMaterialCleanup } from './platform/private-material-cleanup.mjs'
+import { withChatCompliance, withImageCompliance } from './providers/rf-compliance.mjs'
 
 // ================= Конфигурация =================
-const PORT = process.env.PORT || 8787
-const BOOK_ANALYSIS_PIPELINE = bookAnalysisPipelineFromEnv(process.env)
-const BOOK_ANALYSIS_SCAN_POLICY = createBookAnalysisScanPolicyFromEnv(process.env)
-const INSECURE = process.env.ALLOW_INSECURE_TLS === 'true'
-const PRODUCTION = process.env.NODE_ENV === 'production'
-const BUILD_VERSION = String(process.env.GATEWAY_BUILD_VERSION || 'development').slice(0, 120)
+const {
+  PORT, BOOK_ANALYSIS_PIPELINE, BOOK_ANALYSIS_PIPELINE_FOR_EDITION, BOOK_ANALYSIS_SCAN_POLICY, INSECURE,
+  PRODUCTION, BUILD_VERSION, ANALYTICS_ENV, VIDEO_REQUIRED,
+  BOOK_BACKEND_REQUIRED, BOOK_SEARCH_ENABLED, BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED, BOOK_SHADOW_PREVIEW_ENABLED,
+  ALLOW_INSECURE_VIDEO_HTTP, INSECURE_VIDEO_ENV_ALLOWED, VIDEO_INSECURE_HTTP_HOSTS, ALLOW_INSECURE_LLM_HTTP,
+  LLM_INSECURE_HTTP_HOSTS, REGISTRATION_LIMIT, REGISTRATION_GLOBAL_LIMIT, REGISTRATION_GLOBAL_DAILY_LIMIT,
+  INSTALLATION_REGISTRY_MAX, INSTALLATION_INACTIVE_RETENTION_DAYS, INSTALLATION_TOKEN_TTL_SECONDS, REFRESH_LIMIT,
+  REFRESH_ATTEMPT_LIMIT, API_LIMIT, EVENT_LIMIT, AI_LIMIT,
+  AI_DAILY_LIMIT, AI_GLOBAL_DAILY_LIMIT, SPEECH_LIMIT, SPEECH_DAILY_LIMIT,
+  SPEECH_GLOBAL_DAILY_LIMIT, IMAGE_DAILY_LIMIT, IMAGE_GLOBAL_DAILY_LIMIT, COVER_DAILY_LIMIT,
+  COVER_GLOBAL_DAILY_LIMIT, VIDEO_LIMIT, VIDEO_DAILY_LIMIT, VIDEO_GLOBAL_DAILY_LIMIT,
+  IMPORT_LIMIT, IMPORT_DAILY_LIMIT, IMPORT_GLOBAL_DAILY_LIMIT, IMPORT_DAILY_BYTES_MB,
+  IMPORT_GLOBAL_DAILY_BYTES_MB, IMPORT_CONCURRENCY, IMPORT_QUEUE_LIMIT, BOOK_UPLOAD_MAX_BYTES,
+  PRIVATE_MATERIAL_TTL_DAYS, PRIVATE_MATERIAL_CLEANUP_MS, PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE, LLM_RESPONSE_MAX_BYTES,
+  KANDINSKY_QUEUE_LIMIT, KANDINSKY_IMAGE_TIMEOUT_MS, KANDINSKY_REQUEST_TIMEOUT_MS, VIDEO_QUEUE_LIMIT,
+  LLM_CONCURRENCY, LLM_QUEUE_LIMIT, SPEECH_CONCURRENCY, SPEECH_QUEUE_LIMIT,
+  IMAGE_CONCURRENCY, IMAGE_QUEUE_LIMIT, COVER_CONCURRENCY, COVER_QUEUE_LIMIT,
+  COVER_JOB_MAX, COVER_JOB_TTL_HOURS, COVER_JOB_MAX_RESULT_MIB, COVER_JOB_MAX_ATTEMPTS,
+  COVER_JOB_ATTEMPT_TIMEOUT_SECONDS, COVER_JOB_WORKER_ENABLED, SCENE_JOB_MAX, SCENE_JOB_TTL_HOURS,
+  SCENE_JOB_MAX_ATTEMPTS, SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS, SCENE_JOB_WORKER_ENABLED, coverProviderConfig,
+  COVER_IMAGE_QUALITY, CHARACTER_PORTRAIT_IMAGE_QUALITY, SCENE_IMAGE_QUALITY, coverProviderCallsPerAttempt,
+  minimumCoverAttemptTimeoutMs, llmGate, speechGate, imageGate,
+  coverGate, importGate, SALUTE_CLIENT, SALUTE_KEY,
+  LLM_BASE_URL, LLM_TRANSPORT_SECURE, LLM_API_KEY, LLM_MODEL,
+  LITELLM_BASE_URL, LITELLM_TRANSPORT_SECURE, TEXT_LLM_TRANSPORT_SECURE, KANDINSKY_TOKEN,
+  SALUTE_OAUTH_URL, SALUTE_SYNTH_URL, SALUTE_RECOGNIZE_URL, SALUTE_RECOGNITION_MODEL,
+  SBER_CA_VERIFIED, KANDINSKY_HOST, VIDEO_BASE_URL, VIDEO_TRANSPORT_SECURE,
+  TRACTION_INGEST_URL, TRACTION_INGEST_TOKEN, INSTALLATION_OPERATOR_TOKEN, CATALOG_INGEST_TOKEN,
+  BOOK_OPERATOR_USERNAME, BOOK_OPERATOR_PASSWORD
+} = loadGatewayConfig(process.env)
 
 function recordProviderAttemptMetric(attempt) {
   if (attempt?.status !== 'failed') return
@@ -143,220 +159,6 @@ async function requestCoverImageObserved(options) {
     recordProviderAttempts(error?.attempts)
     throw error
   }
-}
-
-if (PRODUCTION && INSECURE) throw new Error('ALLOW_INSECURE_TLS is forbidden in production')
-const ANALYTICS_ENV = process.env.ANALYTICS_ENV || (PRODUCTION ? 'production' : 'development')
-if (!['production', 'staging', 'development', 'test'].includes(ANALYTICS_ENV)) {
-  throw new Error('ANALYTICS_ENV must be production, staging, development or test')
-}
-const VIDEO_REQUIRED = parseEnvBool(process.env, 'VIDEO_REQUIRED', false)
-const BOOK_BACKEND_REQUIRED = parseEnvBool(process.env, 'BOOK_BACKEND_REQUIRED', false)
-const BOOK_SEARCH_ENABLED = parseEnvBool(process.env, 'BOOK_SEARCH_ENABLED', false)
-const BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED = parseEnvBool(
-  process.env,
-  'BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED',
-  true
-)
-const BOOK_SHADOW_PREVIEW_ENABLED = parseEnvBool(
-  process.env,
-  'BOOK_SHADOW_PREVIEW_ENABLED',
-  ANALYTICS_ENV !== 'production'
-)
-const ALLOW_INSECURE_VIDEO_HTTP = process.env.ALLOW_INSECURE_VIDEO_HTTP === 'true'
-const INSECURE_VIDEO_ENV_ALLOWED = insecureVideoEnvironmentAllowed({
-  production: PRODUCTION,
-  analyticsEnvironment: ANALYTICS_ENV
-})
-if (ALLOW_INSECURE_VIDEO_HTTP && !INSECURE_VIDEO_ENV_ALLOWED) {
-  throw new Error('ALLOW_INSECURE_VIDEO_HTTP is forbidden outside staging or local development/test')
-}
-const VIDEO_INSECURE_HTTP_HOSTS = String(process.env.VIDEO_INSECURE_HTTP_HOSTS || '')
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean)
-const ALLOW_INSECURE_LLM_HTTP = parseEnvBool(process.env, 'ALLOW_INSECURE_LLM_HTTP', false)
-const LLM_INSECURE_HTTP_HOSTS = String(process.env.LLM_INSECURE_HTTP_HOSTS || '')
-  .split(',')
-  .map((value) => value.trim())
-  .filter(Boolean)
-function envInt(name, fallback, max) {
-  return parseEnvInt(process.env, name, fallback, max)
-}
-const REGISTRATION_LIMIT = envInt('REGISTRATION_LIMIT_PER_HOUR', 10, 1_000)
-const REGISTRATION_GLOBAL_LIMIT = envInt('REGISTRATION_GLOBAL_LIMIT_PER_HOUR', 500, 100_000)
-const REGISTRATION_GLOBAL_DAILY_LIMIT = envInt('REGISTRATION_GLOBAL_LIMIT_PER_DAY', 250, 100_000)
-const INSTALLATION_REGISTRY_MAX = envInt('INSTALLATION_REGISTRY_MAX', 10_000, 100_000)
-const INSTALLATION_INACTIVE_RETENTION_DAYS = envInt('INSTALLATION_INACTIVE_RETENTION_DAYS', 30, 365)
-const INSTALLATION_TOKEN_TTL_SECONDS = envInt('INSTALLATION_TOKEN_TTL_SECONDS', 15 * 60, 24 * 60 * 60)
-if (INSTALLATION_TOKEN_TTL_SECONDS < 5 * 60) {
-  throw new Error('INSTALLATION_TOKEN_TTL_SECONDS must be at least 300 seconds')
-}
-const REFRESH_LIMIT = envInt('REFRESH_LIMIT_PER_HOUR', 20, 1_000)
-const REFRESH_ATTEMPT_LIMIT = envInt('REFRESH_ATTEMPT_LIMIT_PER_HOUR', 40, 10_000)
-const API_LIMIT = envInt('API_LIMIT_PER_MINUTE', 120, 10_000)
-const EVENT_LIMIT = envInt('EVENT_LIMIT_PER_MINUTE', 10, 1_000)
-const AI_LIMIT = envInt('AI_LIMIT_PER_MINUTE', 30, 1_000)
-const AI_DAILY_LIMIT = envInt('AI_LIMIT_PER_DAY', 500, 100_000)
-const AI_GLOBAL_DAILY_LIMIT = envInt('AI_GLOBAL_LIMIT_PER_DAY', 25_000, 10_000_000)
-const SPEECH_LIMIT = envInt('SPEECH_LIMIT_PER_MINUTE', 60, 2_000)
-const SPEECH_DAILY_LIMIT = envInt('SPEECH_LIMIT_PER_DAY', 1_000, 100_000)
-const SPEECH_GLOBAL_DAILY_LIMIT = envInt('SPEECH_GLOBAL_LIMIT_PER_DAY', 50_000, 10_000_000)
-const IMAGE_DAILY_LIMIT = envInt('IMAGE_LIMIT_PER_DAY', 100, 10_000)
-const IMAGE_GLOBAL_DAILY_LIMIT = envInt('IMAGE_GLOBAL_LIMIT_PER_DAY', 5_000, 1_000_000)
-const COVER_DAILY_LIMIT = envInt('COVER_LIMIT_PER_DAY', 60, 10_000)
-const COVER_GLOBAL_DAILY_LIMIT = envInt('COVER_GLOBAL_LIMIT_PER_DAY', 3_000, 1_000_000)
-const VIDEO_LIMIT = envInt('VIDEO_LIMIT_PER_HOUR', 8, 500)
-const VIDEO_DAILY_LIMIT = envInt('VIDEO_LIMIT_PER_DAY', 20, 2_000)
-const VIDEO_GLOBAL_DAILY_LIMIT = envInt('VIDEO_GLOBAL_LIMIT_PER_DAY', 500, 100_000)
-const IMPORT_LIMIT = envInt('IMPORT_LIMIT_PER_MINUTE', 6, 100)
-const IMPORT_DAILY_LIMIT = envInt('IMPORT_LIMIT_PER_DAY', 20, 1_000)
-const IMPORT_GLOBAL_DAILY_LIMIT = envInt('IMPORT_GLOBAL_LIMIT_PER_DAY', 1_000, 100_000)
-const IMPORT_DAILY_BYTES_MB = envInt('IMPORT_LIMIT_MIB_PER_DAY', 300, 30_000)
-const IMPORT_GLOBAL_DAILY_BYTES_MB = envInt('IMPORT_GLOBAL_LIMIT_MIB_PER_DAY', 10_000, 300_000)
-const IMPORT_CONCURRENCY = envInt('IMPORT_CONCURRENCY', 2, 20)
-const IMPORT_QUEUE_LIMIT = envInt('IMPORT_QUEUE_LIMIT', 2, 50)
-const BOOK_UPLOAD_MAX_BYTES = envInt('BOOK_UPLOAD_MAX_MIB', 50, 500) * 1024 * 1024
-const PRIVATE_MATERIAL_TTL_DAYS = envInt('PRIVATE_MATERIAL_TTL_DAYS', 7, 365)
-const PRIVATE_MATERIAL_CLEANUP_MS = envInt(
-  'PRIVATE_MATERIAL_CLEANUP_MS',
-  60 * 60 * 1_000,
-  24 * 60 * 60 * 1_000
-)
-const PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE = envInt('PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE', 100, 1_000)
-const LLM_RESPONSE_MAX_BYTES = envInt('LLM_RESPONSE_MAX_MIB', 8, 64) * 1024 * 1024
-const KANDINSKY_QUEUE_LIMIT = envInt('KANDINSKY_QUEUE_LIMIT', 6, 100)
-const KANDINSKY_IMAGE_TIMEOUT_MS = kandinskyImageTimeoutMs(process.env)
-const KANDINSKY_REQUEST_TIMEOUT_MS = kandinskyRequestTimeoutMs(process.env)
-const VIDEO_QUEUE_LIMIT = envInt('VIDEO_QUEUE_LIMIT', 4, 100)
-const LLM_CONCURRENCY = envInt('LLM_CONCURRENCY', 12, 100)
-const LLM_QUEUE_LIMIT = envInt('LLM_QUEUE_LIMIT', 16, 500)
-// SALUTE_SPEECH_PERS is capped at five upstream streams. Reject a stale or
-// accidental Railway override above the verified upstream scope.
-const SPEECH_CONCURRENCY = envInt('SPEECH_CONCURRENCY', 5, 5)
-const SPEECH_QUEUE_LIMIT = envInt('SPEECH_QUEUE_LIMIT', 16, 500)
-const IMAGE_CONCURRENCY = envInt('IMAGE_CONCURRENCY', 4, 50)
-const IMAGE_QUEUE_LIMIT = envInt('IMAGE_QUEUE_LIMIT', 12, 200)
-const COVER_CONCURRENCY = envInt('COVER_CONCURRENCY', 2, 20)
-const COVER_QUEUE_LIMIT = envInt('COVER_QUEUE_LIMIT', 8, 100)
-const COVER_JOB_MAX = envInt('COVER_JOB_MAX', 1_000, 10_000)
-const COVER_JOB_TTL_HOURS = envInt('COVER_JOB_TTL_HOURS', 24, 168)
-const COVER_JOB_MAX_RESULT_MIB = envInt('COVER_JOB_MAX_RESULT_MIB', 16, 64)
-const COVER_JOB_MAX_ATTEMPTS = envInt('COVER_JOB_MAX_ATTEMPTS', 3, 10)
-const COVER_JOB_ATTEMPT_TIMEOUT_SECONDS = envInt('COVER_JOB_ATTEMPT_TIMEOUT_SECONDS', 32 * 60, 2 * 60 * 60)
-const COVER_JOB_WORKER_ENABLED = parseEnvBool(process.env, 'COVER_JOB_WORKER_ENABLED', true)
-const SCENE_JOB_MAX = envInt('SCENE_JOB_MAX', 1_000, 10_000)
-const SCENE_JOB_TTL_HOURS = envInt('SCENE_JOB_TTL_HOURS', 24, 168)
-const SCENE_JOB_MAX_ATTEMPTS = envInt('SCENE_JOB_MAX_ATTEMPTS', 3, 10)
-const SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS = envInt('SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS', 15 * 60, 60 * 60)
-const SCENE_JOB_WORKER_ENABLED = parseEnvBool(process.env, 'SCENE_JOB_WORKER_ENABLED', true)
-const coverProviderConfig = coverImageConfig()
-const COVER_IMAGE_QUALITY = normalizeImageQuality(process.env.COVER_IMAGE_QUALITY)
-const CHARACTER_PORTRAIT_IMAGE_QUALITY = normalizeImageQuality(
-  process.env.CHARACTER_PORTRAIT_IMAGE_QUALITY
-)
-const SCENE_IMAGE_QUALITY = normalizeImageQuality(process.env.SCENE_IMAGE_QUALITY)
-const coverProviderCallsPerAttempt =
-  coverProviderConfig.fallbackModel && coverProviderConfig.fallbackModel !== coverProviderConfig.model ? 2 : 1
-const minimumCoverAttemptTimeoutMs =
-  coverProviderConfig.timeoutMs * coverProviderCallsPerAttempt + 15_000
-if (COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1_000 < minimumCoverAttemptTimeoutMs) {
-  throw new Error(
-    'COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must cover every configured cover image model timeout plus 15 seconds'
-  )
-}
-const llmGate = createConcurrencyGate({ limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM' })
-const speechGate = createConcurrencyGate({ limit: SPEECH_CONCURRENCY, queueLimit: SPEECH_QUEUE_LIMIT, name: 'Speech' })
-const imageGate = createConcurrencyGate({ limit: IMAGE_CONCURRENCY, queueLimit: IMAGE_QUEUE_LIMIT, name: 'Image' })
-const coverGate = createConcurrencyGate({ limit: COVER_CONCURRENCY, queueLimit: COVER_QUEUE_LIMIT, name: 'Cover' })
-const importGate = createConcurrencyGate({ limit: IMPORT_CONCURRENCY, queueLimit: IMPORT_QUEUE_LIMIT, name: 'Import' })
-// Собирает Basic key из готового значения либо client id + secret.
-function buildBasicKey(direct, clientId, clientSecret) {
-  const d = (direct || '').trim()
-  if (d) return d
-  const id = (clientId || '').trim()
-  const secret = (clientSecret || '').trim()
-  if (id && secret) return Buffer.from(`${id}:${secret}`).toString('base64')
-  return ''
-}
-// SaluteSpeech (speech.giga.chat): логин 'gigacons' + секрет → Basic base64(логин:секрет).
-const SALUTE_CLIENT = (process.env.SBER_SALUTE_CLIENT || 'gigacons').trim()
-const _saluteSecret = (process.env.SBER_SALUTE_AUTH_KEY || '').trim()
-const SALUTE_KEY = _saluteSecret
-  ? SALUTE_CLIENT
-    ? Buffer.from(`${SALUTE_CLIENT}:${_saluteSecret}`).toString('base64')
-    : _saluteSecret
-  : buildBasicKey(
-      process.env.SALUTESPEECH_AUTH_KEY,
-      process.env.SALUTESPEECH_CLIENT_ID,
-      process.env.SALUTESPEECH_CLIENT_SECRET
-    )
-// Основной командный LiteLLM-шлюз для GigaChat.
-const LLM_BASE_URL = serviceUrl('LLM_BASE_URL', process.env.LLM_BASE_URL, {
-  allowPrivateHttp: true,
-  allowInsecureHttp: ALLOW_INSECURE_LLM_HTTP,
-  allowedInsecureHosts: LLM_INSECURE_HTTP_HOSTS
-})
-const LLM_TRANSPORT_SECURE = isSecureServiceUrl(LLM_BASE_URL)
-if (LLM_BASE_URL && !LLM_TRANSPORT_SECURE) {
-  console.warn('[security] LLM_BASE_URL uses explicitly allowed plaintext HTTP; prompts and bearer credentials are not encrypted in transit')
-}
-const LLM_API_KEY = (process.env.LLM_API_KEY || '').trim() // виртуальный ключ LiteLLM (sk-...)
-const LLM_MODEL = (process.env.LLM_MODEL || 'gigachat-3-ultra').trim()
-// Независимый LiteLLM fallback. Он может маршрутизировать запросы в OpenRouter,
-// но gateway знает только OpenAI-compatible proxy contract и отдельный proxy key.
-const LITELLM_BASE_URL = serviceUrl('LITELLM_BASE_URL', process.env.LITELLM_BASE_URL, {
-  allowPrivateHttp: true,
-  allowInsecureHttp: ALLOW_INSECURE_LLM_HTTP,
-  allowedInsecureHosts: LLM_INSECURE_HTTP_HOSTS
-})
-const LITELLM_TRANSPORT_SECURE = !LITELLM_BASE_URL || isSecureServiceUrl(LITELLM_BASE_URL)
-if (LITELLM_BASE_URL && !LITELLM_TRANSPORT_SECURE) {
-  console.warn('[security] LITELLM_BASE_URL uses explicitly allowed plaintext HTTP; prompts and bearer credentials are not encrypted in transit')
-}
-const TEXT_LLM_TRANSPORT_SECURE = Boolean(LLM_BASE_URL || LITELLM_BASE_URL) &&
-  (!LLM_BASE_URL || LLM_TRANSPORT_SECURE) && LITELLM_TRANSPORT_SECURE
-
-// Kandinsky 6.0 (studio.kandinskylab.ai) — один Bearer-токен
-const KANDINSKY_TOKEN = (process.env.KANDINSKY_TOKEN || '').trim()
-// SaluteSpeech — URL настраиваются через .env (у команды могут быть свои).
-const SALUTE_OAUTH_URL = serviceUrl('SBER_SALUTE_OAUTH_URL', process.env.SBER_SALUTE_OAUTH_URL || 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth')
-const SALUTE_SYNTH_URL = serviceUrl('SBER_SALUTE_SYNTH_URL', process.env.SBER_SALUTE_SYNTH_URL || 'https://smartspeech.sber.ru/rest/v1/text:synthesize')
-const SALUTE_RECOGNIZE_URL = serviceUrl('SBER_SALUTE_RECOGNIZE_URL', process.env.SBER_SALUTE_RECOGNIZE_URL || 'https://smartspeech.sber.ru/rest/v1/speech:recognize')
-const SALUTE_RECOGNITION_MODEL = (process.env.SBER_SALUTE_RECOGNITION_MODEL || 'voice_messaging').trim()
-const SBER_CA_VERIFIED = verifiedSberCertificates.length === 2
-const KANDINSKY_HOST = 'https://studio.kandinskylab.ai/api'
-// Видео/аватар API (GigaAvatar: image + audio → говорящее видео)
-const VIDEO_BASE_URL = serviceUrl('VIDEO_BASE_URL', process.env.VIDEO_BASE_URL, {
-  allowPrivateHttp: true,
-  allowInsecureHttp: ALLOW_INSECURE_VIDEO_HTTP,
-  allowedInsecureHosts: VIDEO_INSECURE_HTTP_HOSTS
-})
-const VIDEO_TRANSPORT_SECURE = isSecureServiceUrl(VIDEO_BASE_URL)
-if (VIDEO_BASE_URL && !VIDEO_TRANSPORT_SECURE) {
-  console.warn('[security] VIDEO_BASE_URL uses explicitly allowed plaintext HTTP; media and bearer credentials are not encrypted in transit')
-}
-serviceUrl('OPENROUTER_BASE_URL', process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1')
-const TRACTION_INGEST_URL = serviceUrl('TRACTION_INGEST_URL', process.env.TRACTION_INGEST_URL)
-const TRACTION_INGEST_TOKEN = String(process.env.TRACTION_INGEST_TOKEN || '').trim()
-if (Boolean(TRACTION_INGEST_URL) !== Boolean(TRACTION_INGEST_TOKEN)) {
-  throw new Error('TRACTION_INGEST_URL and TRACTION_INGEST_TOKEN must be configured together')
-}
-if (PRODUCTION && TRACTION_INGEST_TOKEN && TRACTION_INGEST_TOKEN.length < 32) {
-  throw new Error('TRACTION_INGEST_TOKEN must contain at least 32 characters in production')
-}
-const INSTALLATION_OPERATOR_TOKEN = String(process.env.INSTALLATION_OPERATOR_TOKEN || '').trim()
-if (PRODUCTION && INSTALLATION_OPERATOR_TOKEN.length < 32) {
-  throw new Error('INSTALLATION_OPERATOR_TOKEN must contain at least 32 characters in production')
-}
-const CATALOG_INGEST_TOKEN = String(process.env.CATALOG_INGEST_TOKEN || '').trim()
-if (PRODUCTION && CATALOG_INGEST_TOKEN.length < 32) {
-  throw new Error('CATALOG_INGEST_TOKEN must contain at least 32 characters in production')
-}
-const BOOK_OPERATOR_USERNAME = String(process.env.BOOK_OPERATOR_USERNAME || 'narra').trim()
-const BOOK_OPERATOR_PASSWORD = String(process.env.BOOK_OPERATOR_PASSWORD || '').trim()
-if (PRODUCTION && (BOOK_OPERATOR_USERNAME.length < 1 || BOOK_OPERATOR_PASSWORD.length < 20)) {
-  throw new Error('BOOK_OPERATOR_USERNAME and a 20+ character BOOK_OPERATOR_PASSWORD are required in production')
 }
 
 // ================= Токены (кэш ~30 мин) =================
@@ -392,276 +194,26 @@ async function getToken(scope, basicKey, oauthUrl) {
   return token
 }
 
-function httpErr(code, message) {
-  const e = new Error(message)
-  e.code = code
-  return e
-}
-function statusFor(code) {
-  return { NO_KEY: 400, VALIDATION: 400, AUTH: 401, CENSOR: 422, RATE: 429, TIMEOUT: 504, NETWORK: 502 }[code] || 500
-}
-
-// ================= Kandinsky 6.0 (kandinskylab) =================
-// Стиль задаётся на клиенте (единая арт-дирекция), сервер не добавляет свой.
-const STYLE_SUFFIX = ''
-
-function kHeaders() {
-  return { Authorization: `Bearer ${KANDINSKY_TOKEN}`, 'Content-Type': 'application/json' }
-}
-
-// подбираем поддерживаемое разрешение по ориентации
-function resolutionFor(width, height) {
-  if (height > width * 1.15) return '768x1280'
-  if (width > height * 1.15) return '1280x768'
-  return '1024x1024'
-}
-
-// Kandinsky не любит параллельных запросов — сериализуем и ретраим лимит.
-let kandinskyChain = Promise.resolve()
-let kandinskyPending = 0
-function kandinskyQueued(prompt, width, height, signal) {
-  if (kandinskyPending >= KANDINSKY_QUEUE_LIMIT) throw httpErr('RATE', 'Kandinsky: очередь переполнена')
-  kandinskyPending += 1
-  const run = kandinskyChain
-    .then(() => {
-      if (signal?.aborted) throw signal.reason || new Error('client disconnected')
-      return kandinskyWithRetry(prompt, width, height, signal)
-    })
-    .finally(() => { kandinskyPending -= 1 })
-  kandinskyChain = run.catch(() => {})
-  return run
-}
-async function kandinskyWithRetry(prompt, width, height, signal, attempts = 3) {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await kandinskyGenerate(prompt, width, height, signal)
-    } catch (e) {
-      if (shouldRetryKandinsky(e) && i < attempts - 1) {
-        console.error(`[kandinsky] временная ошибка ${e.code}, жду 20с (попытка ${i + 2}/${attempts})`)
-        await abortableDelay(20000, signal)
-        continue
-      }
-      throw e
-    }
-  }
-}
-
-async function kandinskyGenerate(prompt, width = 768, height = 1024, signal) {
-  const resolution = resolutionFor(width, height)
-  const deadline = Date.now() + KANDINSKY_IMAGE_TIMEOUT_MS
-  const requestTimeoutMs = () => Math.max(
-    1,
-    Math.min(KANDINSKY_REQUEST_TIMEOUT_MS, deadline - Date.now())
-  )
-  // 1) создать задачу
-  const runRes = await httpsRequest(`${KANDINSKY_HOST}/tasks/k6-image-t2i`, {
-    method: 'POST',
-    insecure: INSECURE,
-    timeoutMs: requestTimeoutMs(),
-    signal,
-    headers: kHeaders(),
-    body: JSON.stringify({ params: { query: `${prompt}${STYLE_SUFFIX}`.slice(0, 950), resolution } })
-  })
-  if (runRes.status >= 400) {
-    throw imageUpstreamError({
-      provider: 'Kandinsky',
-      phase: 'create',
-      status: runRes.status,
-      detail: runRes.body
-    })
-  }
-  const taskId = JSON.parse(runRes.body).task_id
-  if (!taskId) throw httpErr('UNKNOWN', 'Kandinsky: нет task_id')
-
-  // 2) поллинг статуса
-  let done = false
-  while (Date.now() < deadline) {
-    await abortableDelay(4000, signal)
-    let st
-    try {
-      st = await httpsRequest(`${KANDINSKY_HOST}/tasks/${taskId}`, {
-        insecure: INSECURE,
-        timeoutMs: 20000,
-        signal,
-        headers: kHeaders()
-      })
-    } catch (error) {
-      if (shouldRetryKandinskyStatus(error)) continue
-      throw error
-    }
-    if (st.status >= 400) {
-      const upstreamError = imageUpstreamError({
-        provider: 'Kandinsky',
-        phase: 'status',
-        status: st.status,
-        detail: st.body
-      })
-      if (['NETWORK', 'RATE'].includes(upstreamError.code)) continue
-      throw upstreamError
-    }
-    const statusBody = JSON.parse(st.body)
-    const status = String(statusBody.status || '').toLowerCase()
-    if (status === 'done') {
-      done = true
-      break
-    }
-    if (status === 'failed' || status === 'error') {
-      throw imageEmptyResultError({
-        provider: 'Kandinsky',
-        detail: statusBody.error || statusBody.detail || statusBody.message
-      })
-    }
-  }
-  if (!done) {
-    throw httpErr(
-      'TIMEOUT',
-      `Kandinsky: таймаут (${Math.round(KANDINSKY_IMAGE_TIMEOUT_MS / 1000)}с)`
-    )
-  }
-
-  // 3) забрать результат (бинарный PNG)
-  const resImg = await httpsRequest(`${KANDINSKY_HOST}/tasks/${taskId}/result`, {
-    insecure: INSECURE,
-    timeoutMs: requestTimeoutMs(),
-    signal,
-    binary: true,
-    headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}` }
-  })
-  if (resImg.status >= 400) {
-    throw imageUpstreamError({
-      provider: 'Kandinsky',
-      phase: 'result',
-      status: resImg.status,
-      detail: resImg.body
-    })
-  }
-  if (!resImg.body?.length) {
-    throw imageEmptyResultError({ provider: 'Kandinsky' })
-  }
-  return resImg.body.toString('base64')
-}
-
-// ================= Видео (Kandinsky video API) =================
-// Видеосервер не терпит параллельных запросов (429 LIMIT_EXHAUSTED) — очередь + ретраи.
-let videoChain = Promise.resolve()
-let videoPending = 0
-function videoTask(taskType, params, signal) {
-  if (videoPending >= VIDEO_QUEUE_LIMIT) throw httpErr('RATE', 'Видео: очередь переполнена')
-  videoPending += 1
-  const run = videoChain
-    .then(() => {
-      if (signal?.aborted) throw signal.reason || new Error('client disconnected')
-      return videoTaskRetry(taskType, params, signal)
-    })
-    .finally(() => { videoPending -= 1 })
-  videoChain = run.catch(() => {})
-  return run
-}
-async function abortableDelay(milliseconds, signal) {
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, milliseconds)
-    if (signal) signal.addEventListener('abort', () => {
-      clearTimeout(timer)
-      reject(signal.reason || new Error('client disconnected'))
-    }, { once: true })
-  })
-}
-async function videoTaskRetry(taskType, params, signal, attempts = 3) {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await videoTaskRaw(taskType, params, signal)
-    } catch (e) {
-      const wait = videoRetryDelay(e)
-      if (wait && i < attempts - 1) {
-        // 'concurrent' — заняты все GPU-слоты, освободятся через минуты; 'rate' — секунды
-        console.error(`[video] лимит (${wait === 45_000 ? 'слоты заняты' : 'частота'}), жду ${wait / 1000}с (${i + 2}/${attempts})`)
-        await abortableDelay(wait, signal)
-        continue
-      }
-      throw e
-    }
-  }
-}
-
-async function videoTaskRaw(taskType, params, signal) {
-  if (!VIDEO_BASE_URL) throw httpErr('NO_KEY', 'Видео: VIDEO_BASE_URL не задан')
-  const create = await fetch(`${VIDEO_BASE_URL}/tasks/${taskType}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ censor: true, params }),
-    signal: withTimeout(signal, 30_000)
-  })
-  if (!create.ok) {
-    const t = await create.text().catch(() => '')
-    throw imageUpstreamError({
-      provider: 'Kandinsky video',
-      phase: 'create',
-      status: create.status,
-      detail: t
-    })
-  }
-  const { task_id } = await create.json()
-  if (!task_id) throw httpErr('UNKNOWN', 'Видео: сервер не вернул task_id')
-
-  const deadline = Date.now() + 480_000
-  while (Date.now() < deadline) {
-    await abortableDelay(5000, signal)
-    const st = await fetch(`${VIDEO_BASE_URL}/tasks/${task_id}`, {
-      headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}` },
-      signal: withTimeout(signal, 20_000)
-    })
-    if (!st.ok) continue
-    const j = await st.json()
-    const status = String(j.status || '').toLowerCase()
-    if (status === 'done') {
-      const r = await fetch(`${VIDEO_BASE_URL}/tasks/${task_id}/result`, {
-        headers: { Authorization: `Bearer ${KANDINSKY_TOKEN}` },
-        signal: withTimeout(signal, 60_000)
-      })
-      if (!r.ok) {
-        const detail = await r.text().catch(() => '')
-        throw imageUpstreamError({
-          provider: 'Kandinsky video',
-          phase: 'result',
-          status: r.status,
-          detail
-        })
-      }
-      return Buffer.from(await r.arrayBuffer()).toString('base64')
-    }
-    if (status === 'failed' || status === 'error') {
-      throw imageUpstreamError({
-        provider: 'Kandinsky video',
-        phase: 'status',
-        detail: j.error || j.detail || j.message
-      })
-    }
-  }
-  console.error(`[video] ${taskType} таймаут 480с`)
-  throw httpErr('TIMEOUT', 'Видео: таймаут (8 мин)')
-}
-
-// говорящая голова: портрет + аудио (с ретраем)
-async function gigaAvatar(image, audio, query, signal) {
-  const params = {
-    query: query || 'talking character portrait, front view, natural facial motion, subtle head movement',
-    image,
-    audio
-  }
-  return videoTask('giga_avatar', params, signal)
-}
-
-// idle-анимация портрета (без звука). Бьютификатор отключён — он падает на воркере.
-// С ретраем: видео-воркер иногда падает разово.
-async function animatePortrait(image, query, quality, signal) {
-  const model = quality === 'hd' ? 'k5-i2v-hd' : 'k5-i2v-lite'
-  const params = {
-    query: query || 'he stays still, only blinks slowly and breathes subtly, locked camera, fixed framing, no zoom',
-    image,
-    beautificator: 'disabled'
-  }
-  return videoTask(model, params, signal)
-}
+// ================= Клиенты провайдеров =================
+const kandinskyImages = createKandinskyImageClient({
+  token: KANDINSKY_TOKEN,
+  host: KANDINSKY_HOST,
+  insecure: INSECURE,
+  queueLimit: KANDINSKY_QUEUE_LIMIT,
+  imageTimeoutMs: KANDINSKY_IMAGE_TIMEOUT_MS,
+  requestTimeoutMs: KANDINSKY_REQUEST_TIMEOUT_MS
+})
+const kandinskyVideo = createKandinskyVideoClient({
+  token: KANDINSKY_TOKEN,
+  baseUrl: VIDEO_BASE_URL,
+  queueLimit: VIDEO_QUEUE_LIMIT
+})
+const kandinskyQueued = (prompt, width, height, signal) =>
+  kandinskyImages.generate(prompt, width, height, signal)
+const gigaAvatar = (image, audio, query, signal) =>
+  kandinskyVideo.gigaAvatar(image, audio, query, signal)
+const animatePortrait = (image, query, quality, signal) =>
+  kandinskyVideo.animatePortrait(image, query, quality, signal)
 
 const recordInternalGenerationCost = createBestEffortGenerationCostRecorder({
   getLedger: () => generationCostLedger
@@ -828,12 +380,20 @@ async function generateInternalPortrait(prompt, signal, costContext = null) {
   }
 }
 
-async function measuredInternalImageRequest({ prompt, aspectRatio, quality, signal, costContext }) {
+async function measuredInternalImageRequest({
+  prompt,
+  aspectRatio,
+  quality,
+  referenceImages = [],
+  signal,
+  costContext
+}) {
   try {
     const generated = await requestCoverImageObserved({
       prompt,
       aspectRatio,
       quality,
+      referenceImages,
       requestId: randomUUID(),
       signal
     })
@@ -911,7 +471,7 @@ async function generateInternalCharacterPortrait(prompt, signal, costContext) {
   }
 }
 
-async function generateInternalScene(prompt, signal, costContext) {
+async function generateInternalScene(prompt, signal, costContext, { referenceImages = [] } = {}) {
   let release
   try {
     release = await imageGate.acquire(signal)
@@ -921,6 +481,7 @@ async function generateInternalScene(prompt, signal, costContext) {
         prompt,
         aspectRatio: '4:3',
         quality: SCENE_IMAGE_QUALITY,
+        referenceImages,
         costContext,
         signal
       })
@@ -1232,6 +793,7 @@ if (process.env.DATABASE_URL) {
   })
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool, {
     defaultPipelineId: BOOK_ANALYSIS_PIPELINE,
+    pipelineForEdition: BOOK_ANALYSIS_PIPELINE_FOR_EDITION,
     mediaGenerationEnabled: BOOK_ANALYSIS_MEDIA_GENERATION_ENABLED
   })
   bookTtsMarkupRepository = createPostgresBookTtsMarkupRepository(bookMarkupPool)

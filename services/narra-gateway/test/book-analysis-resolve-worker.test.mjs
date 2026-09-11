@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBookAnalysisResolveWorker } from '../book-analysis-resolve-worker.mjs'
+import { createBookAnalysisResolveWorker } from '../analysis/book-analysis-resolve-worker.mjs'
 
 const input = {
   runId: 'run-1',

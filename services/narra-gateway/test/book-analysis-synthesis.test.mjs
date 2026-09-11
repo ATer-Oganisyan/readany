@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { selectCharacterSynthesisEvidence } from '../book-analysis-synthesis.mjs'
+import { selectCharacterSynthesisEvidence } from '../analysis/book-analysis-synthesis.mjs'
 
 function observation(index, type = 'character_action') {
   return {

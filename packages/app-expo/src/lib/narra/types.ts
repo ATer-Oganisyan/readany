@@ -53,6 +53,8 @@ export interface NarraCharacter {
   expression?: string;
   /** Fraction of the book (0…0.95) at which the character becomes available. */
   unlockProgress: number;
+  /** An unambiguous name was displayed on a page the reader reached. */
+  encounteredInReader?: boolean;
   /** Глава первого значимого появления (1 — первая); для заглушки запертого героя. */
   appearanceChapter?: number;
   greeting?: string;
