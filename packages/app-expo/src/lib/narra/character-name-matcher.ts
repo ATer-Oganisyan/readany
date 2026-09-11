@@ -197,6 +197,11 @@ function exactRussianNameForms(token: string): string[] {
     }
   }
 
+  // Feminine surnames must not match the masculine nominative (Раскольников).
+  if (/(?:ова|ева|ина)$/.test(token)) {
+    addForms(token.slice(0, -1), ["а", "ой", "у", "ою"]);
+  }
+
   // Мужские фамилии-прилагательные: Вронский, Троцкий.
   if (/(?:ск|цк)ий$/.test(token)) {
     addForms(token.slice(0, -2), ["ого", "ому", "им", "ом"]);
@@ -219,8 +224,7 @@ function addId(map: Record<string, string[]>, key: string, id: string): void {
 }
 
 /**
- * Строит спеку матчера из персонажей книги. Персонажи с запертым доступом
- * сюда просто не передаются — их имена не будут размечены вовсе.
+ * Строит спеку из полного состава персонажей; неоднозначные имена пропускаются.
  */
 export function buildCharacterNameMatcherSpec(
   characters: readonly CharacterNameSource[],
@@ -228,6 +232,15 @@ export function buildCharacterNameMatcherSpec(
   const stems: Record<string, string[]> = {};
   const exact: Record<string, string[]> = {};
   const stopwordSet = new Set(NAME_STOPWORDS);
+  const nameTokens = new Set(
+    characters.flatMap(
+      (character) =>
+        [character.name, character.fullName ?? "", ...(character.aliases ?? [])]
+          .join(" ")
+          .toLowerCase()
+          .match(/[a-zа-яё]+/g) ?? [],
+    ),
+  );
 
   for (const character of characters) {
     if (!character?.id) continue;
@@ -237,7 +250,10 @@ export function buildCharacterNameMatcherSpec(
       if (token.length < 3 || stopwordSet.has(token)) continue;
       for (const form of exactRussianNameForms(token)) addId(exact, form, character.id);
       const stem = stemNameToken(token);
-      if (stem.length >= MIN_NAME_STEM_LENGTH) {
+      if (
+        stem.length >= MIN_NAME_STEM_LENGTH &&
+        !(/(?:ова|ева|ина)$/.test(token) && nameTokens.has(token.slice(0, -1)))
+      ) {
         addId(stems, stem, character.id);
       }
     }

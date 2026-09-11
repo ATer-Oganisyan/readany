@@ -10,7 +10,16 @@ ARG GATEWAY_BUILD_VERSION=development
 ENV NODE_ENV=production \
     GATEWAY_BUILD_VERSION=${GATEWAY_BUILD_VERSION}
 
-COPY --chown=node:node *.mjs *.pem ./
+COPY --chown=node:node index.mjs *.pem ./
+COPY --chown=node:node analysis ./analysis
+COPY --chown=node:node books ./books
+COPY --chown=node:node catalog ./catalog
+COPY --chown=node:node db ./db
+COPY --chown=node:node generation ./generation
+COPY --chown=node:node platform ./platform
+COPY --chown=node:node providers ./providers
+COPY --chown=node:node search ./search
+COPY --chown=node:node tts ./tts
 COPY --chown=node:node evaluation ./evaluation
 COPY --chown=node:node cover-generation-config.json ./
 COPY --chown=node:node data ./data

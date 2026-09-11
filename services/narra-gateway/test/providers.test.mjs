@@ -5,13 +5,14 @@ import {
   coverRouteReadiness,
   llmRouteReadiness,
   maxTokensFor,
+  mediaImageQualityForDimensions,
   normalizeImageTransportError,
   omitsTemperature,
   requestChat,
   requestCoverImage,
   requestCoverImageWithFallback,
   routeForPurpose
-} from '../providers.mjs'
+} from '../providers/providers.mjs'
 
 const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 
@@ -468,6 +469,7 @@ test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async (
   const bodies = []
   const result = await requestCoverImageWithFallback({
     prompt: 'front cover artwork',
+    quality: 'low',
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body)
       models.push(body.model)
@@ -495,7 +497,7 @@ test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async (
     { status: 'failed', retryIndex: 0 },
     { status: 'completed', retryIndex: 1 }
   ])
-  assert.equal(bodies[0].quality, 'high')
+  assert.equal(bodies[0].quality, 'low')
   assert.equal(Object.hasOwn(bodies[0], 'resolution'), false)
   assert.equal(bodies[1].aspect_ratio, '2:3')
   assert.equal(bodies[1].resolution, '1K')
@@ -713,6 +715,7 @@ test('OpenRouter image request accepts a server-selected portrait aspect ratio',
   await requestCoverImage({
     prompt: 'character portrait',
     aspectRatio: '3:4',
+    quality: 'low',
     fetchImpl: async (_url, init) => {
       calls.push(JSON.parse(init.body))
       return new Response(
@@ -723,6 +726,30 @@ test('OpenRouter image request accepts a server-selected portrait aspect ratio',
     env: { OPENROUTER_API_KEY: 'or-key' }
   })
   assert.equal(calls[0].aspect_ratio, '3:4')
+  assert.equal(calls[0].quality, 'low')
+})
+
+test('legacy media dimensions select portrait and scene quality independently', () => {
+  const qualities = {
+    portraitQuality: 'medium',
+    sceneQuality: 'low'
+  }
+  assert.equal(mediaImageQualityForDimensions({ width: 768, height: 1024, ...qualities }), 'medium')
+  assert.equal(mediaImageQualityForDimensions({ width: 1024, height: 1024, ...qualities }), 'low')
+  assert.equal(mediaImageQualityForDimensions({ width: 1536, height: 1024, ...qualities }), 'low')
+  assert.equal(mediaImageQualityForDimensions({ width: 1024, height: 1536 }), 'high')
+})
+
+test('image request rejects an unsupported server-selected quality', async () => {
+  await assert.rejects(
+    requestCoverImage({
+      prompt: 'cover',
+      quality: 'ultra',
+      env: { OPENROUTER_API_KEY: 'or-key' },
+      fetchImpl: async () => { throw new Error('no calls expected') }
+    }),
+    /Unsupported image quality: ultra/
+  )
 })
 
 test('unconfigured cover route fails with NO_KEY before any network call', async () => {

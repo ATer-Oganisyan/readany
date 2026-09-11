@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { buildNarrativeGraph } from '../book-narrative-graph.mjs'
-import { createPostgresBookSearchRepository } from '../book-search-repository.mjs'
-import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
+import { buildNarrativeGraph } from '../search/book-narrative-graph.mjs'
+import { createPostgresBookSearchRepository } from '../search/book-search-repository.mjs'
+import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 

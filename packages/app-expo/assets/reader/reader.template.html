@@ -1684,6 +1684,8 @@
     // ─── Book loading ───
     async function openBook(msg) {
       _readerCopyText = '';
+      _characterReaderLoadId = msg.loadId;
+      _encounteredCharacterIds = new Set();
       const container = document.getElementById('reader-container');
       const loading = document.getElementById('loading');
       if (loading) loading.classList.remove('hidden');
@@ -1912,6 +1914,7 @@
           // Extract text after page render settles
           if (snippetTimer) clearTimeout(snippetTimer);
           snippetTimer = setTimeout(() => {
+            reportVisibleCharacters();
             var snippet = getVisibleTextSnippet(80);
             if (snippet) postToRN('pageSnippet', { textSnippet: snippet });
           }, 300);
@@ -5455,11 +5458,31 @@ a { color: ${primary} !important; }
     // Спека приходит из RN (window.setCharacterNames), матчинг делает
     // window._readanyFindCharacterNameMatches из бандла (общий модуль с RN).
     var _characterNameSpec = null;
+    var _characterReaderLoadId = null;
+    var _encounteredCharacterIds = new Set();
     var CHARACTER_NAME_STYLE_ID = 'readany-character-name-style';
     var CHARACTER_NAME_CLASS = 'readany-character-name';
     var CHARACTER_NAME_ATTR = 'data-readany-character-id';
     var CHARACTER_NAME_BLOCK_ATTR = 'data-readany-charnames';
     var CHARACTER_NAME_CHUNK = 24;
+
+    function reportVisibleCharacters() {
+      if (!view || !view.lastLocation || !view.lastLocation.range) return;
+      var visible = view.lastLocation.range;
+      var doc = visible.startContainer.ownerDocument;
+      if (!doc) return;
+      var ids = [];
+      var spans = doc.querySelectorAll('[' + CHARACTER_NAME_ATTR + ']');
+      for (var span of spans) {
+        var id = span.getAttribute(CHARACTER_NAME_ATTR);
+        if (!id || _encounteredCharacterIds.has(id) || !visible.intersectsNode(span)) continue;
+        _encounteredCharacterIds.add(id);
+        ids.push(id);
+      }
+      if (ids.length) postToRN('charactersEncountered', {
+        characterIds: ids, loadId: _characterReaderLoadId,
+      });
+    }
 
     function characterNameInjectStyles(doc) {
       if (!doc || doc.getElementById(CHARACTER_NAME_STYLE_ID)) return;
@@ -5560,6 +5583,7 @@ a { color: ${primary} !important; }
         for (; index < limit; index++) {
           try { markCharacterNamesInBlock(doc, pending[index]); } catch (e) {}
         }
+        reportVisibleCharacters();
         if (index < pending.length) setTimeout(step, 0);
       }
       setTimeout(step, 0);

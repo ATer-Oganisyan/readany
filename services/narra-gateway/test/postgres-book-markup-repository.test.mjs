@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import { bookIdentityTargetVersion } from '../book-identity.mjs'
-import { createPostgresBookMarkupRepository } from '../postgres-book-markup-repository.mjs'
+import { bookIdentityTargetVersion } from '../books/book-identity.mjs'
+import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
 
 function scriptedPool(scripts) {
   const queries = []

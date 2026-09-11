@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import test from 'node:test'
-import { createPostgresBookOperatorRepository } from '../book-operator-repository.mjs'
-import { runBookMarkupMigrations } from '../postgres-runtime.mjs'
+import { createPostgresBookOperatorRepository } from '../books/book-operator-repository.mjs'
+import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 
 const connectionString = process.env.BOOK_MARKUP_TEST_DATABASE_URL
 

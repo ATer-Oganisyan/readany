@@ -4,13 +4,13 @@ import { X509Certificate } from 'node:crypto'
 import test from 'node:test'
 import tls from 'node:tls'
 
-import { createHttpsAgent } from '../http.mjs'
+import { createHttpsAgent } from '../platform/http.mjs'
 import {
   EXPECTED_SBER_CA_FINGERPRINTS,
   sberCaBundle,
   verifiedRussianTrustedCertificates,
   verifiedSberCertificates
-} from '../sber-tls.mjs'
+} from '../providers/sber-tls.mjs'
 
 function fingerprints(certificates) {
   return new Set(certificates.map((pem) => (

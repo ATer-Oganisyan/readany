@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createGenerationQueueOperatorRepository } from '../generation-queue-operator-repository.mjs'
+import { createGenerationQueueOperatorRepository } from '../generation/generation-queue-operator-repository.mjs'
 
 const PAUSE = '22222222-2222-4222-8222-222222222222'
 

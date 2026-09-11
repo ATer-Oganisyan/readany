@@ -5,7 +5,7 @@ import {
   parseBookGraphSearchQuery,
   parseBookGraphQuery,
   parseBookSearchQuery
-} from '../book-search-api.mjs'
+} from '../search/book-search-api.mjs'
 
 test('search query contract is bounded and spoiler-safe by default', () => {
   assert.deepEqual(parseBookSearchQuery({ q: 'тайное озеро' }), {

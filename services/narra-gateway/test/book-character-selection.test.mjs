@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assembleBookMarkupV3 } from '../book-analysis-assembler.mjs'
+import { assembleBookMarkupV3 } from '../analysis/book-analysis-assembler.mjs'
 import {
   BOOK_CHARACTER_SELECTION_VERSION,
   MAX_PUBLISHED_BOOK_CHARACTERS,
   rankBookCharacterEntities,
   selectedBookCharacterEntities
-} from '../book-character-selection.mjs'
+} from '../books/book-character-selection.mjs'
 
 function observation(id, type, startOffset) {
   return {

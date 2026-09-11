@@ -4,7 +4,7 @@ import {
   insecureVideoEnvironmentAllowed,
   isSecureServiceUrl,
   serviceUrl
-} from '../service-url.mjs'
+} from '../platform/service-url.mjs'
 
 test('production service URLs require HTTPS by default', () => {
   assert.throws(

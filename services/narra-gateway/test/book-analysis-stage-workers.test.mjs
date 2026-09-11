@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { createBookAnalysisPublishWorker } from '../book-analysis-publish-worker.mjs'
-import { createBookAnalysisSynthesizeWorker } from '../book-analysis-synthesize-worker.mjs'
-import { createBookAnalysisValidateWorker } from '../book-analysis-validate-worker.mjs'
+import { createBookAnalysisPublishWorker } from '../analysis/book-analysis-publish-worker.mjs'
+import { createBookAnalysisSynthesizeWorker } from '../analysis/book-analysis-synthesize-worker.mjs'
+import { createBookAnalysisValidateWorker } from '../analysis/book-analysis-validate-worker.mjs'
 
 const leaseToken = '11111111-1111-4111-8111-111111111111'
 const job = {

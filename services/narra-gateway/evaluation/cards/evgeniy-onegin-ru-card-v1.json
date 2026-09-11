@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 1,
+  "id": "evgeniy-onegin-ru-card-v1",
+  "identityFixture": "evgeniy-onegin-ru-v1",
+  "source": {
+    "language": "ru",
+    "title": "Евгений Онегин",
+    "bookEditionId": "3c1ab592-0228-4931-ba74-5003fb463c1b",
+    "normalizedTextSha256": "dd0275d4ab15332ed585dfc23c49a1762a8b28a09b311306f33c5e4ef83c219c",
+    "textLength": 162355,
+    "chapterSource": "headings detected in the normalized text; content_navigation returned no chapter segments for this edition, so D1 cannot use it as published",
+    "cardWindowRule": "D1: [0, endOffset of the chapter following the chapter that contains firstMentionTextOffset]",
+    "references": [
+      "https://ru.wikipedia.org/wiki/Список_персонажей_романа_«Евгений_Онегин»",
+      "https://ru.wikipedia.org/wiki/Евгений_Онегин",
+      "https://kratko.rustih.ru/aleksandr-pushkin-geroi-evgenij-onegin/"
+    ]
+  },
+  "gates": {
+    "genderAccuracy": 0.95,
+    "fullNameCoverage": 0.9,
+    "appearanceCoverage": 0.9,
+    "traitsInRange": 0.9,
+    "traitLanguagePurity": 1.0,
+    "nonCharacterRows": 0,
+    "spoilerViolations": 0
+  },
+  "chapters": [
+    {
+      "index": 0,
+      "title": "ГЛАВА ПЕРВАЯ.",
+      "startOffset": 761,
+      "endOffset": 21479
+    },
+    {
+      "index": 1,
+      "title": "ГЛАВА ВТОРАЯ.",
+      "startOffset": 21479,
+      "endOffset": 36479
+    },
+    {
+      "index": 2,
+      "title": "ГЛАВА ТРЕТЬЯ.",
+      "startOffset": 36479,
+      "endOffset": 54698
+    },
+    {
+      "index": 3,
+      "title": "ГЛАВА ЧЕТВЕРТАЯ.",
+      "startOffset": 54698,
+      "endOffset": 71019
+    },
+    {
+      "index": 4,
+      "title": "ГЛАВА ПЯТАЯ.",
+      "startOffset": 71019,
+      "endOffset": 87170
+    },
+    {
+      "index": 5,
+      "title": "ГЛАВА ШЕСТАЯ",
+      "startOffset": 87170,
+      "endOffset": 103920
+    },
+    {
+      "index": 6,
+      "title": "ГЛАВА СЕДЬМАЯ.",
+      "startOffset": 103920,
+      "endOffset": 124407
+    },
+    {
+      "index": 7,
+      "title": "ГЛАВА ОСЬМАЯ.",
+      "startOffset": 124407,
+      "endOffset": 162355
+    }
+  ],
+  "characters": [
+    {
+      "id": "tatyana_larina",
+      "name": "Татьяна Ларина",
+      "significant": true,
+      "fullName": "Татьяна Дмитриевна Ларина",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 30271,
+      "spoilers": [
+        {
+          "id": "tatyana_marries_general",
+          "label": "Татьяна выходит замуж за генерала и становится княгиней",
+          "revealedAtOffset": 123710,
+          "markers": [
+            "замуж",
+            "княгин",
+            "генерал",
+            "жена"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "evgeny_onegin",
+      "name": "Евгений Онегин",
+      "significant": true,
+      "fullName": "Евгений Онегин",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 0,
+      "spoilers": [
+        {
+          "id": "onegin_kills_lensky",
+          "label": "Онегин убивает Ленского на дуэли",
+          "revealedAtOffset": 99848,
+          "markers": [
+            "убил ленского",
+            "убивает ленского",
+            "дуэл"
+          ]
+        },
+        {
+          "id": "onegin_rejected",
+          "label": "Татьяна отвергает Онегина в финале",
+          "revealedAtOffset": 144125,
+          "markers": [
+            "отверг",
+            "отказ",
+            "другому отдана"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "olga_larina",
+      "name": "Ольга Ларина",
+      "significant": true,
+      "fullName": "Ольга Ларина",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 29154,
+      "spoilers": [
+        {
+          "id": "olga_marries_uhlan",
+          "label": "Ольга выходит замуж за улана и уезжает",
+          "revealedAtOffset": 107431,
+          "markers": [
+            "улан",
+            "замуж",
+            "венц",
+            "уеха"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vladimir_lensky",
+      "name": "Владимир Ленский",
+      "significant": true,
+      "fullName": "Владимир Ленский",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 23716,
+      "spoilers": [
+        {
+          "id": "lensky_killed_in_duel",
+          "label": "Ленский убит Онегиным на дуэли",
+          "revealedAtOffset": 99848,
+          "markers": [
+            "убит",
+            "убива",
+            "погиб",
+            "гибел",
+            "смерт",
+            "мертв",
+            "мёртв",
+            "застрел",
+            "могил"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "zaretsky",
+      "name": "Зарецкий",
+      "significant": true,
+      "fullName": "Зарецкий",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 88693,
+      "spoilers": [
+        {
+          "id": "zaretsky_seconds_the_duel",
+          "label": "Зарецкий — секундант на дуэли и увозит тело Ленского",
+          "revealedAtOffset": 96398,
+          "markers": [
+            "дуэл",
+            "секундант",
+            "тело"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "buyanov",
+      "name": "Буянов",
+      "significant": true,
+      "fullName": "Буянов",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 80919,
+      "spoilers": []
+    },
+    {
+      "id": "monsieur_triquet",
+      "name": "Мосье Трике",
+      "significant": true,
+      "fullName": "Мосье Трике",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 81132,
+      "spoilers": []
+    },
+    {
+      "id": "narrator",
+      "name": "Рассказчик",
+      "significant": false,
+      "fullName": null,
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 62026,
+      "spoilers": []
+    },
+    {
+      "id": "onegin_uncle",
+      "name": "Дядя Онегина",
+      "significant": false,
+      "fullName": null,
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 942,
+      "spoilers": []
+    },
+    {
+      "id": "praskovya_larina",
+      "name": "Прасковья Ларина",
+      "significant": true,
+      "fullName": "Прасковья Ларина",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 33551,
+      "spoilers": []
+    },
+    {
+      "id": "dmitry_larin",
+      "name": "Дмитрий Ларин",
+      "significant": true,
+      "fullName": "Дмитрий Ларин",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 34894,
+      "spoilers": []
+    },
+    {
+      "id": "petushkov",
+      "name": "Петушков",
+      "significant": true,
+      "fullName": "Петушков",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 80888,
+      "spoilers": []
+    },
+    {
+      "id": "tatyana_husband",
+      "name": "Муж Татьяны",
+      "significant": false,
+      "fullName": null,
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 123710,
+      "spoilers": []
+    },
+    {
+      "id": "kharlikov",
+      "name": "Панфил Харликов",
+      "significant": true,
+      "fullName": "Панфил Харликов",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 81098,
+      "spoilers": []
+    },
+    {
+      "id": "princess_alina",
+      "name": "Княжна Алина",
+      "significant": true,
+      "fullName": "Княжна Алина",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 32530,
+      "spoilers": []
+    },
+    {
+      "id": "pustyakov",
+      "name": "Пустяков",
+      "significant": true,
+      "fullName": "Пустяков",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 80725,
+      "spoilers": []
+    },
+    {
+      "id": "agafon",
+      "name": "Агафон",
+      "significant": false,
+      "fullName": "Агафон",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 74597,
+      "spoilers": []
+    },
+    {
+      "id": "anisya",
+      "name": "Анисья",
+      "significant": false,
+      "fullName": "Анисья",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 109955,
+      "spoilers": []
+    },
+    {
+      "id": "dunya",
+      "name": "Дуня",
+      "significant": false,
+      "fullName": "Дуня",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 26043,
+      "spoilers": []
+    },
+    {
+      "id": "flyanov",
+      "name": "Флянов",
+      "significant": false,
+      "fullName": "Флянов",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 81007,
+      "spoilers": []
+    },
+    {
+      "id": "guillot",
+      "name": "Гильо",
+      "significant": false,
+      "fullName": "Гильо",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 95874,
+      "spoilers": []
+    },
+    {
+      "id": "gvozdin",
+      "name": "Гвоздин",
+      "significant": false,
+      "fullName": "Гвоздин",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 80736,
+      "spoilers": []
+    },
+    {
+      "id": "andryushka",
+      "name": "Андрюшка",
+      "significant": false,
+      "fullName": "Андрюшка",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 38063,
+      "spoilers": []
+    },
+    {
+      "id": "filipyevna",
+      "name": "Филипьевна",
+      "significant": false,
+      "fullName": "Филипьевна",
+      "gender": "female",
+      "kind": "person",
+      "firstMentionTextOffset": 50965,
+      "spoilers": []
+    },
+    {
+      "id": "pykhtin",
+      "name": "Пыхтин",
+      "significant": false,
+      "fullName": "Пыхтин",
+      "gender": "male",
+      "kind": "person",
+      "firstMentionTextOffset": 113365,
+      "spoilers": []
+    },
+    {
+      "id": "skotinin",
+      "name": "Скотинины",
+      "significant": false,
+      "fullName": "Скотинины",
+      "gender": null,
+      "kind": "group",
+      "firstMentionTextOffset": 80790,
+      "spoilers": []
+    }
+  ],
+  "nonCharacters": [
+    {
+      "name": "Муза",
+      "kind": "personification",
+      "reason": "олицетворение поэтического вдохновения, не действующее лицо"
+    },
+    {
+      "name": "Медведь",
+      "kind": "dream-figure",
+      "reason": "зверь из сна Татьяны, не персонаж с биографией"
+    },
+    {
+      "name": "Старушка",
+      "kind": "generic-label",
+      "reason": "нарицательное обозначение; в тексте это ключница Анисья"
+    },
+    {
+      "name": "Сон",
+      "kind": "abstract",
+      "reason": "не сущность"
+    }
+  ]
+}

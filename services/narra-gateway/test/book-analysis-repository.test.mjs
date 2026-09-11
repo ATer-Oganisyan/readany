@@ -4,7 +4,7 @@ import {
   buildProvisionalAnalysisCharacters,
   bookAnalysisRunIdempotencyKey,
   createPostgresBookAnalysisRepository
-} from '../book-analysis-repository.mjs'
+} from '../analysis/book-analysis-repository.mjs'
 
 function scriptedPool(scripts) {
   const queries = []
@@ -298,9 +298,12 @@ test('prepare completion writes chunks and scan jobs before advancing the barrie
   const insertChunk = sql.findIndex((value) => /INSERT INTO book_analysis_chunks/.test(value))
   const insertJob = sql.findIndex((value) => /INSERT INTO book_analysis_jobs/.test(value))
   const readyPrepare = sql.findIndex((value) => /UPDATE book_analysis_jobs[\s\S]*status = 'ready'/.test(value))
-  const advance = sql.findIndex((value) => /UPDATE book_analysis_runs SET stage = 'scan'/.test(value))
+  const advance = sql.findIndex((value) => /UPDATE book_analysis_runs SET stage = \$2/.test(value))
   assert.ok(insertChunk > 0 && insertChunk < insertJob)
   assert.ok(insertJob < readyPrepare && readyPrepare < advance)
+  // Стадия стала параметром, потому что у конвейера карточек сканирующей стадии
+  // нет; сканирующий пайплайн обязан по-прежнему уходить на `scan`.
+  assert.equal(pool.queries[advance].params[1], 'scan')
   const scanInsert = pool.queries.find(({ sql: value }) => /INSERT INTO book_analysis_jobs/.test(value))
   assert.deepEqual(JSON.parse(scanInsert.params[5]), { chunkOrdinal: 0 })
   assert.equal(scanInsert.params[6], 'narra')
@@ -461,4 +464,96 @@ test('resolve completion freezes evidence before advancing to synthesize', async
     limit: 20,
     characterKeys: ['character:anna']
   })
+})
+
+test('a cards run prepares without scan jobs and waits at synthesize', async () => {
+  // У конвейера карточек сканирующей стадии нет: персонажей нашёл
+  // детерминированный инвентарь, а дальше работа идёт заданиями
+  // `generation_jobs`. Прогон остаётся на `synthesize` — это честное
+  // «персонажей делают», — а различает его от обычного синтеза `pipeline_id` в
+  // соседней колонке.
+  const pool = scriptedPool([
+    () => ({ rows: [{ id: 'prepare-1', max_attempts: 5, attempts: 1 }] }),
+    () => ({ rows: [{
+      id: 'run-1', text_length: '100', pipeline_id: 'cards',
+      pipeline_implementation_version: 'cards-v1'
+    }] }),
+    // update run, insert chunk, insert card window, insert fragment —
+    // и ни одного scan-задания.
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [{
+      chunk_count: 1, first_ordinal: 0, last_ordinal: 0,
+      first_offset: '0', last_offset: '100', covered_chars: '100', discontinuity_count: 0
+    }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookAnalysisRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174002'
+  })
+
+  const result = await repository.completePrepare(
+    { id: 'prepare-1', runId: 'run-1', leaseToken: '123e4567-e89b-42d3-a456-426614174003' },
+    {
+      normalizedTextObjectKey: 'analysis/run-1/normalized-text-v2.txt',
+      normalizedTextHash: 'a'.repeat(64),
+      textLength: 100,
+      sections: [{ index: 0 }],
+      contentNavigation: { segments: [] },
+      chunks: [{
+        id: 'chunk-1', ordinal: 0, coreStartOffset: 0, coreEndOffset: 100,
+        contextStartOffset: 0, contextEndOffset: 100, contentHash: 'b'.repeat(64), metadata: {}
+      }],
+      cardWindows: {
+        windows: [{
+          windowIndex: 0,
+          startOffset: 0,
+          endOffset: 100,
+          assignStartOffset: 0,
+          assignEndOffset: 100,
+          chapterIndexes: [0],
+          priorityClass: 'foreground'
+        }]
+      },
+      characterFragments: {
+        characters: [{
+          characterKey: 'name:hero',
+          fragments: [{
+            fragmentId: 'frag:name:hero:0',
+            paragraphIndex: 0,
+            chapterIndex: 0,
+            startOffset: 10,
+            endOffset: 40,
+            mentionOffsets: [10]
+          }]
+        }]
+      }
+    }
+  )
+
+  const sql = pool.queries.map(({ sql: value }) => value)
+  assert.equal(result.stage, 'synthesize')
+  // Ни одного scan-задания: пытаться их создать значило бы уронить Prepare,
+  // потому что стратегия карточек отказывает громко.
+  assert.equal(sql.some((value) => /INSERT INTO book_analysis_jobs/.test(value)), false)
+  // Фрагменты записаны тем же Prepare и по тому же тексту, что окна.
+  const fragments = pool.queries.find(({ sql: value }) =>
+    /INSERT INTO book_character_fragments/.test(value))
+  assert.ok(fragments, 'фрагменты не записаны')
+  assert.deepEqual(fragments.params.slice(0, 3), ['run-1', 'name:hero', 'frag:name:hero:0'])
+  const advance = pool.queries.find(({ sql: value }) =>
+    /UPDATE book_analysis_runs SET stage = \$2/.test(value))
+  assert.equal(advance.params[1], 'synthesize')
+  // Первое звено цепочки: без него прогон замер бы на `synthesize` навсегда —
+  // подтверждение ставит карточки и полный заход, но само себя поставить не может.
+  const confirm = pool.queries.find(({ sql: value }) =>
+    /INSERT INTO generation_jobs[\s\S]*roster_confirm/.test(value))
+  assert.ok(confirm, 'подтверждение первого окна не поставлено')
+  assert.match(confirm.params[1], /:roster-confirm:window-0$/)
+  assert.equal(confirm.params[4], 65)
+  assert.equal(confirm.params[6], 0)
 })

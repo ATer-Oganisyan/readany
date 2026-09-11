@@ -1,0 +1,144 @@
+[
+  {
+    "judgeId": "evgeny_onegin::онегин",
+    "goldId": "evgeny_onegin",
+    "goldName": "Евгений Онегин",
+    "rowName": "Онегин",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["haircut_latest_fashion", "london_dandy", "bolivar_hat", "beaver_collar"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.9,
+        "rationale": "Оба core-факта покрыты, добавлены боливар и бобровый воротник — всё это подлинные приметы костюма из первой главы. Портрет собирается однозначно."
+      },
+      "biography": {
+        "coveredFactIds": ["inherits_uncle_estate", "spleen"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.25,
+        "rationale": "Из девяти core-фактов переданы только наследство и охлаждение к свету. Ни происхождения, ни воспитания, ни дружбы с Ленским, ни письма Татьяны — биографии как связного рассказа нет."
+      }
+    }
+  },
+  {
+    "judgeId": "tatyana_larina::татьяна",
+    "goldId": "tatyana_larina",
+    "goldName": "Татьяна Ларина",
+    "rowName": "Татьяна",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["pale"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.65,
+        "rationale": "Бледность и распущенные волосы взяты дословно из сцены письма — единственных внешних примет, какие у Пушкина есть. Выдуманных глаз и волос нет, forbidden не нарушен; противопоставление красоте Ольги пропущено."
+      },
+      "biography": {
+        "coveredFactIds": ["elder_larin_daughter", "silent_and_wild"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.25,
+        "rationale": "Есть родство и замкнутость. Нет ни романов, ни письма, ни отповеди, ни Москвы — то есть нет ровно того, из-за чего Татьяна главная героиня."
+      }
+    }
+  },
+  {
+    "judgeId": "vladimir_lensky::владимир",
+    "goldId": "vladimir_lensky",
+    "goldName": "Владимир Ленский",
+    "rowName": "Владимир",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["black_curls", "handsome_in_prime"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.95,
+        "rationale": "Оба core-факта на месте и сформулированы почти цитатой. Лучшая карточка внешности в книге."
+      },
+      "biography": {
+        "coveredFactIds": ["from_germany", "poet", "loves_olga"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [
+          {
+            "cardClaim": "его называют сердцем милым невеждой",
+            "why": "подлинная пушкинская формула о Ленском, в эталон не внесена"
+          }
+        ],
+        "score": 0.45,
+        "rationale": "Германия, поэзия и любовь к Ольге переданы верно. Возраст, дружба с Онегиным и дуэль отсутствуют; отсутствие дуэли здесь скорее плюс — окно карточки её не покрывает."
+      }
+    }
+  },
+  {
+    "judgeId": "olga_larina::ольга",
+    "goldId": "olga_larina",
+    "goldName": "Ольга Ларина",
+    "rowName": "Ольга",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": ["blue_eyes", "flaxen_curls", "light_figure", "round_red_face"],
+        "contradictions": [
+          {
+            "factId": "round_red_face",
+            "cardClaim": "круглым румяным лицом",
+            "goldSays": "«Кругла, красна лицом она» — пренебрежительная реплика Онегина, а не авторский портрет",
+            "severity": "minor"
+          }
+        ],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": true,
+        "score": 0.85,
+        "rationale": "Все три core-приметы строфы XXIII переданы точно. Единственная претензия — насмешка Онегина попала в паспорт внешности как объективная черта."
+      },
+      "biography": {
+        "coveredFactIds": ["lensky_fiancee", "flirts_with_onegin"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.3,
+        "rationale": "Названы жених и эпитеты после флирта на именинах. Не сказано даже, что она сестра Татьяны; пустота её натуры («в чертах у Ольги жизни нет») — главная характеристика — пропущена."
+      }
+    }
+  },
+  {
+    "judgeId": "praskovya_larina::мать-татьяны",
+    "goldId": "praskovya_larina",
+    "goldName": "Прасковья Ларина",
+    "rowName": "Мать Татьяны",
+    "promptVersion": "character-card-judge-v1",
+    "verdict": {
+      "appearance": {
+        "coveredFactIds": [],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "portraitUsable": false,
+        "score": 1.0,
+        "rationale": "Внешности в тексте нет, и appearancePrompt пуст — это правильное поведение, а не пробел. Ничего не выдумано."
+      },
+      "biography": {
+        "coveredFactIds": ["loved_richardson", "married_without_consent", "got_used_to_it"],
+        "contradictions": [],
+        "unsupportedClaims": [],
+        "notInGold": [],
+        "score": 0.6,
+        "rationale": "Лучшая биография в книге: Ричардсон, брак без согласия, привычка и самодержавное управление супругом переданы верно и по порядку. Вдовство и поездка в Москву не упомянуты."
+      }
+    }
+  }
+]

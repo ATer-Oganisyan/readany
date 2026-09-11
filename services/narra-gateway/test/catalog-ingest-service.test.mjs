@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { createCatalogIngestService } from '../catalog-ingest-service.mjs'
+import { createCatalogIngestService } from '../catalog/catalog-ingest-service.mjs'
 
 const BYTES = Buffer.from('catalog epub bytes')
 const HASH = createHash('sha256').update(BYTES).digest('hex')

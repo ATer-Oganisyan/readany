@@ -22,7 +22,7 @@ import {
   parseReaderProgressBody,
   parseSceneAtBody,
   ttsSectionJson
-} from '../book-catalog-api.mjs'
+} from '../catalog/book-catalog-api.mjs'
 
 const ID = '123e4567-e89b-42d3-a456-426614174000'
 

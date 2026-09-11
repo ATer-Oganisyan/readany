@@ -6,7 +6,7 @@ import {
   encodeBookContentCursor,
   utf8CharacterChunk,
   utf8ChunkPrefixLength
-} from '../book-content.mjs'
+} from '../books/book-content.mjs'
 
 const HASH = 'a'.repeat(64)
 

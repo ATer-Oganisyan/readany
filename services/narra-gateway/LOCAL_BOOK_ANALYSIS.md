@@ -23,8 +23,7 @@ docker compose -f compose.book-analysis-local.yml up -d --build
 ```bash
 docker compose --env-file book-analysis-local.env \
   -f compose.book-analysis-local.yml up -d --build \
-  --scale book-analysis-scan=3 \
-  --scale book-analysis-synthesize=2
+  --scale book-analysis-worker=2
 ```
 
 4. Откройте `http://localhost:18787/operator/`, загрузите EPUB, FB2, TXT или PDF

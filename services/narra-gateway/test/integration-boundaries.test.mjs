@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { requestChat } from '../providers.mjs'
+import { requestChat } from '../providers/providers.mjs'
 
 async function captureRequestBody({ provider = 'giga', model, purpose, temperature }) {
   let body

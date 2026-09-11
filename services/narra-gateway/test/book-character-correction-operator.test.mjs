@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   parseBookCharacterCorrectionCommand,
   runBookCharacterCorrectionCommand
-} from '../book-character-correction-operator.mjs'
+} from '../books/book-character-correction-operator.mjs'
 
 const BOOK_ID = '11111111-1111-4111-8111-111111111111'
 const HASH = 'a'.repeat(64)
