@@ -1,12 +1,10 @@
-import { Text } from "@/components/ui/Typography";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
-import { type ThemeColors, fontWeight, radius, spacing, useColors } from "@/styles/theme";
+import { type ThemeColors, spacing, useColors } from "@/styles/theme";
 import type { Book } from "@readany/core/types";
-import { BlurView } from "expo-blur";
 /**
  * ReadingNowShelf — секция «Читаю сейчас» в библиотеке: нативный горизонтальный
  * ряд книг, отсортированных по lastOpenedAt.
@@ -75,7 +73,6 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
           const coverUri = covers.get(book.id);
           const coverKey = `${book.id}:${book.meta.coverUrl ?? ""}`;
           const hasUsableCover = Boolean(coverUri) && !failedCoverKeys.has(coverKey);
-          const progressPercent = Math.round(Math.max(0, Math.min(1, book.progress ?? 0)) * 100);
           const bundledCatalogBook = hasUsableCover
             ? undefined
             : findBundledCatalogBookByTitle(book.meta.title);
@@ -144,16 +141,6 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                       showText={showCoverTypography}
                       textTone={coverTextTone}
                       coverUri={(hasUsableCover ? coverUri : bundledCoverUri) ?? undefined}
-                      bottomAccessory={
-                        progressPercent > 0 ? (
-                          <BlurView tint="dark" intensity={50} style={s.progressChip}>
-                            <Text style={s.cardProgress} numberOfLines={1}>
-                              {`${progressPercent}%`}
-                            </Text>
-                            <View pointerEvents="none" style={s.progressChipBorder} />
-                          </BlurView>
-                        ) : null
-                      }
                     />
                   </View>
                 }
@@ -183,27 +170,5 @@ const makeStyles = (colors: ThemeColors) =>
       overflow: "hidden",
       padding: spacing.md,
       backgroundColor: colors.bookCoverSurface,
-    },
-    progressChip: {
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: radius.full,
-      overflow: "hidden",
-      backgroundColor: "rgba(0,0,0,0.5)",
-    },
-    progressChipBorder: {
-      ...StyleSheet.absoluteFill,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.5)",
-      borderRadius: radius.full,
-    },
-    cardProgress: {
-      fontSize: 13,
-      fontWeight: fontWeight.semibold,
-      lineHeight: 18,
-      flexShrink: 0,
-      color: "rgba(255,255,255,0.92)",
-      textAlign: "left",
-      fontVariant: ["tabular-nums"],
     },
   });

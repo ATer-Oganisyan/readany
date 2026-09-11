@@ -29,11 +29,13 @@ describe("local book import toast contract", () => {
     expect(urlImport).not.toContain("showImportSummary(summary, undefined, true)");
   });
 
-  it("starts the enrichment toast with the completed state", () => {
+  it("announces the enrichment wait time", () => {
     expect(ruLibraryMessages.library.localImportEnrichmentPending).toBe(
-      "Готово! Скоро добавим обложку и\u00a0персонажей",
+      "Готовим обложку и персонажей —\nэто займёт до 15 минут",
     );
-    expect(importActions).toContain("обложку и\\u00A0персонажей");
+    expect(importActions).toContain(
+      JSON.stringify(ruLibraryMessages.library.localImportEnrichmentPending),
+    );
   });
 
   it("renders toast text with the regular interface font", () => {

@@ -1,6 +1,7 @@
 import { NativeModule, requireNativeModule } from "expo";
 
 declare class ReadAnyNativeControlsModule extends NativeModule {
+  averageTopImageColor(uri: string, fraction: number): Promise<string>;
   averageBottomImageColor(uri: string, bottomFraction: number): Promise<string>;
 
   promptForText(

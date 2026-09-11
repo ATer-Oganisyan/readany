@@ -1,3 +1,4 @@
+import { canRecoverLegacyCoverJob, coverRecoveryRequestId } from "./cover-job-recovery";
 import { getLocalDB, initDatabase } from "@readany/core/db/database";
 import type { CoverJobRequest } from "../narra/cover-jobs";
 
@@ -155,4 +156,31 @@ export async function deleteLocalCoverJob(bookId: string): Promise<void> {
 export async function getLocalCoverJob(bookId: string): Promise<LocalCoverJob | null> {
   await initDatabase();
   return selectByBookId(bookId);
+}
+
+/** Atomically replace the failed intent, recording recovery in its durable request ID. */
+export async function recoverLegacyCoverJob(
+  bookId: string,
+  requestId: string,
+  request: CoverJobRequest,
+): Promise<void> {
+  await initDatabase();
+  await serial(async () => {
+    const previous = await selectByBookId(bookId);
+    if (!canRecoverLegacyCoverJob(previous)) return;
+    const database = await getLocalDB();
+    await database.execute(
+      `UPDATE cover_jobs SET request_id = ?, request_body = ?, prompt = '', job_id = NULL,
+       status = 'submitting', next_poll_at = 0, updated_at = ?, expires_at = NULL,
+       last_error_code = NULL, last_error_message = NULL
+       WHERE book_id = ? AND request_id = ? AND status = 'failed'`,
+      [
+        coverRecoveryRequestId(requestId),
+        JSON.stringify(request),
+        Date.now(),
+        bookId,
+        previous!.requestId,
+      ],
+    );
+  });
 }

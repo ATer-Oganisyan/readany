@@ -300,6 +300,7 @@ describe("book TTS config changes", () => {
       useTTSStore.setState({ config: { ...DEFAULT_TTS_CONFIG, rate: 1 }, playState: "stopped" });
       try {
         useTTSStore.getState().play(["first", "second"]);
+        useTTSStore.setState({ playState: "playing" });
         useTTSStore.getState().pause();
         useTTSStore.getState().updateConfig({ rate: changed ? 1.5 : 1 });
         expect(useTTSStore.getState().playState).toBe("paused");
@@ -381,12 +382,13 @@ describe("full chapter timeline", () => {
       const callsAtEnd = fake.speak.mock.calls.length;
       useTTSStore.getState().skipSentence(1);
       expect(fake.speak).toHaveBeenCalledTimes(callsAtEnd);
-      const seekInReader = vi.fn();
+      const seekInReader = vi.fn((segment) => useTTSStore.getState().play([segment]));
       useTTSStore.setState({ onSeekChapterSegment: seekInReader });
       useTTSStore.getState().skipSentence(-1);
-      expect(seekInReader).toHaveBeenCalledWith(segments[8]);
-      useTTSStore.getState().seekChapterSegment("chapter", 3);
-      expect(seekInReader).toHaveBeenCalledWith(segments[3]);
+      await flush();
+      expect(seekInReader).toHaveBeenCalledWith(segments[8], expect.any(Function));
+      await useTTSStore.getState().seekChapterSegment("chapter", 3);
+      expect(seekInReader).toHaveBeenCalledWith(segments[3], expect.any(Function));
       useTTSStore.getState().setCurrentBook("Other book", "Chapter", "other");
       expect(locate()).toBeNull();
     } finally {
@@ -432,5 +434,40 @@ describe("replaying structured narration", () => {
       useTTSStore.getState().stop();
       setTTSPlayerFactories({});
     }
+  });
+});
+
+
+describe("seek playback intent", () => {
+  it("keeps a paused chapter seek paused and invalidates an async seek on cancellation", async () => {
+    const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+    const fake = { speak: vi.fn(), stop: vi.fn(), pause: vi.fn(), resume: vi.fn() };
+    setTTSPlayerFactories({ createEdgeTTS: () => fake });
+    const segments = [{text:"one",cfi:"one"},{text:"two",cfi:"two"}];
+    try {
+      useTTSStore.getState().stop();
+      useTTSStore.setState({ config: DEFAULT_TTS_CONFIG });
+      useTTSStore.getState().setNarrationChapter({id:"c",title:"c",segments});
+      useTTSStore.setState({ playState:"paused" });
+      await useTTSStore.getState().seekChapterSegment("c",1);
+      expect(useTTSStore.getState().playState).toBe("paused");
+      expect(useTTSStore.getState().currentLocationCfi).toBe("two");
+      expect(fake.speak).not.toHaveBeenCalled();
+      useTTSStore.getState().resume();
+      expect(fake.speak).toHaveBeenLastCalledWith(["two"],expect.anything());
+      let finish!: () => void;
+      const latePlayback = vi.fn();
+      useTTSStore.setState({ playState:"playing", onSeekChapterSegment: async (_,isCurrent) => {
+        await new Promise<void>(resolve => { finish=resolve; });
+        if (isCurrent?.()) latePlayback();
+      }});
+      const pending = useTTSStore.getState().seekChapterSegment("c",0);
+      await flush();
+      expect(useTTSStore.getState().playState).toBe("loading");
+      useTTSStore.getState().pause();
+      finish(); await pending;
+      expect(latePlayback).not.toHaveBeenCalled();
+      expect(useTTSStore.getState().playState).toBe("paused");
+    } finally { useTTSStore.getState().stop(); setTTSPlayerFactories({}); }
   });
 });

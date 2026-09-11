@@ -1,0 +1,18 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><title>SVG morphology review</title>
+<style>body{margin:24px;background:#151515;color:white;font:14px system-ui}h2{font-size:16px}section{display:flex;gap:8px;margin-bottom:24px}figure{margin:0;width:145px}svg{width:145px;height:145px;background:#941a00;border-radius:12px}figcaption{text-align:center}</style>
+<main></main><script type="module">
+const doc=new DOMParser().parseFromString(await(await fetch('play-pause-loader.svg')).text(),'image/svg+xml');
+const {clips}=JSON.parse(doc.querySelector('metadata').textContent);
+const previews=[];
+for(const name of ['enter','exit','cancel']){
+ const heading=document.createElement('h2');heading.textContent=name;document.querySelector('main').append(heading);
+ const section=document.createElement('section');document.querySelector('main').append(section);
+ for(const t of [0,.16,.33,.5,.66,.83,1]){
+  const figure=document.createElement('figure'),svg=document.importNode(doc.documentElement,true),caption=document.createElement('figcaption');
+  caption.textContent=Math.round(t*100)+'%';figure.append(svg,caption);section.append(figure);
+  previews.push([svg, clips[name][0]+(clips[name][1]-clips[name][0])*t+.00001]);
+ }
+}
+await new Promise(requestAnimationFrame);
+for(const [svg,time] of previews){svg.pauseAnimations();svg.setCurrentTime(time);}
+</script>

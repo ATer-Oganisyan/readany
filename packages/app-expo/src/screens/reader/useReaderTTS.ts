@@ -1417,7 +1417,7 @@ export function useReaderTTS({
 
   // ─── startPageTTSFromCfi ──────────────────────────────────────────────────
   const startPageTTSFromCfi = useCallback(
-    async (targetCfi: string, targetText?: string) => {
+    async (targetCfi: string, targetText?: string, isCurrent: () => boolean = () => true) => {
       if (!targetCfi || !bridgeRef.current) return;
       const normalizedTargetText = (targetText || "").trim();
       pendingTTSContinueCallbackRef.current = null;
@@ -1433,6 +1433,7 @@ export function useReaderTTS({
         TTS_CONTEXT_WINDOW,
         TTS_CONTEXT_WINDOW * 2,
       );
+      if (!isCurrent()) return;
       const exactVisibleIndex = normalizedSegments.findIndex((segment) => {
         if (segment.cfi !== targetCfi) return false;
         if (normalizedTargetText && segment.text.trim() !== normalizedTargetText) return false;
@@ -1548,8 +1549,8 @@ export function useReaderTTS({
 
   useEffect(() => {
     if (ttsCurrentBookId !== bookId) return;
-    const seek = (segment: { text: string; cfi?: string }) => {
-      if (segment.cfi) return startPageTTSFromCfi(segment.cfi, segment.text);
+    const seek = (segment: { text: string; cfi?: string }, isCurrent?: () => boolean) => {
+      if (segment.cfi) return startPageTTSFromCfi(segment.cfi, segment.text, isCurrent);
     };
     useTTSStore.setState({ onSeekChapterSegment: seek });
     return () => {

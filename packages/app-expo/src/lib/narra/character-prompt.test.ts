@@ -19,13 +19,13 @@ const bazarov = {
 describe("buildCharacterSystemPrompt — предохранители роли", () => {
   const prompt = buildCharacterSystemPrompt(bazarov, "Отцы и дети", 0.3, "");
 
-  it("использует язык интерфейса только как запасной в обеих локалях", () => {
+  it("передаёт язык интерфейса без клиентского правила выбора языка", () => {
     const english = buildCharacterSystemPrompt(bazarov, "Отцы и дети", 0.3, "", "en");
     expect(english).not.toContain("Reply in English,");
-    expect(english).toContain("latest substantive message");
-    expect(english).toContain("English only as a fallback");
-    expect(prompt).toContain("последнего содержательного сообщения");
-    expect(prompt).toContain("русский используй лишь как запасной вариант");
+    expect(english).not.toContain("latest substantive message");
+    expect(english).toContain("Interface language: en.");
+    expect(prompt).not.toContain("последнего содержательного сообщения");
+    expect(prompt).toContain("Язык интерфейса: ru.");
   });
 
   it("держит роль, характер и срез знаний по прогрессу", () => {

@@ -18,7 +18,7 @@
  * см. primeCharacterStressForms.
  */
 
-import { MIN_NAME_STEM_LENGTH, NAME_ENDINGS, stemNameToken } from "./character-name-matcher";
+import { NAME_ENDINGS, stemNameToken } from "./character-name-matcher";
 import { BASE_STRESS_ENTRIES, type StressDictionaryEntry } from "./stress-dictionary";
 import type { NarraCharacter } from "./types";
 
@@ -52,7 +52,7 @@ export function parseStressedForm(value: string): { plain: string; stressed: str
  * по образцу character-name-matcher: основа (срез финального гласного) +
  * допустимые русские окончания, ударение остаётся на той же гласной основы.
  * Если ударение попадает в срезаемое окончание («Пьеро'») или основа короче
- * MIN_NAME_STEM_LENGTH («Ки'ти»), генерации нет — только точная форма.
+ * четырёх букв («Ки'ти»), генерации нет — только точная форма.
  */
 export function stressedNameForms(stressedName: string): Map<string, string> {
   const parsed = parseStressedForm(stressedName);
@@ -60,7 +60,8 @@ export function stressedNameForms(stressedName: string): Map<string, string> {
   const forms = new Map([[parsed.plain, parsed.stressed]]);
   const apostrophe = parsed.stressed.indexOf("'");
   const stem = stemNameToken(parsed.plain);
-  if (stem.length < MIN_NAME_STEM_LENGTH || apostrophe > stem.length) return forms;
+  // Recognition accepts short names, but stress inflection must not invent short common words.
+  if (stem.length < 4 || apostrophe > stem.length) return forms;
   const stressedStem = `${stem.slice(0, apostrophe)}'${stem.slice(apostrophe)}`;
   for (const ending of NAME_ENDINGS) {
     forms.set(stem + ending, stressedStem + ending);

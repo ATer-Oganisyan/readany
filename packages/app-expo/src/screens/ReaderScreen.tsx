@@ -585,19 +585,24 @@ function ReaderContent({ route, navigation }: Props) {
   } | null>(null);
 
   const readSettings = useSettingsStore((s) => s.readSettings);
+  const settingsHydrated = useSettingsStore((s) => s._hasHydrated);
   const updateReadSettings = useSettingsStore((s) => s.updateReadSettings);
   const translationConfig = useSettingsStore((s) => s.translationConfig);
   const aiConfig = useSettingsStore((s) => s.aiConfig);
   const showTopTitleProgress = readSettings.showTopTitleProgress !== false;
 
-  // При открытии ридера и при смене темы приложения начинаем с той же темы.
-  // После этого пользователь может выбрать сепию или другую тему для текущей сессии.
+  // Сначала восстанавливаем настройки с диска. Тема приложения — только начальное
+  // значение для тех, у кого ещё нет сохранённой темы страницы.
   useEffect(() => {
-    const readerTheme = getAppSyncedReaderTheme(isDark);
+    if (!settingsHydrated) return;
+    const readerTheme = getAppSyncedReaderTheme(
+      isDark,
+      useSettingsStore.getState().readSettings.readerTheme,
+    );
     if (useSettingsStore.getState().readSettings.readerTheme !== readerTheme) {
       updateReadSettings({ readerTheme });
     }
-  }, [isDark, updateReadSettings]);
+  }, [isDark, settingsHydrated, updateReadSettings]);
 
   // Явные темы страницы: Light, Dark, Sepia. "original" — сохранённый id Light.
   const readerThemeColors = useReaderPaperColors();

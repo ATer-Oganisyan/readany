@@ -1,3 +1,4 @@
+import { foregroundForBackground } from "@/styles/foreground-for-background";
 // Source: SchroederNathan/expo-ui-examples/src/examples/mini-player/player-screen.tsx
 // MIT: vendor/expo-ui-examples-LICENSE.txt. Transport layout adapted to a native sheet.
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
@@ -15,8 +16,6 @@ import { Host, RNHostView } from "@expo/ui/swift-ui";
 import {
   Button,
   HStack,
-  Image,
-  ProgressView,
   Slider,
   Spacer,
   Text,
@@ -25,6 +24,8 @@ import {
 import {
   accessibilityLabel,
   buttonStyle,
+  buttonBorderShape,
+  tint,
   disabled,
   fixedSize,
   font,
@@ -38,12 +39,13 @@ import {
   truncationMode,
 } from "@expo/ui/swift-ui/modifiers";
 import { useTranslation } from "react-i18next";
-import { PlatformColor, View } from "react-native";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PreviousSentenceIcon from "../../../assets/icons/sentence-backward.svg";
 import NextSentenceIcon from "../../../assets/icons/sentence-forward.svg";
 
 import { AudiobookCover } from "./audiobook-cover";
+import { AnimatedPlayPause } from "./animated-play-pause";
 import type { AudiobookPlayerContentProps } from "./audiobook-player-content.types";
 
 const primary = foregroundStyle({ type: "hierarchical", style: "primary" });
@@ -54,31 +56,40 @@ function SentenceButton({
   enabled,
   onPress,
   label,
+  color,
 }: {
   direction: "previous" | "next";
   enabled: boolean;
   onPress: () => void;
   label: string;
+  color: string;
 }) {
   const Icon = direction === "previous" ? PreviousSentenceIcon : NextSentenceIcon;
   return (
     <Button
       onPress={onPress}
-      modifiers={[buttonStyle("plain"), accessibilityLabel(label), disabled(!enabled)]}
+      modifiers={[
+        buttonStyle("glass"),
+        buttonBorderShape("circle"),
+        frame({ width: 56, height: 56 }),
+        tint(color),
+        accessibilityLabel(label),
+        disabled(!enabled),
+      ]}
     >
       <RNHostView matchContents>
         <View
           pointerEvents="none"
           accessible={false}
           style={{
-            width: 48,
-            height: 48,
+            width: 44,
+            height: 44,
             alignItems: "center",
             justifyContent: "center",
             opacity: enabled ? 1 : 0.35,
           }}
         >
-          <Icon width={34} height={34} color={PlatformColor("label")} />
+          <Icon width={24} height={24} color={color} />
         </View>
       </RNHostView>
     </Button>
@@ -87,7 +98,10 @@ function SentenceButton({
 
 export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
   const { t } = useTranslation();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
+  const foreground = props.backgroundColor ? foregroundForBackground(props.backgroundColor) : undefined;
+  const color = foreground?.primary ?? colors.foreground;
+  const contentIsDark = foreground?.isDark ?? isDark;
   const layout = useResponsiveLayout();
   const { width } = layout;
   const { bottom } = useSafeAreaInsets();
@@ -98,11 +112,11 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
   const catalogCoverWidth = Math.floor(
     (layout.centeredContentWidth - spacingPixels[16] * (columns - 1)) / columns,
   );
-  const coverHeight = catalogCoverWidth * (41 / 28) * 0.6;
+  const coverHeight = catalogCoverWidth * (41 / 28) * 0.72;
 
   return (
     <Host
-      colorScheme={isDark ? "dark" : "light"}
+      colorScheme={contentIsDark ? "dark" : "light"}
       // Keep the existing controls height and reserve the centered cover before opening.
       // Reserve it before SwiftUI measures, so fitToContents cannot resize mid-transition.
       style={{ height: 309 + coverHeight + spacingPixels[24] + spacingPixels[20] - bottom }}
@@ -164,6 +178,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
           modifiers={[
             frame({ width: contentW }),
             padding({ top: 24 }),
+            ...(props.accentColor ? [tint(props.accentColor)] : []),
             disabled(!player.hasDuration),
             accessibilityLabel(t("tts.narrationProgress")),
           ]}
@@ -190,8 +205,9 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
           </Text>
         </HStack>
 
-        <HStack spacing={48} modifiers={[padding({ top: 40, bottom: Math.max(0, 40 - bottom) })]}>
+        <HStack spacing={24} modifiers={[padding({ top: 40, bottom: Math.max(0, 40 - bottom) })]}>
           <SentenceButton
+            color={color}
             direction="previous"
             enabled={props.canGoToPreviousSentence}
             onPress={props.onPreviousSentence}
@@ -200,23 +216,25 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
           <Button
             onPress={player.togglePlayback}
             modifiers={[
-              buttonStyle("plain"),
+              buttonStyle("glass"),
+              buttonBorderShape("circle"),
+              frame({ width: 80, height: 80 }),
+              tint(color),
               accessibilityLabel(
                 t(player.isPlaying || player.isLoading ? "tts.pause" : "tts.playShort"),
               ),
             ]}
           >
-            {player.isLoading ? (
-              <ProgressView modifiers={[frame({ width: 58, height: 58 })]} />
-            ) : (
-              <Image
-                systemName={player.isPlaying ? "pause.fill" : "play.fill"}
-                size={50}
-                modifiers={[primary, frame({ width: 58, height: 58 })]}
+            <RNHostView matchContents>
+              <AnimatedPlayPause
+                isPlaying={player.isPlaying}
+                isLoading={player.isLoading}
+                color={contentIsDark ? "#ffffff" : "#000000"}
               />
-            )}
+            </RNHostView>
           </Button>
           <SentenceButton
+            color={color}
             direction="next"
             enabled={props.canGoToNextSentence}
             onPress={props.onNextSentence}
