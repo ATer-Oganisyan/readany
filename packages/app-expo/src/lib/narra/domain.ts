@@ -22,8 +22,10 @@ export function normalizeReadingProgress(progress: number): number {
 
 export function isCharacterUnlocked(
   readingProgress: number,
-  characterOrProgress: Pick<NarraCharacter, "unlockProgress"> | number,
+  characterOrProgress: Pick<NarraCharacter, "unlockProgress" | "encounteredInReader"> | number,
 ): boolean {
+  if (typeof characterOrProgress !== "number" && characterOrProgress.encounteredInReader)
+    return true;
   const unlockProgress =
     typeof characterOrProgress === "number"
       ? characterOrProgress
@@ -56,6 +58,7 @@ export function withNarraCharacters(
     const previous = state.characters.find((item) => item.id === character.id);
     if (!previous) return character;
     const merged = { ...character };
+    if (previous.encounteredInReader) merged.encounteredInReader = true;
     // Портрет и ручной выбор голоса переживают повторный анализ книги.
     if (!character.backendManaged && previous.portraitUri && !character.portraitUri) {
       merged.portraitUri = previous.portraitUri;

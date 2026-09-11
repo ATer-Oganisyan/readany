@@ -4,7 +4,7 @@ import {
   BOOK_IDENTITY_VERSION,
   bookIdentityTargetVersion,
   normalizeBookDisplayIdentity
-} from '../book-identity.mjs'
+} from '../books/book-identity.mjs'
 
 test('book identity removes only explicit bibliographic noise', () => {
   assert.deepEqual(normalizeBookDisplayIdentity({

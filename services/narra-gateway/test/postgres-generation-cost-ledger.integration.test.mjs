@@ -4,7 +4,8 @@ import test from 'node:test'
 import {
   createGenerationCostLedger,
   generationCostReport
-} from '../generation-cost-ledger.mjs'
+} from '../generation/generation-cost-ledger.mjs'
+import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
 
 const connectionString = process.env.GENERATION_COST_E2E_DATABASE_URL
 
@@ -12,7 +13,11 @@ test('PostgreSQL cost ledger resolves a book from an analysis run and reports ex
   skip: !connectionString
 }, async () => {
   const { default: pg } = await import('pg')
-  const pool = new pg.Pool({ connectionString, max: 1 })
+  const pool = new pg.Pool({ connectionString, max: 2 })
+  // Тест сам приводит схему в порядок: без этого он молча зависел от того, что
+  // миграции успел применить какой-то другой файл набора, и падал с
+  // «relation book_editions does not exist», стоило порядку файлов измениться.
+  await runBookMarkupMigrations(pool, { logger: { info() {} } })
   const client = await pool.connect()
   const bookEditionId = randomUUID()
   const runId = randomUUID()

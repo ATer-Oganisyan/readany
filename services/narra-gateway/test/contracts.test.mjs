@@ -8,8 +8,8 @@ import {
   parseImageBody,
   parsePortraitBody,
   parseSynthesisBody
-} from '../contracts.mjs'
-import { parseEventBatch } from '../events.mjs'
+} from '../platform/contracts.mjs'
+import { parseEventBatch } from '../platform/events.mjs'
 
 test('chat contract accepts purpose, ignores client temperature and rejects client-selected provider', () => {
   const parsed = parseChatBody({

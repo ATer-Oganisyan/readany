@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseCatalogCoverUploadBody, parseCatalogUploadBody } from '../catalog-ingest-api.mjs'
+import { parseCatalogCoverUploadBody, parseCatalogUploadBody } from '../catalog/catalog-ingest-api.mjs'
 
 test('catalog upload keeps language optional and normalizes future metadata', () => {
   const body = {

@@ -6,7 +6,7 @@ import {
   bookCoverPrompt,
   catalogCoverPrompt,
   generatedCoverBackgroundColor
-} from '../catalog-cover-prompt.mjs'
+} from '../generation/catalog-cover-prompt.mjs'
 
 test('gateway builds the approved main-branch cover prompt from structured context', () => {
   const prompt = bookCoverPrompt({

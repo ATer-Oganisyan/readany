@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createWorkerHeartbeat } from '../worker-heartbeat.mjs'
+import { createWorkerHeartbeat } from '../platform/worker-heartbeat.mjs'
 
 test('worker heartbeat publishes only safe identity, type, build and state', async () => {
   const previousHostname = process.env.HOSTNAME

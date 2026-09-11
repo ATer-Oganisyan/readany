@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createGenerationServiceClient } from '../generation-service-client.mjs'
+import { createGenerationServiceClient } from '../providers/generation-service-client.mjs'
 
 const TOKEN = 'generator-service-token-that-is-long-enough'
 

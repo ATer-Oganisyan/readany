@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBookEmbeddingClient } from '../book-embedding-client.mjs'
+import { createBookEmbeddingClient } from '../search/book-embedding-client.mjs'
 
 test('embedding client uses OpenAI-compatible dimensions and exposes metering', async () => {
   let request

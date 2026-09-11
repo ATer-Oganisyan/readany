@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { voiceConfig } from '../voices.mjs'
+import { voiceConfig } from '../providers/voices.mjs'
 
 const directory = path.dirname(fileURLToPath(import.meta.url))
 export const DEFAULT_PERSONALITY_FIXTURE_PATH = path.join(

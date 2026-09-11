@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { BOOK_MARKUP_WORKER_JOB_TYPES } from '../generation/generation-worker.mjs'
 
 const compose = await readFile(new URL('../compose.i167.yml', import.meta.url), 'utf8')
 const localCompose = await readFile(
@@ -9,6 +10,7 @@ const localCompose = await readFile(
 )
 const envExample = await readFile(new URL('../.env.example', import.meta.url), 'utf8')
 const gatewaySource = await readFile(new URL('../index.mjs', import.meta.url), 'utf8')
+const gatewayConfigSource = await readFile(new URL('../platform/gateway-config.mjs', import.meta.url), 'utf8')
 const deploySource = await readFile(new URL('../deploy.sh', import.meta.url), 'utf8')
 const remoteDeploySource = await readFile(
   new URL('../deploy-remote.sh', import.meta.url),
@@ -25,32 +27,33 @@ const stagingEnvSource = await readFile(
   'utf8'
 )
 
-const stages = {
-  prepare: '["node", "book-analysis-worker.mjs"]',
-  scan: '["node", "book-analysis-scan-worker-runner.mjs"]',
-  resolve: '["node", "book-analysis-resolve-worker-runner.mjs"]',
-  synthesize: '["node", "book-analysis-stage-worker-runner.mjs", "synthesize"]',
-  validate: '["node", "book-analysis-stage-worker-runner.mjs", "validate"]',
-  publish: '["node", "book-analysis-stage-worker-runner.mjs", "publish"]'
-}
-
-test('canonical v3 analysis deploys every stage in the explicit book-backend profile', () => {
+test('canonical v3 analysis runs as one multi-stage worker in the book-backend profile', () => {
   assert.doesNotMatch(compose, /profiles: \["book-analysis-shadow"\]/)
-  for (const [stage, command] of Object.entries(stages)) {
-    const service = `  book-analysis-${stage}:\n`
-    assert.ok(compose.includes(service), `missing ${stage} service`)
-    assert.ok(compose.includes(`    command: ${command}`), `wrong ${stage} command`)
-    const section = compose.slice(compose.indexOf(service), compose.indexOf(service) + 500)
-    assert.match(section, /profiles: \["book-backend"\]/)
+  const worker = compose.slice(
+    compose.indexOf('  book-analysis-worker:'),
+    compose.indexOf('  book-analysis-pool:')
+  )
+  assert.match(worker, /command: \["node", "analysis\/book-analysis-worker\.mjs"\]/)
+  assert.match(worker, /profiles: \["book-backend"\]/)
+  assert.match(worker, /WORKER_TYPE: book-analysis$/m)
+  // Единая очередь book_analysis_jobs: отдельных сервисов на стадию больше нет.
+  for (const stage of ['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish']) {
+    assert.ok(!compose.includes(`  book-analysis-${stage}:\n`), `stale ${stage} service`)
   }
+  assert.doesNotMatch(compose, /book-analysis-\w+-worker-runner\.mjs/)
 })
 
-test('scan stage starts with one canary worker and can be scaled explicitly', () => {
-  const scan = compose.slice(
-    compose.indexOf('  book-analysis-scan:'),
-    compose.indexOf('  book-analysis-resolve:')
+test('a hot-stage pool stays available as an explicit opt-in profile', () => {
+  const pool = compose.slice(
+    compose.indexOf('  book-analysis-pool:'),
+    compose.indexOf('  book-media-worker:')
   )
-  assert.match(scan, /replicas: \$\{BOOK_ANALYSIS_SCAN_REPLICAS:-1\}/)
+  assert.match(pool, /profiles: \["book-analysis-pool"\]/)
+  assert.match(pool, /command: \["node", "analysis\/book-analysis-worker\.mjs"\]/)
+  assert.match(pool, /BOOK_ANALYSIS_STAGES: \$\{BOOK_ANALYSIS_POOL_STAGES:-scan\}/)
+  assert.match(pool, /replicas: \$\{BOOK_ANALYSIS_POOL_REPLICAS:-2\}/)
+  assert.match(envExample, /^BOOK_ANALYSIS_POOL_STAGES=scan$/m)
+  assert.match(envExample, /^BOOK_ANALYSIS_WORKER_REPLICAS=1$/m)
 })
 
 test('ScanPolicy defaults to balanced and reaches prepare, gateway and scan workers', () => {
@@ -63,19 +66,14 @@ test('ScanPolicy defaults to balanced and reaches prepare, gateway and scan work
     compose.indexOf('\n  gateway:\n'),
     compose.indexOf('\n  postgres:\n')
   )
-  const prepare = compose.slice(
-    compose.indexOf('  book-analysis-prepare:'),
-    compose.indexOf('  book-analysis-scan:')
-  )
-  const scan = compose.slice(
-    compose.indexOf('  book-analysis-scan:'),
-    compose.indexOf('  book-analysis-resolve:')
+  const worker = compose.slice(
+    compose.indexOf('  book-analysis-worker:'),
+    compose.indexOf('  book-analysis-pool:')
   )
   assert.match(gateway, /<<: \*book-analysis-scan-policy-environment/)
-  assert.match(prepare, /\*book-analysis-scan-policy-environment/)
-  assert.match(scan, /\*book-analysis-scan-policy-environment/)
+  assert.match(worker, /\*book-analysis-scan-policy-environment/)
   assert.match(localCompose, /BOOK_ANALYSIS_SCAN_POLICY_PROFILE: \$\{BOOK_ANALYSIS_SCAN_POLICY_PROFILE:-balanced\}/)
-  assert.match(localCompose, /<<: \[\*database-environment, \*storage-environment, \*scan-policy-environment\]/)
+  assert.match(localCompose, /<<: \[\*database-environment, \*storage-environment, \*generator-environment, \*scan-policy-environment\]/)
   assert.match(gatewaySource, /book_analysis_scan_policy:/)
   assert.match(gatewaySource, /preserve_partial_results: BOOK_ANALYSIS_SCAN_POLICY\.preservePartialResults/)
 })
@@ -88,40 +86,40 @@ test('external research services are isolated in the local-only compose profile'
   )
   const worker = localCompose.slice(
     localCompose.indexOf('  book-analysis-external:'),
-    localCompose.indexOf('  book-analysis-resolve:')
+    localCompose.indexOf('\nvolumes:')
   )
   assert.match(adapter, /profiles: \["book-analysis-external"\]/)
   assert.match(adapter, /read_only: true/)
   assert.doesNotMatch(adapter, /\n    ports:/)
-  assert.match(worker, /book-analysis-external-worker-runner\.mjs/)
+  assert.match(worker, /command: \["node", "analysis\/book-analysis-worker\.mjs", "external"\]/)
   assert.match(worker, /AUTIOBOOK_ADAPTER_BASE_URL: http:\/\/autiobook-adapter\.railway\.internal:8080/)
   assert.match(gatewaySource, /BOOK_ANALYSIS_PIPELINE/)
 })
 
 test('gateway LLM capacity is aligned with the larger scan pool', () => {
   assert.match(envExample, /^LLM_CONCURRENCY=12$/m)
-  assert.match(gatewaySource, /envInt\('LLM_CONCURRENCY', 12, 100\)/)
+  assert.match(gatewayConfigSource, /envInt\('LLM_CONCURRENCY', 12, 100\)/)
 })
 
 test('markup and synthesis start as one-replica canaries and remain explicitly scalable', () => {
   const markup = compose.slice(
     compose.indexOf('  book-markup-worker:'),
-    compose.indexOf('  book-analysis-prepare:')
+    compose.indexOf('  book-analysis-worker:')
   )
-  const synthesize = compose.slice(
-    compose.indexOf('  book-analysis-synthesize:'),
-    compose.indexOf('  book-analysis-validate:')
+  const analysis = compose.slice(
+    compose.indexOf('  book-analysis-worker:'),
+    compose.indexOf('  book-analysis-pool:')
   )
   assert.match(markup, /replicas: \$\{BOOK_MARKUP_WORKER_REPLICAS:-1\}/)
-  assert.match(synthesize, /replicas: \$\{BOOK_ANALYSIS_SYNTHESIZE_REPLICAS:-1\}/)
+  assert.match(analysis, /replicas: \$\{BOOK_ANALYSIS_WORKER_REPLICAS:-1\}/)
 })
 
 test('book display identity has one separate durable worker', () => {
   const identity = compose.slice(
     compose.indexOf('  book-identity-worker:'),
-    compose.indexOf('  book-analysis-prepare:')
+    compose.indexOf('  book-analysis-worker:')
   )
-  assert.match(identity, /command: \["node", "book-identity-worker\.mjs"\]/)
+  assert.match(identity, /command: \["node", "books\/book-identity-worker\.mjs"\]/)
   assert.match(identity, /replicas: \$\{BOOK_IDENTITY_WORKER_REPLICAS:-1\}/)
   assert.match(identity, /read_only: true/)
   assert.match(deploySource, /book_worker_services=\(book-markup-worker book-identity-worker/)
@@ -130,9 +128,9 @@ test('book display identity has one separate durable worker', () => {
 test('TTS markup runs as an independently scalable hardened container', () => {
   const worker = compose.slice(
     compose.indexOf('  book-tts-markup-worker:'),
-    compose.indexOf('  book-analysis-prepare:')
+    compose.indexOf('  book-analysis-worker:')
   )
-  assert.match(worker, /command: \["node", "book-tts-markup-worker-runner\.mjs"\]/)
+  assert.match(worker, /command: \["node", "tts\/book-tts-markup-worker-runner\.mjs"\]/)
   assert.match(worker, /profiles: \["tts-markup"\]/)
   assert.match(worker, /replicas: \$\{BOOK_TTS_MARKUP_WORKER_REPLICAS:-1\}/)
   assert.match(worker, /read_only: true/)
@@ -163,7 +161,7 @@ test('shadow analysis workers keep the hardened read-only runtime', () => {
   assert.match(compose, /restart: unless-stopped/)
   assert.match(compose, /read_only: true/)
   assert.match(compose, /no-new-privileges:true/)
-  assert.match(compose, /test: \["CMD", "node", "worker-healthcheck\.mjs"\]/)
+  assert.match(compose, /test: \["CMD", "node", "platform\/worker-healthcheck\.mjs"\]/)
 })
 
 test('media, scenes, TTS and operator campaigns are isolated profiles', () => {
@@ -195,7 +193,7 @@ test('database migrations are an explicit one-shot Compose operation', () => {
   )
   assert.match(compose, /DATABASE_AUTO_MIGRATE: "false"/)
   assert.match(migration, /profiles: \["operations"\]/)
-  assert.match(migration, /command: \["node", "migrate\.mjs"\]/)
+  assert.match(migration, /command: \["node", "db\/migrate\.mjs"\]/)
   assert.match(migration, /DATABASE_AUTO_MIGRATE: "true"/)
   assert.match(migration, /restart: "no"/)
 })
@@ -206,7 +204,7 @@ test('deploy uses Docker Compose only and keeps migrations and backups separate'
   assert.match(deploySource, /--force-recreate --wait --wait-timeout/)
   assert.match(deploySource, /up_args\+=\(--no-deps\)/)
   assert.match(deploySource, /--confirm-stateful-restart/)
-  assert.match(deploySource, /migrate node migrate\.mjs --check/)
+  assert.match(deploySource, /migrate node db\/migrate\.mjs --check/)
   assert.match(deploySource, /docker compose/)
   assert.doesNotMatch(deploySource, /\bssh\b|\brsync\b|\bsystemctl\b|\bnpm\b/)
   assert.doesNotMatch(deploySource, /\bdocker (?!compose\b)/)
@@ -248,18 +246,69 @@ test('staging environment preparation preserves existing secrets', () => {
   assert.match(stagingEnvSource, /compose\.env\.\$timestamp/)
 })
 
-test('stage services receive only the provider credentials they need', () => {
-  const resolve = compose.slice(
-    compose.indexOf('  book-analysis-resolve:'),
-    compose.indexOf('  book-analysis-synthesize:')
+test('the analysis worker declares every credential its stages need', () => {
+  const worker = compose.slice(
+    compose.indexOf('  book-analysis-worker:'),
+    compose.indexOf('  book-analysis-pool:')
   )
-  const publish = compose.slice(
-    compose.indexOf('  book-analysis-publish:'),
-    compose.indexOf('  book-media-worker:')
+  // Один процесс обслуживает scan (storage + generator) и publish (только БД),
+  // поэтому per-stage least privilege сменился явным общим профилем.
+  assert.match(worker, /book-analysis-database-environment/)
+  assert.match(worker, /book-analysis-storage-environment/)
+  assert.match(worker, /book-analysis-generator-environment/)
+})
+
+test('deploy maps every analysis worker source file onto the single service', () => {
+  assert.match(deploySource, /analysis_services=\(book-analysis-worker\)/)
+  assert.match(deploySource, /book-analysis-\*worker\.mjs\)/)
+  assert.match(deploySource, /worker-runtime\.mjs\)/)
+})
+
+test('deploy declares every profile the compose file uses, so orphan removal is safe', () => {
+  // `--remove-orphans` снимает контейнеры сервисов, которых в compose нет, — и
+  // ради этого он добавлен: шесть прежних раннеров анализа заменены одним
+  // воркером, и на развёрнутой установке их контейнеры иначе продолжали бы
+  // забирать задания. Но сироты считаются по **активным** профилям: стоит
+  // забыть профиль, и Compose сочтёт чужими его собственные сервисы. На момент
+  // добавления так и было — deploy объявлял пять профилей из семи, и под
+  // удаление попадали пул анализа и операторский воркер.
+  const declared = new Set([...deploySource.matchAll(/--profile\s+([\w-]+)/g)]
+    .map(([, profile]) => profile))
+  const used = new Set([...compose.matchAll(/profiles:\s*\[([^\]]*)\]/g)]
+    .flatMap(([, list]) => list.split(',').map((value) => value.trim().replace(/["']/g, '')))
+    .filter(Boolean))
+
+  assert.ok(used.size > 0, 'в compose-файле не найдено ни одного профиля')
+  const missing = [...used].filter((profile) => !declared.has(profile)).sort()
+  assert.deepEqual(missing, [], `deploy не объявляет профили: ${missing.join(', ')}`)
+})
+
+test('deploy removes orphaned containers when it recreates services', () => {
+  assert.match(deploySource, /up_args=\(up[^)]*--remove-orphans/)
+})
+
+test('every job type the queue produces has a worker that claims it', () => {
+  // Задания карточек и подтверждения состава ставятся конвейером карточек, но
+  // book-markup-worker по умолчанию берёт только book_markup и catalog_cover.
+  // Без своего воркера они копились бы в очереди молча: включённая канарейка
+  // не выдала бы ни одной карточки, и понять это можно было бы только по
+  // растущей очереди.
+  const cards = compose.split('book-card-worker:')[1] ?? ''
+  assert.match(cards, /profiles: \["cards"\]/)
+  assert.match(cards, /BOOK_MARKUP_WORKER_JOB_TYPES: character_card,roster_confirm/)
+
+  const claimed = new Set(
+    [...compose.matchAll(/BOOK_MARKUP_WORKER_JOB_TYPES:\s*(?:\$\{BOOK_MARKUP_WORKER_JOB_TYPES:-)?([\w,]+)/g)]
+      .flatMap(([, list]) => list.split(','))
+      .filter(Boolean)
   )
-  assert.match(resolve, /book-analysis-database-environment/)
-  assert.match(resolve, /book-analysis-generator-environment/)
-  assert.doesNotMatch(resolve, /book-analysis-storage-environment/)
-  assert.match(publish, /book-analysis-database-environment/)
-  assert.doesNotMatch(publish, /generator-environment|storage-environment/)
+  for (const jobType of BOOK_MARKUP_WORKER_JOB_TYPES) {
+    assert.ok(claimed.has(jobType), `ни один воркер не берёт задания ${jobType}`)
+  }
+})
+
+test('deploy can select the card worker and keeps it out of the markup worker', () => {
+  assert.match(deploySource, /card_services=\(book-card-worker\)/)
+  assert.match(deploySource, /card-workers\) add_many "\$\{card_services\[@\]\}"/)
+  assert.match(deploySource, /worker_services=\([^)]*card_services/)
 })

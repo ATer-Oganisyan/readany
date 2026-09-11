@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createPrivateMaterialCleanup } from '../private-material-cleanup.mjs'
+import { createPrivateMaterialCleanup } from '../platform/private-material-cleanup.mjs'
 
 test('private material cleanup purges expired rows and their S3 objects', async () => {
   const calls = []

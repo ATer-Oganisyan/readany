@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import http from 'node:http'
 import test from 'node:test'
 import express from 'express'
-import { createBookOperatorRouter } from '../book-operator-api.mjs'
+import { createBookOperatorRouter } from '../books/book-operator-api.mjs'
 
 const BOOK_ID = '11111111-1111-4111-8111-111111111111'
 const PASSWORD = 'operator-password-with-32-characters'

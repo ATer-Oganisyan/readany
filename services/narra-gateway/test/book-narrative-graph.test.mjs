@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildNarrativeGraph, buildStoryArcs } from '../book-narrative-graph.mjs'
+import { buildNarrativeGraph, buildStoryArcs } from '../search/book-narrative-graph.mjs'
 
 test('narrative graph reuses published evidence for relationships and event links', () => {
   const graph = buildNarrativeGraph({

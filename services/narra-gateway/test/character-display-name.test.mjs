@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { formatCharacterDisplayName } from '../character-display-name.mjs'
+import { formatCharacterDisplayName } from '../books/character-display-name.mjs'
 
 test('character display names capitalize every lowercase word start', () => {
   assert.equal(formatCharacterDisplayName('анна каренина'), 'Анна Каренина')

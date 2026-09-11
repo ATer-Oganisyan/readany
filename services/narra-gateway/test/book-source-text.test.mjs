@@ -6,7 +6,7 @@ import {
   extractStructuredBookText,
   representativeTextSample,
   representativeTextSelection
-} from '../book-source-text.mjs'
+} from '../books/book-source-text.mjs'
 
 function encodeWindows1251(value) {
   return Buffer.from([...value].map((symbol) => {
