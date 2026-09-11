@@ -2797,7 +2797,18 @@ export function createPostgresBookMarkupRepository(pool, {
      * очередь заполнится фоновыми заданиями большой книги, и окно первых глав
      * следующей книги будет ждать за ними.
      */
-    async advanceCardWindows({ runId, bookEditionId, scope, readerTextOffset = 0 }) {
+    async advanceCardWindows({
+      runId,
+      bookEditionId,
+      scope,
+      readerTextOffset = 0,
+      // Задание, которое прямо сейчас падает. Воркер пометит его провалившимся
+      // только после того, как раннер вернёт управление, поэтому здесь оно ещё
+      // `running` — и окно, где оно было последним, считало бы себя незакрытым
+      // навсегда. Ровно тот случай, ради которого цепочку и стали двигать по
+      // завершению карточки, а не по её успеху.
+      failingJobId = null
+    }) {
       const windows = await pool.query(
         `SELECT window_index, start_offset, end_offset, chapter_indexes,
                 priority_class, status
@@ -2819,8 +2830,9 @@ export function createPostgresBookMarkupRepository(pool, {
         const pending = await pool.query(
           `SELECT count(*)::int AS count FROM generation_jobs
            WHERE analysis_run_id = $1 AND card_window_index = $2
-             AND job_type = 'character_card' AND status IN ('queued', 'running')`,
-          [runId, row.window_index]
+             AND job_type = 'character_card' AND status IN ('queued', 'running')
+             AND ($3::uuid IS NULL OR id <> $3::uuid)`,
+          [runId, row.window_index, failingJobId]
         )
         if (Number(pending.rows[0].count) > 0) continue
         await pool.query(

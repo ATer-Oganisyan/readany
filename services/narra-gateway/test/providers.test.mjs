@@ -838,6 +838,11 @@ test('a structured task asks the model for a JSON object, and other purposes do 
 
   assert.deepEqual((await call('structured_task')).response_format, { type: 'json_object' })
   assert.equal(Object.hasOwn(await call('character_chat'), 'response_format'), false)
+  // Назначение, унаследовавшее модель структурных задач, наследует и форму
+  // запроса. Пока проверка шла напрямую, `roster_confirm` уходил на ту же
+  // модель без формата, и рассуждающая модель тратила на рассуждение весь
+  // потолок токенов, не закрыв JSON.
+  assert.deepEqual((await call('roster_confirm')).response_format, { type: 'json_object' })
 
   // Провайдер, который формат не принимает, отключается настройкой, а не
   // молчаливым отказом от формата.

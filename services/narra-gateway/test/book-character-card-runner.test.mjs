@@ -135,8 +135,11 @@ test('the runner rebuilds quotes from the normalized text and publishes the card
   assert.equal(published.card.contractVersion, 'character-card-v1')
   assert.equal(published.card.source.fragmentSetHash, published.fragmentSetHash)
   assert.match(published.fragmentSetHash, /^[0-9a-f]{64}$/)
-  // Карточка закончена — цепочка окон должна пойти дальше.
-  assert.deepEqual(calls.advanced, [{ runId: 'run-1', bookEditionId: 'edition-1' }])
+  // Карточка закончена — цепочка окон должна пойти дальше. Исключать из счёта
+  // нечего: задание уже готово, и окно считает его закрытым само.
+  assert.deepEqual(calls.advanced, [
+    { runId: 'run-1', bookEditionId: 'edition-1', failingJobId: null }
+  ])
 })
 
 
@@ -223,6 +226,12 @@ test('a failed card still moves the window chain on', async () => {
     generatorError: Object.assign(new Error('модель не ответила'), { code: 'TIMEOUT' })
   })
   await assert.rejects(() => runner.run(JOB))
-  assert.deepEqual(calls.advanced, [{ runId: 'run-1', bookEditionId: 'edition-1' }])
+  // Своё задание передаётся как падающее и потому исключается из счёта
+  // незавершённых: воркер пометит его провалившимся только после возврата
+  // отсюда, и без этого окно, где оно было последним, осталось бы `running`
+  // навсегда — то есть правка «двигать по завершению» ничего бы не изменила.
+  assert.deepEqual(calls.advanced, [
+    { runId: 'run-1', bookEditionId: 'edition-1', failingJobId: JOB.id }
+  ])
   assert.deepEqual(calls.published, [])
 })

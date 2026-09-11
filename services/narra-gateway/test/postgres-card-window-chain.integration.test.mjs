@@ -683,3 +683,62 @@ test('an empty window does not stop the chain', {
     await isolated.release()
   }
 })
+
+test('a window whose last card is failing right now still closes', {
+  skip: !connectionString
+}, async () => {
+  // Воркер помечает задание провалившимся только после того, как раннер вернёт
+  // управление, поэтому в момент подсчёта оно ещё `running`. Пока окно считало
+  // его своим незавершённым, «двигать цепочку по завершению карточки, а не по
+  // её успеху» ничего не меняло: окно с упавшей последней карточкой оставалось
+  // `running` навсегда — тот самый «Обломов» на восемнадцати готовых карточках.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const book = await seedBook(pool, { chapterCount: 5 })
+    const enqueued = await repository.enqueueCardWindow({
+      runId: book.runId,
+      bookEditionId: book.bookEditionId,
+      windowIndex: 0,
+      priority: CARD_MEDIA_PRIORITY.foreground
+    })
+    assert.equal(enqueued.created, 2)
+
+    // Одна карточка готова, вторая падает прямо сейчас и всё ещё `running`.
+    const jobs = await pool.query(
+      `SELECT id FROM generation_jobs
+        WHERE analysis_run_id = $1 AND card_window_index = 0
+          AND job_type = 'character_card' ORDER BY id`,
+      [book.runId]
+    )
+    assert.equal(jobs.rows.length, 2)
+    await pool.query(
+      "UPDATE generation_jobs SET status = 'ready' WHERE id = $1",
+      [jobs.rows[0].id]
+    )
+    await pool.query(
+      "UPDATE generation_jobs SET status = 'running' WHERE id = $1",
+      [jobs.rows[1].id]
+    )
+
+    // Без исключения своего задания окно не закрывается.
+    const blocked = await repository.advanceCardWindows({
+      runId: book.runId,
+      bookEditionId: book.bookEditionId,
+      scope: 'catalog'
+    })
+    assert.deepEqual(blocked.closed, [])
+
+    const advanced = await repository.advanceCardWindows({
+      runId: book.runId,
+      bookEditionId: book.bookEditionId,
+      scope: 'catalog',
+      failingJobId: jobs.rows[1].id
+    })
+    assert.deepEqual(advanced.closed, [0])
+    assert.equal(advanced.enqueued?.windowIndex, 1)
+  } finally {
+    await isolated.release()
+  }
+})

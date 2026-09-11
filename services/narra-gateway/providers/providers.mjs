@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { withTimeout } from '../platform/concurrency.mjs'
 import { imageUpstreamError, shouldFallbackAfterImageError } from './image-policy.mjs'
+import { purposeChain } from './purpose-inheritance.mjs'
 import { requestOptionsForModel } from './model-request-config.mjs'
 export { omitsJsonResponseFormat } from './model-request-config.mjs'
 import { serviceUrl } from '../platform/service-url.mjs'
@@ -20,17 +21,6 @@ const PURPOSES = [
  * ошибка и нужна другая модель. Без наследования добавление назначения увело
  * бы его на маршрут по умолчанию — молча и у всех сразу.
  */
-const PURPOSE_PARENT = Object.freeze({ roster_confirm: 'structured_task' })
-
-function purposeChain(purpose) {
-  const chain = [purpose]
-  let current = purpose
-  while (PURPOSE_PARENT[current]) {
-    current = PURPOSE_PARENT[current]
-    chain.push(current)
-  }
-  return chain
-}
 
 function purposeSetting(env, prefix, purpose, suffix = '') {
   for (const name of purposeChain(purpose)) {

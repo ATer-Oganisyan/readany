@@ -1,3 +1,5 @@
+import { purposeChain } from './purpose-inheritance.mjs'
+
 const PURPOSE_REQUEST_CONFIG = Object.freeze({
   assistant: Object.freeze({}),
   character_chat: Object.freeze({ temperature: 0.85 }),
@@ -29,7 +31,17 @@ export const MODEL_REQUEST_CAPABILITIES = Object.freeze({
 
 // Задачи, ответ которых разбирается как JSON-объект, а не читается человеком.
 // Для них формат — часть контракта, а не пожелание.
+//
+// Проверка идёт по цепочке наследования, как и выбор модели: назначение,
+// унаследовавшее модель структурных задач, обязано унаследовать и её форму
+// запроса. Пока проверка была прямой, `roster_confirm` уходил на ту же модель,
+// но без `response_format` — и рассуждающая модель тратила на рассуждение весь
+// потолок токенов, не закрыв JSON.
 const JSON_OBJECT_PURPOSES = new Set(['structured_task'])
+
+function expectsJsonObject(purpose) {
+  return purposeChain(purpose).some((name) => JSON_OBJECT_PURPOSES.has(name))
+}
 
 /**
  * Отключение JSON-формата для провайдера, который его не принимает.
@@ -61,7 +73,7 @@ export function omitsJsonResponseFormat(providerName, env = process.env) {
  * reasoning-токенов и 58 секунд, с форматом — ноль и 2 секунды.
  */
 export function requestOptionsForModel({ provider, model, purpose, env = process.env }) {
-  const options = JSON_OBJECT_PURPOSES.has(purpose) && !omitsJsonResponseFormat(provider, env)
+  const options = expectsJsonObject(purpose) && !omitsJsonResponseFormat(provider, env)
     ? { response_format: { type: 'json_object' } }
     : {}
 

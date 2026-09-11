@@ -84,7 +84,11 @@ export function createCharacterCardRunner({
       try {
         return await build(job, input, startedAt)
       } catch (error) {
-        await advanceWindows(input).catch(() => {})
+        // Своё задание исключаем из счёта незавершённых: воркер пометит его
+        // провалившимся только после возврата отсюда, и без этого окно, где
+        // оно было последним, осталось бы `running` навсегда — то самое, от
+        // чего цепочку и стали двигать по завершению карточки.
+        await advanceWindows(input, null, job.id).catch(() => {})
         throw error
       }
     }
@@ -166,10 +170,11 @@ export function createCharacterCardRunner({
       }
   }
 
-  async function advanceWindows(input, normalizedText = null) {
+  async function advanceWindows(input, normalizedText = null, failingJobId = null) {
     const advanced = await repository.advanceCardWindows({
       runId: input.runId,
-      bookEditionId: input.bookEditionId
+      bookEditionId: input.bookEditionId,
+      failingJobId
     })
     if (advanced?.closed?.length || advanced?.enqueued?.created) {
       log.info('card.window_advanced', 'Окно карточек продвинуто', {
