@@ -1,3 +1,4 @@
+import { useReaderErrorToast } from "@/hooks/use-reader-error-toast";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
@@ -60,7 +61,6 @@ import {
   useSettingsStore,
   useTTSStore,
 } from "@/stores";
-import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
 import { darkColors, lightColors, useTheme } from "@/styles/ThemeContext";
 import { useColors } from "@/styles/theme";
 import { useIsFocused } from "@react-navigation/native";
@@ -73,7 +73,6 @@ import type { Book, ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import * as Clipboard from "expo-clipboard";
-import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
@@ -109,17 +108,6 @@ const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
 const CONTROLS_VISIBILITY_ANIMATION_MS = 220;
-const BOOK_MIME_TYPES = [
-  "application/epub+zip",
-  "application/pdf",
-  "application/x-mobipocket-ebook",
-  "application/vnd.amazon.ebook",
-  "application/vnd.comicbook+zip",
-  "application/x-fictionbook+xml",
-  "text/plain",
-  "application/octet-stream",
-];
-
 const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
   epub: "application/epub+zip",
   pdf: "application/pdf",
@@ -133,41 +121,6 @@ const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
   txt: "text/plain",
 };
 
-function normalizeBookIdentityText(value?: string): string {
-  return (value || "").toLowerCase().replace(/[\s\p{P}\p{S}_-]+/gu, "");
-}
-
-function authorsLikelyMatch(a?: string, b?: string): boolean {
-  const left = normalizeBookIdentityText(a);
-  const right = normalizeBookIdentityText(b);
-  if (!left || !right) return true;
-  if (left === right || left.includes(right) || right.includes(left)) return true;
-  const leftParts = left.split(/[,，、/&]+/).filter((part) => part.length > 1);
-  const rightParts = right.split(/[,，、/&]+/).filter((part) => part.length > 1);
-  return leftParts.some((part) =>
-    rightParts.some((candidate) => part.includes(candidate) || candidate.includes(part)),
-  );
-}
-
-function shouldConfirmReimportCandidate(
-  originalBook: { meta: { title: string; author: string }; format: string; fileHash?: string },
-  candidate: { title: string; author: string; format: string; fileHash?: string },
-): boolean {
-  if (candidate.fileHash && originalBook.fileHash && candidate.fileHash === originalBook.fileHash) {
-    return false;
-  }
-  const originalTitle = normalizeBookIdentityText(originalBook.meta.title);
-  const candidateTitle = normalizeBookIdentityText(candidate.title);
-  const titleMismatch =
-    !!originalTitle &&
-    !!candidateTitle &&
-    originalTitle !== candidateTitle &&
-    !originalTitle.includes(candidateTitle) &&
-    !candidateTitle.includes(originalTitle);
-  const authorMismatch = !authorsLikelyMatch(originalBook.meta.author, candidate.author);
-  const formatMismatch = originalBook.format !== candidate.format;
-  return titleMismatch || (formatMismatch && authorMismatch);
-}
 const NOTE_TOOLTIP_WIDTH = 300;
 const NOTE_TOOLTIP_SIDE_PADDING = 12;
 const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
@@ -521,7 +474,6 @@ function ReaderContent({ route, navigation }: Props) {
   const [showTranslation, setShowTranslation] = useState(false);
   const [translationText, setTranslationText] = useState("");
   const [showChapterTranslation, setShowChapterTranslation] = useState(false);
-  const [isReimporting, setIsReimporting] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const restartHostRef = useRef(false);
   const automaticRecoveryRef = useRef(false);
@@ -1033,6 +985,7 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Focus & foreground state for volume paging whitelist
   const isFocused = useIsFocused();
+  useReaderErrorToast(error, isFocused, navigation, `${bookId}:${loadAttempt}`);
   useBackendBook(book, isFocused, progress);
   const [appActive, setAppActive] = useState(true);
 
@@ -1464,7 +1417,6 @@ function ReaderContent({ route, navigation }: Props) {
       webViewReady &&
       !loading &&
       !error &&
-      !isReimporting &&
       !showTOC &&
       !showSettings &&
       !showNotebook &&
@@ -1483,7 +1435,6 @@ function ReaderContent({ route, navigation }: Props) {
       webViewReady,
       loading,
       error,
-      isReimporting,
       showTOC,
       showSettings,
       showNotebook,
@@ -2021,64 +1972,6 @@ function ReaderContent({ route, navigation }: Props) {
     return () => clearInterval(timer);
   }, [isFocused, appActive, webViewReady, loading, bridge.webViewRef]);
 
-  const handleReimportMissingBook = useCallback(async () => {
-    if (isReimporting) return;
-    setIsReimporting(true);
-
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: BOOK_MIME_TYPES,
-        multiple: false,
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-      const selectedUri = result.assets[0].uri;
-      if (book) {
-        const candidate = await useLibraryStore.getState().inspectDeletedBookCandidate(bookId, {
-          uri: selectedUri,
-          name: result.assets[0].name,
-        });
-        if (candidate && shouldConfirmReimportCandidate(book, candidate)) {
-          const shouldContinue = await useMissingBookPromptStore.getState().showPrompt({
-            title: t("reader.reimportMismatchTitle", "这份文件看起来和原书不太一致"),
-            description: t(
-              "reader.reimportMismatchDescription",
-              "原书《{{originalTitle}}》与当前文件《{{candidateTitle}}》信息差异较大。仍要把它接回原来的笔记和阅读统计吗？",
-              {
-                originalTitle: book.meta.title,
-                candidateTitle: candidate.title || t("reader.unknownBook", "未命名书籍"),
-              },
-            ),
-            confirmLabel: t("reader.reimportContinue", "继续接回"),
-            cancelLabel: t("reader.reimportPickAnotherFile", "重新选择"),
-          });
-          if (!shouldContinue) return;
-        }
-      }
-
-      const restoredBook = await useLibraryStore
-        .getState()
-        .reimportDeletedBook(bookId, { uri: selectedUri, name: result.assets[0].name });
-
-      if (!restoredBook) {
-        setError(t("reader.reimportFailed", "重新导入失败，请稍后再试。"));
-        return;
-      }
-
-      setError(null);
-      setLoading(true);
-    } catch (err) {
-      console.error("[ReaderScreen] Failed to re-import missing book:", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : t("reader.reimportFailed", "重新导入失败，请稍后再试。"),
-      );
-    } finally {
-      setIsReimporting(false);
-    }
-  }, [bookId, isReimporting, t]);
-
   // Apply theme colors when theme changes
   useEffect(() => {
     if (!webViewReady) return;
@@ -2260,63 +2153,7 @@ function ReaderContent({ route, navigation }: Props) {
     );
   }
 
-  if (error) {
-    return (
-      <View
-        style={[
-          s.container,
-          {
-            paddingBottom: insets.bottom,
-            backgroundColor: readerThemeColors.background,
-          },
-        ]}
-      >
-        <View style={s.readerStage}>
-          <View style={s.loadingWrap}>
-            <Text style={s.errorText}>{t("reader.loadFailed", "加载失败")}</Text>
-            <Text style={[s.loadingText, { textAlign: "center", maxWidth: 320 }]}>{error}</Text>
-            <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
-              <TouchableOpacity
-                style={s.backButton}
-                onPress={() => {
-                  if (book?.filePath) {
-                    automaticRecoveryRef.current = false;
-                    retryReader();
-                    return;
-                  }
-                  navigation.reset({ routes: [{ name: "Tabs" }] });
-                }}
-              >
-                <Text style={s.backButtonText}>
-                  {book?.filePath ? t("common.retry", "重试") : t("common.back", "返回")}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  s.backButton,
-                  {
-                    backgroundColor: colors.background,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  },
-                ]}
-                onPress={() => void handleReimportMissingBook()}
-                disabled={isReimporting}
-              >
-                <Text style={[s.backButtonText, { color: colors.foreground }]}>
-                  {isReimporting
-                    ? t("reader.reimporting", "正在重新导入...")
-                    : t("reader.reimport", "重新导入")}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        {readerTopBarDock}
-        {readerToolbarDock}
-      </View>
-    );
-  }
+  if (error) return null;
 
   if (!readerHtmlUri) {
     return (
