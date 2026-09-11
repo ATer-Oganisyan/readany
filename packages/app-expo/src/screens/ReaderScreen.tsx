@@ -1,3 +1,4 @@
+import { recordCharacterEncounters } from "@/lib/narra/character-encounters";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
@@ -1371,15 +1372,9 @@ function ReaderContent({ route, navigation }: Props) {
       toggleControls();
     },
     onCharactersEncountered: ({ characterIds, loadId }) => {
-      if (loadId !== activeReaderLoadIdRef.current) return;
-      let changed = false;
-      for (const id of characterIds) {
-        if (characters.some((character) => character.id === id && !character.encounteredInReader)) {
-          useNarraStore.getState().updateCharacter(bookId, id, { encounteredInReader: true });
-          changed = true;
-        }
+      if (recordCharacterEncounters(bookId, characterIds, loadId, activeReaderLoadIdRef.current)) {
+        void loadBackendCharacterMedia(bookId, progress).catch(() => undefined);
       }
-      if (changed) void loadBackendCharacterMedia(bookId, progress).catch(() => undefined);
     },
     onCharacterTap: ({ characterId }) => {
       const character = characters.find((item) => item.id === characterId);
