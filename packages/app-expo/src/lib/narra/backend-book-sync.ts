@@ -303,6 +303,16 @@ function createSession(book: Book, progress: number) {
   );
 }
 
+export function stopBackendBookSync(bookId: string) {
+  sessions.get(bookId)?.session.stop();
+  sessions.delete(bookId);
+  useBackendBookStatus.setState((state) => {
+    const books = { ...state.books };
+    delete books[bookId];
+    return { books };
+  });
+}
+
 export function retainBackendBookSync(book: Book, progress = book.progress): () => void {
   let entry = sessions.get(book.id);
   if (!entry) {
@@ -313,14 +323,9 @@ export function retainBackendBookSync(book: Book, progress = book.progress): () 
   }
   entry.consumers++;
   return () => {
+    if (sessions.get(book.id) !== entry) return;
     if (--entry.consumers === 0) {
-      entry.session.stop();
-      if (sessions.get(book.id) === entry) sessions.delete(book.id);
-      useBackendBookStatus.setState((state) => {
-        const books = { ...state.books };
-        delete books[book.id];
-        return { books };
-      });
+      stopBackendBookSync(book.id);
     }
   };
 }

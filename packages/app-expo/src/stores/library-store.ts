@@ -24,7 +24,9 @@ import {
 import {
   preserveBackendOriginalSource,
   startImportedBackendBook,
+  stopBackendBookSync,
 } from "@/lib/narra/backend-book-sync";
+import { clearRemovedBookData } from "@/lib/narra/media-cleanup";
 import { trySha256BackendFile } from "@/lib/narra/backend-file-hash";
 import { normalizeBookLanguage } from "@/lib/narra/book-language";
 import { BANNED_IMPORT_MESSAGE, findBannedImport } from "@/lib/narra/import-blocklist";
@@ -1143,6 +1145,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       await db.initDatabase();
       await db.deleteBook(bookId, { preserveData });
+      stopBackendBookSync(bookId);
+      if (!preserveData) {
+        await clearRemovedBookData(bookId).catch((error) =>
+          console.warn("Failed to delete book media:", error),
+        );
+      }
       await deleteLocalCoverJob(bookId);
     } catch (err) {
       console.error("Failed to delete book from database:", err);

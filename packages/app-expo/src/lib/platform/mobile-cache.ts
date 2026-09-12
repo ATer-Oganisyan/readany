@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from "expo-file-system";
+import { clearUnusedBackendMedia } from "../narra/media-cleanup";
 
 export interface ClearMobileCacheResult {
   deletedFiles: number;
@@ -40,7 +41,7 @@ export async function clearMobileRuntimeCache(): Promise<ClearMobileCacheResult>
   const cacheDir = new Directory(Paths.cache);
   if (!cacheDir.exists) {
     cacheDir.create({ idempotent: true, intermediates: true });
-    return { deletedFiles: 0, deletedBytes: 0 };
+    return clearUnusedBackendMedia();
   }
 
   let result: ClearMobileCacheResult = { deletedFiles: 0, deletedBytes: 0 };
@@ -57,6 +58,9 @@ export async function clearMobileRuntimeCache(): Promise<ClearMobileCacheResult>
   }
 
   cacheDir.create({ idempotent: true, intermediates: true });
+  const media = await clearUnusedBackendMedia();
+  result.deletedFiles += media.deletedFiles;
+  result.deletedBytes += media.deletedBytes;
   return result;
 }
 
