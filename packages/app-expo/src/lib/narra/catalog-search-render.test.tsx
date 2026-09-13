@@ -692,11 +692,12 @@ describe("Search screen behavior with native boundaries replaced", () => {
       row.props.onPress(activation());
       row.props.onPress(activation());
     });
-    expect(runtime.callOrder).toEqual(["blur", "openLocal"]);
-    expect(runtime.openMobileBook).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ bookId: "imported-hobbit" }),
-    );
-    expect(runtime.navigation.navigate).not.toHaveBeenCalled();
+    expect(runtime.callOrder).toEqual(["blur", "navigate:BookDetails"]);
+    expect(runtime.navigation.navigate).toHaveBeenCalledExactlyOnceWith("BookDetails", {
+      sourceId: expect.any(String),
+      bookId: "imported-hobbit",
+    });
+    expect(runtime.openMobileBook).not.toHaveBeenCalled();
     await focus(false);
     await focus(true);
     await act(() => header().onFocus());
@@ -723,9 +724,9 @@ describe("Search screen behavior with native boundaries replaced", () => {
       row.props.onPress(activation());
       row.props.onPress(activation());
     });
-    expect(runtime.callOrder).toEqual(["blur", "navigate:Reader"]);
-    expect(runtime.navigation.navigate).toHaveBeenCalledExactlyOnceWith("Reader", {
-      bookId: "",
+    expect(runtime.callOrder).toEqual(["blur", "navigate:BookDetails"]);
+    expect(runtime.navigation.navigate).toHaveBeenCalledExactlyOnceWith("BookDetails", {
+      sourceId: expect.any(String),
       catalogBook: expect.objectContaining({
         bookEditionId: "dune",
         coverUri: "file:///fresh-dune.jpg",
@@ -735,7 +736,7 @@ describe("Search screen behavior with native boundaries replaced", () => {
     expect(runtime.nativeSearch.cancelSearch).not.toHaveBeenCalled();
   });
 
-  it("keeps catalog handlers stable across progress updates and reads the latest local copy on press", async () => {
+  it("keeps catalog handlers stable across progress updates and passes the catalog identity to the details sheet", async () => {
     seedCatalog();
     const mounted = await render(<SearchScreen />);
     await input("dune");
@@ -764,48 +765,26 @@ describe("Search screen behavior with native boundaries replaced", () => {
       ],
     };
     await act(() => onPress(activation()));
-    expect(runtime.openMobileBook).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ bookId: "new-dune" }),
-    );
-    expect(runtime.navigation.navigate).not.toHaveBeenCalled();
+    expect(runtime.navigation.navigate).toHaveBeenCalledExactlyOnceWith("BookDetails", {
+      sourceId: expect.any(String),
+      catalogBook: expect.objectContaining({ bookEditionId: "dune" }),
+    });
+    expect(runtime.openMobileBook).not.toHaveBeenCalled();
   });
 
-  it("keeps an in-flight local open locked across focus return in Search", async () => {
+  it("allows another activation after dismissing a local book sheet", async () => {
     seedCatalog();
-    const pending: Array<(opened: boolean) => void> = [];
-    runtime.openMobileBook.mockImplementation(
-      () => new Promise<boolean>((resolve) => pending.push(resolve)),
-    );
     const mounted = await render(<SearchScreen />);
     await input("hobbit");
     const row = hosts(resultsList(mounted.root), "TouchableOpacity")[0];
     await act(() => row.props.onPress(activation()));
+    await act(() => row.props.onPress(activation()));
+    expect(runtime.navigation.navigate).toHaveBeenCalledTimes(1);
     await focus(false);
     await focus(true);
     await act(() => row.props.onPress(activation()));
-    const requestedOpens = runtime.openMobileBook.mock.calls.length;
-    await act(() => {
-      for (const resolve of pending) resolve(false);
-    });
-    expect(requestedOpens).toBe(1);
-    runtime.openMobileBook.mockResolvedValue(false);
-    await act(() => row.props.onPress(activation()));
-    expect(runtime.openMobileBook).toHaveBeenCalledTimes(2);
-  });
-
-  it("allows another deliberate activation after opening a local book failed", async () => {
-    seedCatalog();
-    runtime.openMobileBook.mockResolvedValueOnce(false);
-    const mounted = await render(<SearchScreen />);
-    await input("Местная");
-    const row = hosts(resultsList(mounted.root), "TouchableOpacity")[0];
-    await act(() => row.props.onPress(activation()));
-    await act(() => row.props.onPress(activation()));
-    expect(runtime.openMobileBook).toHaveBeenCalledTimes(2);
-    expect(runtime.openMobileBook).toHaveBeenLastCalledWith(
-      expect.objectContaining({ bookId: "local" }),
-    );
-    expect(runtime.navigation.navigate).not.toHaveBeenCalled();
+    expect(runtime.navigation.navigate).toHaveBeenCalledTimes(2);
+    expect(runtime.openMobileBook).not.toHaveBeenCalled();
   });
 
   it("adjusts no-results padding from software keyboard events and cleans up its listeners", async () => {
@@ -1014,33 +993,7 @@ describe("Category screen behavior with native boundaries replaced", () => {
     expect(count("catalog.card")).toBe(0);
   });
 
-  it("keeps an in-flight local open locked across focus return in Category", async () => {
-    seedCatalog();
-    const pending: Array<(opened: boolean) => void> = [];
-    runtime.openMobileBook.mockImplementation(
-      () => new Promise<boolean>((resolve) => pending.push(resolve)),
-    );
-    const mounted = await render(categoryElement());
-    await decodeImages(mounted.root);
-    const imported = hosts(grid(mounted.root), "Pressable").find(
-      (node) => node.props.accessibilityLabel === "The Hobbit",
-    );
-    if (!imported) throw new Error("Expected imported book action");
-    await act(() => imported.props.onPress(activation()));
-    await focus(false);
-    await focus(true);
-    await act(() => imported.props.onPress(activation()));
-    const requestedOpens = runtime.openMobileBook.mock.calls.length;
-    await act(() => {
-      for (const resolve of pending) resolve(false);
-    });
-    expect(requestedOpens).toBe(1);
-    runtime.openMobileBook.mockResolvedValue(false);
-    await act(() => imported.props.onPress(activation()));
-    expect(runtime.openMobileBook).toHaveBeenCalledTimes(2);
-  });
-
-  it("opens imported and new category books through their respective route once per return", async () => {
+  it("opens imported and new category details once per return", async () => {
     seedCatalog();
     const mounted = await render(categoryElement());
     await decodeImages(mounted.root);
@@ -1055,18 +1008,20 @@ describe("Category screen behavior with native boundaries replaced", () => {
       imported.props.onPress(activation());
       imported.props.onPress(activation());
     });
-    expect(runtime.openMobileBook).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ bookId: "imported-hobbit" }),
-    );
-    expect(runtime.navigation.navigate).not.toHaveBeenCalled();
+    expect(runtime.navigation.navigate).toHaveBeenCalledExactlyOnceWith("BookDetails", {
+      sourceId: expect.any(String),
+      catalogBook: expect.objectContaining({ bookEditionId: "hobbit" }),
+    });
+    expect(runtime.openMobileBook).not.toHaveBeenCalled();
     await focus(false);
     await focus(true);
     await act(() => {
       fresh.props.onPress(activation());
       fresh.props.onPress(activation());
     });
-    expect(runtime.navigation.navigate).toHaveBeenCalledExactlyOnceWith("Reader", {
-      bookId: "",
+    expect(runtime.navigation.navigate).toHaveBeenCalledTimes(2);
+    expect(runtime.navigation.navigate).toHaveBeenLastCalledWith("BookDetails", {
+      sourceId: expect.any(String),
       catalogBook: expect.objectContaining({ bookEditionId: "dune" }),
     });
   });

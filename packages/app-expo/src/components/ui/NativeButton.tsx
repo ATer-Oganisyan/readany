@@ -1,11 +1,18 @@
+import { MishanaerIcon } from "./MishanaerIcon";
 import { useTheme } from "@/styles/theme";
 import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
-import { type NativeButtonProps, nativeButtonHeights } from "./NativeButton.types";
+import {
+  type NativeButtonProps,
+  nativeButtonHeights,
+  nativeButtonIconNames,
+} from "./NativeButton.types";
 import { Text } from "./Typography";
 
 /** Web fallback. iOS and Android resolve their platform-native implementations. */
 export function NativeButton({
   label,
+  icon,
+  iconOnly = false,
   onPress,
   variant = "primary",
   size = "medium",
@@ -23,35 +30,55 @@ export function NativeButton({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
+      accessibilityLabel={accessibilityLabel ?? label}
       testID={testID}
       onPress={onPress}
       disabled={disabled || loading}
       style={({ pressed }) => [
         styles.button,
         {
-          minHeight: nativeButtonHeights[size],
+          minHeight: iconOnly ? 64 : nativeButtonHeights[size],
+          ...(iconOnly ? { width: 64, height: 64, paddingHorizontal: 0 } : {}),
           alignSelf: fullWidth ? "stretch" : "flex-start",
           backgroundColor: isFilled
             ? accent
-            : variant === "secondary"
+            : variant === "secondary" || variant === "glass"
               ? colors.muted
               : "transparent",
-          borderColor: variant === "secondary" ? colors.border : "transparent",
+          borderColor:
+            variant === "secondary" || variant === "glass" ? colors.border : "transparent",
           opacity: disabled ? 0.45 : pressed ? 0.72 : 1,
         },
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={isFilled ? colors.primaryForeground : accent} />
+        <ActivityIndicator
+          color={
+            isFilled ? colors.primaryForeground : variant === "glass" ? colors.foreground : accent
+          }
+        />
+      ) : iconOnly && icon ? (
+        <MishanaerIcon
+          name={nativeButtonIconNames[icon]}
+          variant="filled"
+          size={28}
+          color={colors.foreground}
+        />
       ) : (
         <Text
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.8}
           ellipsizeMode="tail"
-          style={{ color: isFilled ? colors.primaryForeground : accent, fontWeight: "600" }}
+          style={{
+            color: isFilled
+              ? colors.primaryForeground
+              : variant === "glass"
+                ? colors.foreground
+                : accent,
+            fontWeight: "600",
+          }}
         >
           {label}
         </Text>

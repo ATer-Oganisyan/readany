@@ -1,3 +1,18 @@
+import { interfaceFontFamily } from "@deslop/primitives/native";
+import {
+  Button,
+  FilledTonalIconButton,
+  Host,
+  Icon,
+  Text as ComposeText,
+} from "@expo/ui/jetpack-compose";
+import {
+  fillMaxWidth,
+  height,
+  size as nativeSize,
+  testID as nativeTestID,
+} from "@expo/ui/jetpack-compose/modifiers";
+import { getFilledIconImageSource, getStrokeIconImageSource } from "./MishanaerIcon";
 import { MishanaerIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
 import { useTheme } from "@/styles/theme";
@@ -10,10 +25,13 @@ import {
 
 export function NativeButton({
   label,
+  nativeAppearance = false,
   onPress,
   variant = "primary",
   size = "medium",
   icon,
+  iconOnly = false,
+  colorScheme,
   disabled = false,
   loading = false,
   fullWidth = false,
@@ -21,15 +39,80 @@ export function NativeButton({
   style,
   testID,
 }: NativeButtonProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const isFilled = variant === "primary" || variant === "destructive";
   const accent = variant === "destructive" ? colors.destructive : colors.primary;
   const content = isFilled
     ? variant === "destructive"
       ? colors.destructiveForeground
       : colors.primaryForeground
-    : accent;
+    : variant === "glass"
+      ? colors.foreground
+      : accent;
   const buttonHeight = nativeButtonHeights[size];
+
+  if (iconOnly && icon) {
+    const dark = colorScheme ? colorScheme === "dark" : isDark;
+    const foreground = dark ? "#ffffff" : "#000000";
+    return (
+      <Host colorScheme={dark ? "dark" : "light"} style={[{ width: 64, height: 68 }, style]}>
+        <FilledTonalIconButton
+          onClick={onPress}
+          enabled={!disabled && !loading}
+          colors={{ containerColor: dark ? "#ffffff20" : "#00000010", contentColor: foreground }}
+          modifiers={[nativeSize(64, 64), ...(testID ? [nativeTestID(testID)] : [])]}
+        >
+          <Icon
+            source={
+              loading
+                ? getStrokeIconImageSource("pulse-circle")
+                : icon === "book" || icon === "play"
+                  ? getFilledIconImageSource(icon)
+                  : getStrokeIconImageSource(nativeButtonIconNames[icon])
+            }
+            size={28}
+            tint={foreground}
+            contentDescription={accessibilityLabel ?? label}
+          />
+        </FilledTonalIconButton>
+      </Host>
+    );
+  }
+
+  if (
+    nativeAppearance &&
+    (variant === "primary" || variant === "secondary" || variant === "glass") &&
+    !icon
+  ) {
+    return (
+      <Host
+        matchContents={{ vertical: true }}
+        colorScheme={isDark ? "dark" : "light"}
+        style={[{ alignSelf: fullWidth ? "stretch" : "flex-start" }, style]}
+      >
+        <Button
+          enabled={!disabled && !loading}
+          onClick={onPress}
+          colors={{
+            containerColor: variant === "glass" ? colors.muted : accent,
+            contentColor: variant === "glass" ? colors.foreground : colors.primaryForeground,
+          }}
+          modifiers={[
+            height(buttonHeight),
+            ...(fullWidth ? [fillMaxWidth()] : []),
+            ...(testID ? [nativeTestID(testID)] : []),
+          ]}
+        >
+          <ComposeText
+            style={{ fontFamily: interfaceFontFamily.regular, fontSize: 16 }}
+            maxLines={1}
+          >
+            {label}
+          </ComposeText>
+        </Button>
+      </Host>
+    );
+  }
 
   return (
     <Pressable
@@ -45,7 +128,7 @@ export function NativeButton({
           alignSelf: fullWidth ? "stretch" : "flex-start",
           backgroundColor: isFilled
             ? accent
-            : variant === "secondary"
+            : variant === "secondary" || variant === "glass"
               ? colors.muted
               : "transparent",
           borderColor: variant === "secondary" ? colors.border : "transparent",

@@ -211,5 +211,17 @@
     "manageTags": "Manage Tags",
     "remote": "Download required",
     "downloading": "Downloading"
+  },
+  "bookDetails": {
+    "about": "About the book",
+    "noDescription": "No description yet.",
+    "genre": "Genre",
+    "progress": "Read",
+    "unavailable": "This book is no longer in your library",
+    "openFailed": "Could not open the book. Please try again.",
+    "opening": "Opening…",
+    "continue": "Continue reading",
+    "read": "Read",
+    "open": "Show book details"
   }
 }

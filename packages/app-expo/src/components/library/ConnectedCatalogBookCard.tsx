@@ -8,7 +8,7 @@ interface ConnectedCatalogBookCardProps {
   book: CachedBackendCatalogBook;
   cardWidth: number;
   isInLibrary: boolean;
-  onPress: (book: CachedBackendCatalogBook) => void;
+  onPress: (book: CachedBackendCatalogBook, sourceId?: string) => void;
   onRetryCover: (book: CachedBackendCatalogBook) => void;
 }
 
@@ -21,13 +21,17 @@ export const ConnectedCatalogBookCard = memo(function ConnectedCatalogBookCard({
   onRetryCover,
 }: ConnectedCatalogBookCardProps) {
   const displayedBook = useCatalogCover(book);
-  const handlePress = useCallback(() => onPress(getCatalogBookWithCover(book)), [book, onPress]);
+  const handlePress = useCallback(
+    (sourceId?: string) => onPress(getCatalogBookWithCover(book), sourceId),
+    [book, onPress],
+  );
   const handleRetry = useCallback(
     () => onRetryCover(getCatalogBookWithCover(book)),
     [book, onRetryCover],
   );
   return (
     <CatalogBookCard
+      transitionKey={book.bookEditionId}
       title={displayedBook.title}
       author={displayedBook.author}
       coverUri={displayedBook.coverUri}

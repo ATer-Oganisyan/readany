@@ -155,6 +155,7 @@ public final class ReadAnyNativeControlsModule: Module {
     }
 
     View(SystemSheetZoomDestinationView.self) {
+      Prop("alignToContent") { (view, value: Bool) in view.alignToContent = value }
       Prop("sourceId") { (view, value: String) in view.sourceIdentifier = value }
       Prop("expanded") { (view, value: Bool) in view.expanded = value }
     }
@@ -532,6 +533,7 @@ final class ReadAnyReaderToolbar: ExpoView {
   func updateConfiguration() {
     toolbar.tintColor = toolbarTintColor
     toolbar.barStyle = isDark ? .black : .default
+    toolbar.overrideUserInterfaceStyle = isDark ? .dark : .light
 
     let currentSpeechLabel = speechLoading
       ? speechLoadingLabel
@@ -600,6 +602,12 @@ final class ReadAnyReaderToolbar: ExpoView {
     configuration.imagePlacement = .leading
     configuration.imagePadding = 7
     configuration.baseForegroundColor = toolbarTintColor
+    // Deslop Body: SB Sans Interface Regular, 16 pt.
+    configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+      var attributes = attributes
+      attributes.font = UIFont(name: "SB Sans Interface", size: 16) ?? UIFont.systemFont(ofSize: 16)
+      return attributes
+    }
     configuration.showsActivityIndicator = isLoading
     button.configuration = configuration
     button.titleLabel?.numberOfLines = 1

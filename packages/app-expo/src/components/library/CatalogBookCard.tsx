@@ -1,10 +1,11 @@
+import { SystemSheetZoomSource } from "@/components/navigation/SystemSheetZoomSource";
 import { RotateCcwIcon } from "@/components/ui/Icon";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { catalogCoverDisplayState } from "@/lib/narra/catalog-cover-state";
 import { useColors } from "@/styles/theme";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type GestureResponderEvent, Image, Pressable, StyleSheet, View } from "react-native";
 import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
@@ -12,6 +13,7 @@ import { BookCoverTypography } from "./book-cover-typography";
 import { PerspectiveBook } from "./perspective-book";
 
 interface CatalogBookCardProps {
+  transitionKey?: string;
   title: string;
   author: string;
   coverUri?: string;
@@ -19,22 +21,24 @@ interface CatalogBookCardProps {
   coverLoadFailed?: boolean;
   cardWidth: number;
   isInLibrary: boolean;
-  onPress: () => void;
+  onPress: (sourceId?: string) => void;
   onRetryCover: () => void;
 }
 
 export const CatalogBookCard = memo(function CatalogBookCard({
+  transitionKey,
   title,
   author,
   coverUri,
   hasCover,
   coverLoadFailed,
   cardWidth,
-  isInLibrary,
   onPress,
   onRetryCover,
 }: CatalogBookCardProps) {
   countRender("catalog.card");
+  const occurrence = useId();
+  const sourceId = `${occurrence}:${transitionKey ?? "cover"}`;
   const colors = useColors();
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
@@ -60,9 +64,9 @@ export const CatalogBookCard = memo(function CatalogBookCard({
   const handlePress = useCallback(
     (event: GestureResponderEvent) => {
       if (swipePressGuard?.canPress(event) === false) return;
-      onPress();
+      onPress(sourceId);
     },
-    [swipePressGuard, onPress],
+    [swipePressGuard, onPress, sourceId],
   );
   const handleLoad = useCallback(() => {
     if (coverUri && currentCoverUri.current === coverUri) setDecodedCoverUri(coverUri);
@@ -93,44 +97,42 @@ export const CatalogBookCard = memo(function CatalogBookCard({
         importantForAccessibility={isCoverReady ? "auto" : "no-hide-descendants"}
         style={[StyleSheet.absoluteFill, !isCoverReady && styles.hidden]}
       >
-        <PerspectiveBook
-          width={cardWidth}
-          height={cardHeight}
-          coverEffects={isCoverReady}
-          showShadow={isCoverReady}
-          disabled={!isCoverReady}
-          accessibilityLabel={title}
-          accessibilityHint={
-            isInLibrary
-              ? t("notes.openBook", "Открыть книгу")
-              : t("library.catalogAdd", "Добавить в библиотеку")
-          }
-          onPress={handlePress}
-          cover={
-            <View style={styles.coverCanvas}>
-              {showImage ? (
-                <Image
-                  key={coverUri}
-                  source={coverSource}
-                  style={styles.coverImage}
-                  resizeMode="cover"
-                  onLoad={handleLoad}
-                  onError={handleError}
-                />
-              ) : null}
-              {/* Keep contrast preparation and the Image mounted, but create
+        <SystemSheetZoomSource sourceId={sourceId} collapsable={false} style={cardSize}>
+          <PerspectiveBook
+            width={cardWidth}
+            height={cardHeight}
+            coverEffects={isCoverReady}
+            showShadow={isCoverReady}
+            disabled={!isCoverReady}
+            accessibilityLabel={title}
+            accessibilityHint={t("bookDetails.open", "Открыть информацию о книге")}
+            onPress={handlePress}
+            cover={
+              <View style={styles.coverCanvas}>
+                {showImage ? (
+                  <Image
+                    key={coverUri}
+                    source={coverSource}
+                    style={styles.coverImage}
+                    resizeMode="cover"
+                    onLoad={handleLoad}
+                    onError={handleError}
+                  />
+                ) : null}
+                {/* Keep contrast preparation and the Image mounted, but create
                   no native text or surface effects behind the skeleton. */}
-              <BookCoverTypography
-                title={title}
-                author={author}
-                width={cardWidth}
-                showText={isCoverReady}
-                textTone={showImage ? generatedCoverTextTone({ title, author }) : "light"}
-                coverUri={showImage ? coverUri : undefined}
-              />
-            </View>
-          }
-        />
+                <BookCoverTypography
+                  title={title}
+                  author={author}
+                  width={cardWidth}
+                  showText={isCoverReady}
+                  textTone={showImage ? generatedCoverTextTone({ title, author }) : "light"}
+                  coverUri={showImage ? coverUri : undefined}
+                />
+              </View>
+            }
+          />
+        </SystemSheetZoomSource>
       </View>
       {display === "error" ? (
         <View style={styles.retry}>

@@ -55,6 +55,7 @@ export function NativeCharacterDetailsCells({
   cellBackgroundColor,
   items,
   isDark,
+  topSpacing = 0,
 }: NativeCharacterDetailsCellsProps) {
   const primaryColor = isDark ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.9)";
   const secondaryColor = isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.6)";
@@ -63,7 +64,7 @@ export function NativeCharacterDetailsCells({
     <Host
       matchContents={{ vertical: true }}
       colorScheme={isDark ? "dark" : "light"}
-      style={{ width: "100%" }}
+      style={{ width: "100%", marginTop: topSpacing }}
     >
       <Surface
         color={cellBackgroundColor}

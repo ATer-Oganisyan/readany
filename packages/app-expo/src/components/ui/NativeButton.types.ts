@@ -1,9 +1,10 @@
 import type { StyleProp, ViewStyle } from "react-native";
 import type { MishanaerIconName } from "./MishanaerIcon";
 
-export type NativeButtonVariant = "primary" | "secondary" | "tertiary" | "destructive";
+export type NativeButtonVariant = "primary" | "secondary" | "tertiary" | "destructive" | "glass";
 export type NativeButtonSize = "small" | "medium" | "large";
 export type NativeButtonIcon =
+  | "book"
   | "add"
   | "appearance"
   | "back"
@@ -26,6 +27,7 @@ export type NativeButtonIcon =
   | "sparkles";
 
 export const nativeButtonIconNames: Record<NativeButtonIcon, MishanaerIconName> = {
+  book: "book",
   add: "plus",
   appearance: "text-t",
   back: "arrow-left",
@@ -49,11 +51,16 @@ export const nativeButtonIconNames: Record<NativeButtonIcon, MishanaerIconName> 
 };
 
 export interface NativeButtonProps {
+  /** Opt into the system control for a text-only primary, secondary, or glass action. */
+  nativeAppearance?: boolean;
+  colorScheme?: "light" | "dark";
   label: string;
   onPress: () => void;
   variant?: NativeButtonVariant;
   size?: NativeButtonSize;
   icon?: NativeButtonIcon;
+  /** Circular 64 pt action, matching the character profile controls. */
+  iconOnly?: boolean;
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;

@@ -1,5 +1,5 @@
 import { useAudiobookArtwork } from "@/components/tts/use-audiobook-artwork";
-import ReadAnyNativeControls from "../../modules/native-controls";
+import { useCoverSheetColors } from "@/hooks/use-cover-sheet-colors";
 import { useColors } from "@/styles/theme";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 // Presentation adapted from expo-ui-examples/mini-player/player-screen.tsx.
@@ -23,7 +23,6 @@ export function AudiobookPlayerScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, "AudiobookPlayer">) {
   const colors = useColors();
-  const [coverColor, setCoverColor] = useState<{ uri: string; color: string; accent: string }>();
   const [timerVisible, setTimerVisible] = useState(false);
   const [volume, setVolume] = useState(1);
   const state = useTTSStore(
@@ -49,42 +48,8 @@ export function AudiobookPlayerScreen({
     })),
   );
   const artwork = useAudiobookArtwork();
-  const backgroundColor = coverColor?.uri === artwork ? coverColor.color : colors.background;
-  useEffect(() => {
-    if (Platform.OS !== "ios" || !artwork || !ReadAnyNativeControls.averageTopImageColor) {
-      return;
-    }
-    let cancelled = false;
-    void ReadAnyNativeControls.averageTopImageColor(artwork, 0.25)
-      .then((color) => {
-        if (cancelled || !/^#[0-9a-f]{6}$/i.test(color)) return;
-        // Mix in 35% black for a deeper background that preserves the cover hue.
-        const darker =
-          "#" +
-          [1, 3, 5]
-            .map((offset) =>
-              Math.round(parseInt(color.slice(offset, offset + 2), 16) * 0.65)
-                .toString(16)
-                .padStart(2, "0"),
-            )
-            .join("");
-        // Screen with 60% white over the sheet background, precomputed for native tint.
-        const accent =
-          "#" +
-          [1, 3, 5]
-            .map((offset) =>
-              Math.round(parseInt(darker.slice(offset, offset + 2), 16) * 0.4 + 255 * 0.6)
-                .toString(16)
-                .padStart(2, "0"),
-            )
-            .join("");
-        setCoverColor({ uri: artwork, color: darker, accent });
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [artwork]);
+  const coverColor = useCoverSheetColors(artwork);
+  const backgroundColor = coverColor?.color ?? colors.background;
   useLayoutEffect(() => {
     if (Platform.OS === "ios") {
       navigation.setOptions({
@@ -126,7 +91,7 @@ export function AudiobookPlayerScreen({
       <SystemSheetZoomDestination sourceId={route.params?.sourceId} expanded={false} />
       <AudiobookPlayerContent
         backgroundColor={Platform.OS === "ios" ? backgroundColor : undefined}
-        accentColor={coverColor?.uri === artwork ? coverColor.accent : undefined}
+        accentColor={coverColor?.accent}
         title={state.title}
         author={author}
         chapter={chapter?.chapter.title || state.chapter}

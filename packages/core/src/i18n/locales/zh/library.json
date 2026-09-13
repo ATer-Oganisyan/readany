@@ -187,5 +187,17 @@
     "manageTags": "管理标签",
     "remote": "需下载",
     "downloading": "下载中"
+  },
+  "bookDetails": {
+    "about": "关于本书",
+    "noDescription": "暂无简介。",
+    "genre": "类型",
+    "progress": "已读",
+    "unavailable": "书库中已没有这本书",
+    "openFailed": "无法打开书籍，请重试。",
+    "opening": "正在打开…",
+    "continue": "继续阅读",
+    "read": "阅读",
+    "open": "查看书籍详情"
   }
 }

@@ -1,3 +1,5 @@
+import { openBookDetails } from "@/lib/library/open-book-details";
+import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
 import { ConnectedCatalogBookCard } from "@/components/library/ConnectedCatalogBookCard";
 import { NativeButton } from "@/components/ui/NativeButton";
@@ -8,9 +10,7 @@ import { useBackendCatalog, useBackendCatalogActivity } from "@/hooks/use-backen
 import { useCatalogCoverWindow } from "@/hooks/use-catalog-cover-window";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { countRender, markInteraction } from "@/lib/diagnostics/interaction-performance";
-import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
-import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { retryCatalogCover } from "@/lib/narra/catalog-cover-coordinator";
 import { getCatalogBookWithCover } from "@/lib/narra/catalog-cover-store";
 import { catalogGridLayout } from "@/lib/narra/catalog-grid-layout";
@@ -66,7 +66,6 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
   const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
   const [viewportHeight, setViewportHeight] = useState(layout.height);
   const navigating = useRef(false);
-  const opening = useRef(false);
   const viewability = useRef({ itemVisiblePercentThreshold: 1 }).current;
   const onViewable = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken<CachedBackendCatalogBook>[] }) => {
@@ -144,7 +143,7 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
   useEffect(
     () =>
       navigation.addListener("focus", () => {
-        if (!opening.current) navigating.current = false;
+        navigating.current = false;
       }),
     [navigation],
   );
@@ -156,28 +155,19 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
     [snapshot.refresh],
   );
   const openBook = useCallback(
-    async (book: CachedBackendCatalogBook) => {
+    async (book: CachedBackendCatalogBook, sourceId?: string) => {
       if (navigating.current || !navigation.isFocused()) return;
       navigating.current = true;
-      opening.current = true;
-      try {
-        const existing = findReadableLibraryBookForCatalogBook(
-          book,
-          useLibraryStore.getState().books,
-        );
-        if (existing) {
-          if (!(await openMobileBook({ bookId: existing.id, navigation, t })))
-            navigating.current = false;
-        } else
-          navigation.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(book) });
-      } catch (error) {
+      if (
+        !(await openBookDetails(
+          navigation,
+          { catalogBook: getCatalogBookWithCover(book) },
+          sourceId,
+        ))
+      )
         navigating.current = false;
-        throw error;
-      } finally {
-        opening.current = false;
-      }
     },
-    [navigation, t],
+    [navigation],
   );
   const renderBook = useCallback(
     ({ item }: ListRenderItemInfo<CachedBackendCatalogBook>) => (

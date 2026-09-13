@@ -1,3 +1,4 @@
+import { SystemSheetZoomSource } from "@/components/navigation/SystemSheetZoomSource";
 import { Text } from "@/components/ui/Typography";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
@@ -11,7 +12,7 @@ import { useColors } from "@/styles/theme";
  * Cover (28:41), vectorization overlay, long-press action sheet.
  */
 import type { Book } from "@readany/core/types";
-import { memo, useMemo, useState } from "react";
+import { memo, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, Pressable, View } from "react-native";
 import Animated from "react-native-reanimated";
@@ -24,7 +25,7 @@ import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 interface BookCardProps {
   book: Book;
-  onOpen: (book: Book) => void;
+  onOpen: (book: Book, sourceId?: string, coverUri?: string) => void;
   onDelete: (bookId: string, options?: { preserveData?: boolean }) => void;
   onManageTags?: (book: Book) => void;
   onVectorize?: (book: Book) => void;
@@ -46,6 +47,8 @@ export const BookCard = memo(function BookCard({
   cardWidth = 96,
 }: BookCardProps) {
   const colors = useColors();
+  const instanceId = useId();
+  const sourceId = `${instanceId}:${book.id}`;
   const s = makeStyles(colors, cardWidth);
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
@@ -80,7 +83,11 @@ export const BookCard = memo(function BookCard({
       <Pressable
         onPress={(event) => {
           if (swipePressGuard?.canPress(event) === false) return;
-          onOpen(book);
+          onOpen(
+            book,
+            sourceId,
+            (hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined,
+          );
         }}
         onPressIn={onPressIn}
         onPressOut={onPressOut}
@@ -89,11 +96,11 @@ export const BookCard = memo(function BookCard({
         style={s.container}
         accessibilityRole="button"
         accessibilityLabel={book.meta.title}
-        accessibilityHint={t("notes.openBook", "Открыть")}
+        accessibilityHint={t("bookDetails.open", "Открыть информацию о книге")}
       >
         <Animated.View style={pressStyle}>
           {/* Cover — 28:41 aspect ratio */}
-          <View style={s.coverWrap}>
+          <SystemSheetZoomSource sourceId={sourceId} collapsable={false} style={s.coverWrap}>
             {hasUsableSavedCover && resolvedCoverUrl ? (
               <Image
                 source={{ uri: resolvedCoverUrl }}
@@ -134,7 +141,7 @@ export const BookCard = memo(function BookCard({
                 <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
               </View>
             )}
-          </View>
+          </SystemSheetZoomSource>
         </Animated.View>
       </Pressable>
     </BookCardActionSheet>

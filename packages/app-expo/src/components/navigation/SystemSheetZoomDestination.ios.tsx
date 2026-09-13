@@ -2,7 +2,8 @@ import { requireNativeView } from "expo";
 import type { ComponentType } from "react";
 import { StyleSheet, type ViewProps } from "react-native";
 
-export interface SystemSheetZoomDestinationProps {
+export interface SystemSheetZoomDestinationProps extends ViewProps {
+  alignToContent?: boolean;
   sourceId?: string;
   expanded: boolean;
 }
@@ -10,6 +11,7 @@ export interface SystemSheetZoomDestinationProps {
 interface NativeDestinationProps extends ViewProps {
   sourceId: string;
   expanded: boolean;
+  alignToContent: boolean;
 }
 
 const NativeDestination = requireNativeView(
@@ -20,6 +22,9 @@ const NativeDestination = requireNativeView(
 export function SystemSheetZoomDestination({
   sourceId = "",
   expanded,
+  alignToContent = false,
+  style,
+  children,
 }: SystemSheetZoomDestinationProps) {
   return (
     <NativeDestination
@@ -27,8 +32,11 @@ export function SystemSheetZoomDestination({
       pointerEvents="none"
       sourceId={sourceId}
       expanded={expanded}
-      style={styles.destination}
-    />
+      alignToContent={alignToContent}
+      style={alignToContent ? style : styles.destination}
+    >
+      {children}
+    </NativeDestination>
   );
 }
 
