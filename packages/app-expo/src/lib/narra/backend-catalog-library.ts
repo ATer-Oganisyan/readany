@@ -6,42 +6,53 @@ function isReadableLocalCatalogCopy(book: Book): boolean {
   return book.syncStatus === "local" && (book.format === "epub" || book.format === "txt");
 }
 
+interface LibraryIndex {
+  editions: Map<Book["bookEditionId"], Book>;
+  legacy: Map<string, Book | null>;
+}
+
+const indexes = new WeakMap<Book[], LibraryIndex>();
+
+function libraryIndex(books: Book[]): LibraryIndex {
+  const cached = indexes.get(books);
+  if (cached) return cached;
+  const index: LibraryIndex = { editions: new Map(), legacy: new Map() };
+  for (const book of books) {
+    if (book.deletedAt) continue;
+    if (book.sourceKind === "catalog") {
+      // Preserve the existing first-copy preference for a server edition.
+      if (!index.editions.has(book.bookEditionId)) index.editions.set(book.bookEditionId, book);
+    } else if (!book.bookEditionId && isReadableLocalCatalogCopy(book)) {
+      const identity = bookIdentity(book.meta.title, book.meta.author);
+      index.legacy.set(identity, index.legacy.has(identity) ? null : book);
+    }
+  }
+  // Each immutable books array gets fresh objects, including current progress.
+  indexes.set(books, index);
+  return index;
+}
+
 export function findLibraryBookForCatalogBook(
   catalogBook: CachedBackendCatalogBook,
   books: Book[],
 ): Book | null {
-  return (
-    books.find(
-      (book) =>
-        !book.deletedAt &&
-        book.sourceKind === "catalog" &&
-        book.bookEditionId === catalogBook.bookEditionId,
-    ) ?? null
-  );
+  return libraryIndex(books).editions.get(catalogBook.bookEditionId) ?? null;
 }
 
 /**
- * Uses the server-owned edition id when available. A single pre-migration
- * local copy may still be opened by display identity without claiming the
- * catalog identity; ambiguous matches deliberately fall back to download.
+ * Prefer the server edition. Only one unambiguous pre-migration local copy
+ * may match by display identity without claiming a catalog identity.
  */
 export function findReadableLibraryBookForCatalogBook(
   catalogBook: CachedBackendCatalogBook,
   books: Book[],
 ): Book | null {
-  const exact = findLibraryBookForCatalogBook(catalogBook, books);
+  const index = libraryIndex(books);
+  const exact = index.editions.get(catalogBook.bookEditionId);
   if (exact) return exact;
-
-  const expectedIdentity = bookIdentity(catalogBook.title, catalogBook.author);
-  const legacyCandidates = books.filter(
-    (book) =>
-      !book.deletedAt &&
-      book.sourceKind !== "catalog" &&
-      !book.bookEditionId &&
-      isReadableLocalCatalogCopy(book) &&
-      bookIdentity(book.meta.title, book.meta.author) === expectedIdentity,
-  );
-  return legacyCandidates.length === 1 ? legacyCandidates[0] : null;
+  return index.legacy.size
+    ? (index.legacy.get(bookIdentity(catalogBook.title, catalogBook.author)) ?? null)
+    : null;
 }
 
 export function isCatalogBookRevisionCurrent(

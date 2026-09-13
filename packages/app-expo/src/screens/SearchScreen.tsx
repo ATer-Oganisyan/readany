@@ -170,7 +170,10 @@ const SearchContent = memo(function SearchContent() {
       opening.current = true;
       searchBarRef.current?.blur();
       try {
-        const existing = findReadableLibraryBookForCatalogBook(book, books);
+        const existing = findReadableLibraryBookForCatalogBook(
+          book,
+          useLibraryStore.getState().books,
+        );
         if (existing) {
           if (!(await openMobileBook({ bookId: existing.id, navigation, t })))
             navigating.current = false;
@@ -183,7 +186,7 @@ const SearchContent = memo(function SearchContent() {
         opening.current = false;
       }
     },
-    [books, navigation, t],
+    [navigation, t],
   );
   const openLibraryBook = useCallback(
     async (book: Book) => {

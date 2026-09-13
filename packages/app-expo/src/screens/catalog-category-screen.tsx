@@ -161,7 +161,10 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
       navigating.current = true;
       opening.current = true;
       try {
-        const existing = findReadableLibraryBookForCatalogBook(book, libraryBooks);
+        const existing = findReadableLibraryBookForCatalogBook(
+          book,
+          useLibraryStore.getState().books,
+        );
         if (existing) {
           if (!(await openMobileBook({ bookId: existing.id, navigation, t })))
             navigating.current = false;
@@ -174,7 +177,7 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
         opening.current = false;
       }
     },
-    [libraryBooks, navigation, t],
+    [navigation, t],
   );
   const renderBook = useCallback(
     ({ item }: ListRenderItemInfo<CachedBackendCatalogBook>) => (

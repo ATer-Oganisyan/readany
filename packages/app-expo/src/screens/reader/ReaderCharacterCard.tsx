@@ -942,7 +942,7 @@ const makeStyles = (colors: ThemeColors) =>
     nativeActionsContainer: { width: "100%", height: 68 },
     embeddedActionsBlock: {
       width: "100%",
-      paddingTop: spacing.xxl,
+      paddingTop: spacing.xxl + spacing.sm,
     },
     embeddedDetailsBlock: {
       width: "100%",

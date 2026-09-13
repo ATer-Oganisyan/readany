@@ -650,14 +650,17 @@ function LibraryScreenContent() {
   // свой лоудер вместо заглушки поверх обложки.
   const handleCatalogOpen = useCallback(
     async (catalogBook: CachedBackendCatalogBook) => {
-      const existingBook = catalogBooksInLibrary.get(catalogBook.catalogKey);
+      const existingBook = findReadableLibraryBookForCatalogBook(
+        catalogBook,
+        useLibraryStore.getState().books,
+      );
       if (existingBook) {
         await handleOpen(existingBook);
         return;
       }
       nav.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(catalogBook) });
     },
-    [catalogBooksInLibrary, handleOpen, nav],
+    [handleOpen, nav],
   );
 
   const handleManageTags = useCallback((book: Book) => {

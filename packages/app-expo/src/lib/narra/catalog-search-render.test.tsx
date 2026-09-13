@@ -181,14 +181,17 @@ vi.mock("react-native-safe-area-context", () => ({
 vi.mock("@/stores", async () => {
   const { useSyncExternalStore } = await import("react");
   return {
-    useLibraryStore: <T,>(selector: (state: typeof runtime.library) => T) =>
-      useSyncExternalStore(
-        (listener) => {
-          runtime.libraryListeners.add(listener);
-          return () => runtime.libraryListeners.delete(listener);
-        },
-        () => selector(runtime.library),
-      ),
+    useLibraryStore: Object.assign(
+      <T,>(selector: (state: typeof runtime.library) => T) =>
+        useSyncExternalStore(
+          (listener) => {
+            runtime.libraryListeners.add(listener);
+            return () => runtime.libraryListeners.delete(listener);
+          },
+          () => selector(runtime.library),
+        ),
+      { getState: () => runtime.library },
+    ),
   };
 });
 vi.mock("@/hooks/use-backend-catalog", async () => {
@@ -730,6 +733,41 @@ describe("Search screen behavior with native boundaries replaced", () => {
     });
     expect(runtime.openMobileBook).not.toHaveBeenCalled();
     expect(runtime.nativeSearch.cancelSearch).not.toHaveBeenCalled();
+  });
+
+  it("keeps catalog handlers stable across progress updates and reads the latest local copy on press", async () => {
+    seedCatalog();
+    const mounted = await render(<SearchScreen />);
+    await input("dune");
+    const row = hosts(resultsList(mounted.root), "TouchableOpacity")[0];
+    const onPress = row.props.onPress;
+    runtime.counters.clear();
+    await act(() => {
+      runtime.library = {
+        ...runtime.library,
+        books: runtime.library.books.map((book) => ({ ...book, progress: 0.5 })),
+      };
+      for (const listener of runtime.libraryListeners) listener();
+    });
+    expect(hosts(resultsList(mounted.root), "TouchableOpacity")[0].props.onPress).toBe(onPress);
+    expect(count("catalog.card")).toBe(0);
+    // Simulate an import completed after render but before the user presses.
+    runtime.library = {
+      ...runtime.library,
+      books: [
+        ...runtime.library.books,
+        {
+          ...localBook("new-dune", "Dune", "Frank Herbert"),
+          sourceKind: "catalog",
+          bookEditionId: "dune",
+        },
+      ],
+    };
+    await act(() => onPress(activation()));
+    expect(runtime.openMobileBook).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ bookId: "new-dune" }),
+    );
+    expect(runtime.navigation.navigate).not.toHaveBeenCalled();
   });
 
   it("keeps an in-flight local open locked across focus return in Search", async () => {

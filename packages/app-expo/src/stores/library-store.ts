@@ -1178,14 +1178,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   updateBook: async (bookId, updates) => {
-    set((state) => ({
-      books: state.books.map((b) => (b.id === bookId ? { ...b, ...updates } : b)),
-      allTags:
-        updates.tags !== undefined
-          ? Array.from(new Set([...state.allTags, ...updates.tags])).sort()
-          : state.allTags,
-    }));
-    debouncedSave("library-books", get().books);
+    const book = get().books.find((book) => book.id === bookId);
+    const unchanged =
+      book &&
+      Object.entries(updates).every(([key, value]) => Object.is(book[key as keyof Book], value));
+    if (!unchanged) {
+      set((state) => ({
+        books: state.books.map((b) => (b.id === bookId ? { ...b, ...updates } : b)),
+        allTags:
+          updates.tags !== undefined
+            ? Array.from(new Set([...state.allTags, ...updates.tags])).sort()
+            : state.allTags,
+      }));
+      debouncedSave("library-books", get().books);
+    }
+    // Memory may be ahead of the database after a failed write. Allow retries.
     await persistBookUpdate(bookId, updates).catch((err) =>
       console.error("Failed to update book in database:", err),
     );
