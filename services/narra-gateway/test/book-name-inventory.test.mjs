@@ -194,6 +194,39 @@ test('the roster tier is capped and the significant tier is a subset of it', () 
   assert.ok(MAX_ROSTER_CANDIDATES > 12)
 })
 
+test('частый кандидат неясного типа не проигрывает потолок редким персонажам', () => {
+  // Потолок выбирается по частоте и до всего остального. Пока его забирали
+  // значимые, а ярус roster набирался из остатка, на книге со ста двадцатью
+  // восемью персонажами остатка не оставалось вовсе: кандидат с 94
+  // упоминаниями, чей тип счётчик не смог определить, проигрывал персонажу с
+  // двенадцатью, не попадал в состав и не получал ни фрагментов, ни карточки.
+  // Так пропал Ян ван Тох, герой, с которого начинается «Война с саламандрами».
+  const speakers = ['Алексеев', 'Борисов', 'Волков', 'Громов', 'Дроздов', 'Егоров']
+    .flatMap((name) => Array.from({ length: 5 }, () =>
+      `— Здравствуйте, — сказал ${name}. — ${name} слушает.`))
+  // Частое имя без речи рядом и без обращений: тип остаётся неясным.
+  const frequent = Array.from({ length: 20 }, (_, index) =>
+    `Вантох прошёл мимо, и Вантох не обернулся, потому что Вантох спешил, ${index}.`)
+  const inventory = buildBookNameInventory({
+    text: paragraphs(...speakers, ...frequent),
+    cap: 4
+  })
+
+  const vantoh = inventory.candidates.find(({ displayName }) => displayName === 'Вантох')
+  assert.ok(vantoh, 'частый кандидат исчез из инвентаря')
+  assert.equal(vantoh.kindHint, 'unknown')
+  assert.ok(vantoh.count > 12, `упоминаний мало: ${vantoh.count}`)
+  assert.notEqual(vantoh.tier, 'minor')
+  // Ярус roster и есть отобранный по частоте потолок: в нём не может быть
+  // кандидата, менее частого, чем оставшийся за бортом.
+  const roster = inventoryRoster(inventory)
+  assert.ok(roster.length <= 4)
+  const minorMax = Math.max(0, ...inventory.candidates
+    .filter(({ tier }) => tier === 'minor').map(({ count }) => count))
+  const rosterMin = Math.min(...roster.map(({ count }) => count))
+  assert.ok(rosterMin >= minorMax, `в составе ${rosterMin}, за бортом ${minorMax}`)
+})
+
 test('candidate keys are unique ASCII identifiers even for Cyrillic names', () => {
   const inventory = buildBookNameInventory({
     text: paragraphs(

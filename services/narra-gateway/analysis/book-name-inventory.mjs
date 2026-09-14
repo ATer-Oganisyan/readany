@@ -913,7 +913,21 @@ export function buildBookNameInventory({
     : null
   if (narrator) narrator.narrator = true
 
-  const named = candidates.filter(({ kindHint }) => kindHint === 'person')
+  // Потолок выбирается по частоте и до всего остального. Пока его забирали
+  // значимые, а ярус `roster` набирался из остатка, на книге со ста двадцатью
+  // восемью персонажами остатка не оставалось вовсе — и кандидат с 94
+  // упоминаниями, чей тип счётчик не смог определить, проигрывал персонажу с
+  // двенадцатью. Он не попадал в состав, не получал фрагментов и не получал
+  // карточки: так пропал Ян ван Тох, герой, с которого начинается «Война с
+  // саламандрами». Backstop полноты обязан считать частоту, а не тип.
+  const rosterKeys = new Set()
+  for (const candidate of candidates) {
+    if (rosterKeys.size >= cap) break
+    rosterKeys.add(candidate.candidateKey)
+  }
+
+  const named = candidates.filter(({ candidateKey, kindHint }) =>
+    kindHint === 'person' && rosterKeys.has(candidateKey))
   const namedMentions = named.reduce((sum, { count }) => sum + count, 0)
   const target = namedMentions * coverage
   let covered = 0
@@ -951,17 +965,14 @@ export function buildBookNameInventory({
     candidate.tier = significantKeys.has(candidate.candidateKey) ? 'significant' : 'minor'
   }
 
-  // Ярус `roster` — вход подтверждения roster: значимые плюс остальные
-  // кандидаты по частоте до потолка. Именно он и есть backstop полноты: место,
+  // Ярус `roster` — вход подтверждения состава и backstop полноты: место,
   // ошибочно помеченное как место, здесь ещё остаётся, и один LLM-вызов может
-  // вернуть его в персонажи.
-  let rosterCount = significantCount
+  // вернуть его в персонажи. Он и есть отобранный по частоте потолок.
   for (const candidate of candidates) {
-    if (rosterCount >= cap) break
     if (candidate.tier === 'significant') continue
-    candidate.tier = 'roster'
-    rosterCount += 1
+    candidate.tier = rosterKeys.has(candidate.candidateKey) ? 'roster' : 'minor'
   }
+  const rosterCount = rosterKeys.size
 
   return {
     inventoryVersion: NAME_INVENTORY_VERSION,
