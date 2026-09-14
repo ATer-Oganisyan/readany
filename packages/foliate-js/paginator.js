@@ -688,7 +688,10 @@ class View {
                 'max-width': vertical
                     ? `${width - (applyFullscreen ? 0 : (marginLeft + marginRight))}px`
                     : (maxWidth !== 'none' && maxWidth !== '0px' ? maxWidth : '100%'),
-                'object-fit': 'contain',
+                // Generated scenes fill their reserved frame, including after
+                // pagination or a viewport resize reapplies media constraints.
+                'object-fit': el.closest('[data-readany-scene-state="image"]')
+                    ? 'cover' : 'contain',
                 'page-break-inside': 'avoid',
                 'break-inside': 'avoid',
                 'box-sizing': 'border-box',
