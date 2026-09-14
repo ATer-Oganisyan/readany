@@ -116,29 +116,21 @@ export async function openMobileBook({
   t,
   cfi,
   highlight,
-  replace = false,
 }: {
   bookId: string;
   navigation: MobileNavigation;
   t: TFunction;
   cfi?: string;
   highlight?: boolean;
-  replace?: boolean;
 }): Promise<boolean> {
-  const openReader = () => {
-    // A download or missing-file prompt may outlive a dismissed details sheet.
-    if (replace && !navigation.isFocused()) return false;
-    if (replace) navigation.replace("Reader", { bookId, cfi, highlight });
-    else navigation.navigate("Reader", { bookId, cfi, highlight });
-    return true;
-  };
   const book = await resolveBookForOpen(bookId);
   if (!book) {
     return false;
   }
 
   if (book.syncStatus === "remote") {
-    return openReader();
+    navigation.navigate("Reader", { bookId, cfi, highlight });
+    return true;
   }
 
   if (book.syncStatus === "downloading") {
@@ -154,7 +146,8 @@ export async function openMobileBook({
   // A soft-deleted book is no longer in the live store — even if the file
   // still exists on disk we must re-import so it rejoins the store.
   if (!book.deletedAt && (await hasAccessibleLocalFile(book))) {
-    return openReader();
+    navigation.navigate("Reader", { bookId, cfi, highlight });
+    return true;
   }
 
   const shouldReimport = await useMissingBookPromptStore.getState().showPrompt({
@@ -214,7 +207,8 @@ export async function openMobileBook({
     if (!restoredBook) {
       return false;
     }
-    return openReader();
+    navigation.navigate("Reader", { bookId, cfi, highlight });
+    return true;
   } catch (error) {
     const message =
       error instanceof Error
