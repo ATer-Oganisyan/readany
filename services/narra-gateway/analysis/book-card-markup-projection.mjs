@@ -159,6 +159,14 @@ export function projectCardsToSnapshot({ cards, fragmentsByCharacter, textLength
     for (const fragment of identityFragments) {
       emit(fragment.fragmentId, CLAIM_OBSERVATION_TYPES.identity)
     }
+    // Био ссылается на улики того же типа, что и идентичность, но цитирует оно
+    // что угодно из карточки — а идентичность берёт только первые 64 фрагмента.
+    // Пока эти два множества расходились, био ссылалось на наблюдение, которого
+    // в снимке нет, и Validate отбивал публикацию целиком: «Маленький принц» со
+    // 177 фрагментами так и не опубликовался ни разу.
+    for (const fragmentId of card.bio.fragmentIds) {
+      emit(fragmentId, CLAIM_OBSERVATION_TYPES.identity)
+    }
     for (const type of [
       CLAIM_OBSERVATION_TYPES.role,
       CLAIM_OBSERVATION_TYPES.age,

@@ -268,3 +268,80 @@ test('invalid projection inputs are refused', () => {
     { code: 'CARD_PROJECTION_INVALID' }
   )
 })
+
+test('био, процитировавшее поздний абзац, не оставляет разметку без улики', () => {
+  // Идентичность берёт только первые 64 фрагмента персонажа, а био цитирует
+  // что угодно из карточки — и ссылается на улики того же типа. Пока эти два
+  // множества расходились, разметка ссылалась на наблюдение, которого в снимке
+  // нет, Validate отбивал публикацию целиком, и «Маленький принц» со 177
+  // фрагментами не опубликовался ни разу.
+  const paragraphs = Array.from({ length: 80 }, (_, index) =>
+    `Маленький принц снова заговорил о своей розе, и это был раз номер ${index}.`)
+  const text = paragraphs.join('\n\n')
+  const fragments = paragraphs.map((paragraph, index) => {
+    const startOffset = text.indexOf(paragraph)
+    return {
+      fragmentId: `frag:char:prince:${index}`,
+      characterKey: 'char:prince',
+      paragraphIndex: index,
+      chapterIndex: 0,
+      startOffset,
+      endOffset: startOffset + paragraph.length,
+      quote: paragraph
+    }
+  })
+  // Био цитирует 70-й абзац — далеко за границей первых 64.
+  const late = fragments[70].fragmentId
+  const card = validateCharacterCard({
+    contractVersion: 'character-card-v1',
+    characterKey: 'char:prince',
+    name: 'Маленький принц',
+    fullName: '',
+    aliases: [],
+    firstMentionTextOffset: fragments[0].startOffset,
+    cardWindow: { startOffset: 0, endOffset: text.length, chapterIndexes: [0] },
+    mentionCount: fragments.length,
+    mentionCountInWindow: fragments.length,
+    traits: [{ value: 'заботливый', fragmentIds: [fragments[1].fragmentId], confidence: 0.9 }],
+    bio: { value: 'Маленький принц бережёт свою розу.', fragmentIds: [late] },
+    role: null,
+    locations: [],
+    appearancePrompt: '',
+    gender: 'male',
+    age: '',
+    greeting: '',
+    source: {
+      normalizedTextHash: 'a'.repeat(64),
+      inventoryVersion: 'name-inventory-v1',
+      fragmentSetHash: 'b'.repeat(64),
+      promptVersion: 'character-card-prompt-v1'
+    },
+    createdAt: '2026-09-14T07:00:00Z'
+  })
+
+  const projection = projectCardsToSnapshot({
+    cards: [card],
+    fragmentsByCharacter: { 'char:prince': fragments },
+    textLength: text.length
+  })
+  const snapshotId = '9f4b6d61-0000-4000-8000-000000000001'
+  const snapshot = cardSnapshotFor({ snapshotId, projection })
+  const markup = assembleBookMarkupV3({
+    snapshotId,
+    textLength: text.length,
+    entities: projection.entities,
+    observations: projection.observations,
+    characterProfiles: projection.characterProfiles,
+    characterSelection: projection.characterSelection
+  })
+  const report = validateBookMarkupV3({
+    markup,
+    snapshot,
+    observations: projection.observations,
+    normalizedText: text,
+    normalizedTextHash: createHash('sha256').update(text).digest('hex')
+  })
+
+  assert.deepEqual(report.errors, [], JSON.stringify(report.errors, null, 1))
+  assert.equal(report.valid, true)
+})
