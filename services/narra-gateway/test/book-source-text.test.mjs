@@ -517,3 +517,24 @@ test('EPUB does not replace NAV with a longer NCX that omits an existing chapter
   ) })
   assert.equal(result.navigation.source, 'nav')
 })
+
+
+test('EPUB excludes non-linear publisher notices from markup and never falls back to them', async () => {
+  for (const onlyNotices of [false, true]) for (const prefix of ['', 'opf:']) {
+    const markup = '<package><manifest><item id="story" href="story.xhtml"/><item id="notice" href="notice.xhtml"/></manifest><spine>' +
+      (onlyNotices ? '' : '<itemref idref="story"/>') +
+      '<itemref idref="notice" linear="no"/></spine></package>'
+    const epub = zipSync({
+      'book.opf': strToU8(markup.replace(/<(\/?)(package|manifest|item|itemref|spine)\b/g, `<$1${prefix}$2`)),
+      'story.xhtml': strToU8('<html><body><h1>Действие первое</h1><p>Бригадир, в сюртуке, ходит и курит табак.</p></body></html>'),
+      'notice.xhtml': strToU8('<html><body><p>Экспортировано из Викитеки. Служебное пояснение.</p></body></html>')
+    })
+    if (onlyNotices) {
+      await assert.rejects(extractBookText({ bytes: epub, format: 'epub' }), { code: 'BOOK_PARSE_FAILED' })
+    } else {
+      const result = await extractBookText({ bytes: epub, format: 'epub' })
+      assert.match(result, /Бригадир, в сюртуке/)
+      assert.doesNotMatch(result, /Викитеки|Служебное пояснение/)
+    }
+  }
+})

@@ -1,4 +1,7 @@
 import { ReaderTOCPanel } from "@/screens/reader/ReaderTOCPanel";
+import { readFileSync } from "node:fs";
+import { parseBackendBookToc } from "@/lib/narra/backend-catalog-api";
+import { flattenTocItems } from "@/screens/reader/reader-toc-items";
 import { useBackendBookToc } from "@/screens/reader/useBackendBookToc";
 import type { Book, TOCItem } from "@readany/core/types";
 import { type ReactTestRenderer, act, create } from "react-test-renderer";
@@ -23,6 +26,19 @@ vi.mock("react-i18next", () => ({
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+it.runIf(Boolean(process.env.NARRA_CATALOG_TOC_REPORT))("passes every real catalog route payload into reader rows without losing names, order or links", () => {
+  const report = JSON.parse(readFileSync(process.env.NARRA_CATALOG_TOC_REPORT!, "utf8"));
+  expect(report.checked).toBe(1503);
+  expect(report.failures).toEqual([]);
+  expect(report.payloads).toHaveLength(1503);
+  for (const payload of report.payloads) {
+    const toc = parseBackendBookToc(payload, payload.book_edition_id, payload.source_content_hash);
+    const rows = flattenTocItems(toc, "", "");
+    expect(rows.map(row => row.title)).toEqual(payload.items.map((item: { title: string }) => item.title));
+    expect(rows.map(row => row.href)).toEqual(payload.items.map((item: { reader_href: string }) => item.reader_href));
+  }
+});
 const book = {
   id: "local",
   sourceKind: "catalog",

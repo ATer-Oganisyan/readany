@@ -516,6 +516,7 @@ function epubStructuredText(bytes) {
     ? byLowerName.get(rootfile.toLowerCase())
     : entryNames.find((name) => /\.opf$/i.test(name))
   const orderedNames = []
+  let hasSpineItems = false
   let opf = ''
   let manifestItems = []
   const navigationCandidates = []
@@ -531,8 +532,10 @@ function epubStructuredText(bytes) {
     }
     const base = path.posix.dirname(opfName)
     for (const match of opf.matchAll(/<(?:[\w.-]+:)?itemref\b([^>]*)\/?\s*>/gi)) {
-      const idref = parseAttributes(match[1]).idref
-      const href = manifest.get(idref)
+      hasSpineItems = true
+      const attributes = parseAttributes(match[1])
+      if (attributes.linear === 'no') continue
+      const href = manifest.get(attributes.idref)
       if (!href) continue
       const name = safeZipPath(base, href.split('#')[0])
       const actual = byLowerName.get(name.toLowerCase())
@@ -567,7 +570,7 @@ function epubStructuredText(bytes) {
       }
     }
   }
-  if (!orderedNames.length) {
+  if (!orderedNames.length && !hasSpineItems) {
     orderedNames.push(...entryNames.filter((name) => EPUB_TEXT_ENTRY.test(name)).sort())
   }
   const rawSections = orderedNames.map((name) => {
