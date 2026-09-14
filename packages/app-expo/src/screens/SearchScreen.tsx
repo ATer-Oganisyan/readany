@@ -1,6 +1,3 @@
-import { SystemSheetZoomSource } from "@/components/navigation/SystemSheetZoomSource";
-import { openBookDetails } from "@/lib/library/open-book-details";
-import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { CharacterChatListRow } from "@/components/chats/character-chat-list";
 import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
 import { BookCoverTypography } from "@/components/library/book-cover-typography";
@@ -17,7 +14,9 @@ import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
 import { countRender, markInteraction } from "@/lib/diagnostics/interaction-performance";
+import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
+import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { retryCatalogCover } from "@/lib/narra/catalog-cover-coordinator";
 import { getCatalogBookWithCover } from "@/lib/narra/catalog-cover-store";
 import {
@@ -48,7 +47,6 @@ import {
   useDeferredValue,
   useEffect,
   useLayoutEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -97,6 +95,7 @@ const SearchContent = memo(function SearchContent() {
   const deferredQuery = useDeferredValue(normalized);
   const searching = normalized.length > 0;
   const navigating = useRef(false);
+  const opening = useRef(false);
   const styles = useMemo(
     () =>
       makeStyles(colors, {
@@ -149,7 +148,7 @@ const SearchContent = memo(function SearchContent() {
   useEffect(
     () =>
       navigation.addListener("focus", () => {
-        navigating.current = false;
+        if (!opening.current) navigating.current = false;
       }),
     [navigation],
   );
@@ -165,30 +164,46 @@ const SearchContent = memo(function SearchContent() {
     [navigation],
   );
   const openCatalogBook = useCallback(
-    async (book: CachedBackendCatalogBook, sourceId?: string) => {
+    async (book: CachedBackendCatalogBook) => {
       if (navigating.current || !navigation.isFocused()) return;
       navigating.current = true;
+      opening.current = true;
       searchBarRef.current?.blur();
-      if (
-        !(await openBookDetails(
-          navigation,
-          { catalogBook: getCatalogBookWithCover(book) },
-          sourceId,
-        ))
-      )
+      try {
+        const existing = findReadableLibraryBookForCatalogBook(
+          book,
+          useLibraryStore.getState().books,
+        );
+        if (existing) {
+          if (!(await openMobileBook({ bookId: existing.id, navigation, t })))
+            navigating.current = false;
+        } else
+          navigation.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(book) });
+      } catch (error) {
         navigating.current = false;
+        throw error;
+      } finally {
+        opening.current = false;
+      }
     },
-    [navigation],
+    [navigation, t],
   );
   const openLibraryBook = useCallback(
-    async (book: Book, sourceId?: string, coverUri?: string) => {
+    async (book: Book) => {
       if (navigating.current || !navigation.isFocused()) return;
       navigating.current = true;
+      opening.current = true;
       searchBarRef.current?.blur();
-      if (!(await openBookDetails(navigation, { bookId: book.id, coverUri }, sourceId)))
+      try {
+        if (!(await openMobileBook({ bookId: book.id, navigation, t }))) navigating.current = false;
+      } catch (error) {
         navigating.current = false;
+        throw error;
+      } finally {
+        opening.current = false;
+      }
     },
-    [navigation],
+    [navigation, t],
   );
   const retryCover = useCallback(
     (book: CachedBackendCatalogBook) => {
@@ -255,7 +270,7 @@ type DiscoveryProps = {
   shelves: CatalogShelf[];
   columns: number;
   libraryKeys: ReadonlySet<string>;
-  onOpen: (book: CachedBackendCatalogBook, sourceId?: string) => void;
+  onOpen: (book: CachedBackendCatalogBook) => void;
   onOpenCategory: (shelf: CatalogShelf) => void;
   onRetryCover: (book: CachedBackendCatalogBook) => void;
   enabled: boolean;
@@ -430,7 +445,7 @@ const SearchResults = memo(function SearchResults({
   query: string;
   books: Book[];
   catalogBooks: CachedBackendCatalogBook[];
-  onOpenLibrary: (book: Book, sourceId?: string, coverUri?: string) => void;
+  onOpenLibrary: (book: Book) => void;
   onOpenCatalog: (book: CachedBackendCatalogBook) => void;
 }) {
   countRender("search.results");
@@ -557,13 +572,11 @@ const CatalogResultRow = memo(function CatalogResultRow({
   separator,
 }: {
   book: CachedBackendCatalogBook;
-  onOpen: (book: CachedBackendCatalogBook, sourceId?: string) => void;
+  onOpen: (book: CachedBackendCatalogBook) => void;
   separator: boolean;
 }) {
   const guard = useSwipePressGuard();
   const resolved = useCatalogCover(book);
-  const occurrence = useId();
-  const sourceId = `${occurrence}:${book.bookEditionId}`;
   const item = useMemo(
     () => ({
       key: `catalog:${book.bookEditionId}`,
@@ -571,18 +584,13 @@ const CatalogResultRow = memo(function CatalogResultRow({
       title: book.title,
       subtitle: book.author,
       onPress: (event?: GestureResponderEvent) => {
-        if (guard?.canPress(event) !== false) onOpen(resolved, sourceId);
+        if (guard?.canPress(event) !== false) onOpen(resolved);
       },
       avatar: (
-        <BookListCover
-          sourceId={sourceId}
-          title={book.title}
-          author={book.author}
-          coverUri={resolved.coverUri}
-        />
+        <BookListCover title={book.title} author={book.author} coverUri={resolved.coverUri} />
       ),
     }),
-    [book, guard, onOpen, resolved, sourceId],
+    [book, guard, onOpen, resolved],
   );
   return (
     <CharacterChatListRow
@@ -598,12 +606,7 @@ const LibraryResultRow = memo(function LibraryResultRow({
   onOpen,
   separator,
   resolveCover,
-}: {
-  book: Book;
-  onOpen: (book: Book, sourceId?: string, coverUri?: string) => void;
-  separator: boolean;
-  resolveCover: boolean;
-}) {
+}: { book: Book; onOpen: (book: Book) => void; separator: boolean; resolveCover: boolean }) {
   const guard = useSwipePressGuard();
   const items = useMemo(
     () => (resolveCover ? [{ bookId: book.id, coverUrl: book.meta.coverUrl }] : []),
@@ -611,8 +614,6 @@ const LibraryResultRow = memo(function LibraryResultRow({
   );
   const covers = useResolvedCovers(items);
   const uri = covers.get(book.id);
-  const occurrence = useId();
-  const sourceId = `${occurrence}:${book.id}`;
   const item = useMemo(
     () => ({
       key: `library:${book.id}`,
@@ -620,18 +621,11 @@ const LibraryResultRow = memo(function LibraryResultRow({
       title: book.meta.title,
       subtitle: book.meta.author,
       onPress: (event?: GestureResponderEvent) => {
-        if (guard?.canPress(event) !== false) onOpen(book, sourceId, uri);
+        if (guard?.canPress(event) !== false) onOpen(book);
       },
-      avatar: (
-        <BookListCover
-          sourceId={sourceId}
-          title={book.meta.title}
-          author={book.meta.author}
-          coverUri={uri}
-        />
-      ),
+      avatar: <BookListCover title={book.meta.title} author={book.meta.author} coverUri={uri} />,
     }),
-    [book, guard, onOpen, uri, sourceId],
+    [book, guard, onOpen, uri],
   );
   return (
     <CharacterChatListRow
@@ -692,12 +686,10 @@ const makeStyles = (
   });
 
 function BookListCover({
-  sourceId,
   title,
   author,
   coverUri,
 }: {
-  sourceId: string;
   title: string;
   author?: string;
   coverUri?: string;
@@ -706,7 +698,7 @@ function BookListCover({
   const visibleCoverUri = coverUri && coverUri !== failedCoverUri ? coverUri : undefined;
 
   return (
-    <SystemSheetZoomSource sourceId={sourceId} collapsable={false} style={bookListStyles.coverSlot}>
+    <View style={bookListStyles.coverSlot}>
       <BookSurface
         width={SEARCH_COVER_WIDTH}
         height={SEARCH_COVER_HEIGHT}
@@ -741,7 +733,7 @@ function BookListCover({
           </View>
         }
       />
-    </SystemSheetZoomSource>
+    </View>
   );
 }
 

@@ -17,7 +17,6 @@ import {
   StorybookScreen,
   getStorybookItemTitle,
 } from "@/screens/StorybookScreen";
-import { BookDetailsScreen } from "@/screens/book-details-screen";
 import { AudiobookPlayerScreen } from "@/screens/audiobook-player-screen";
 import { CatalogCategoryScreen } from "@/screens/catalog-category-screen";
 import { WebDavImportBrowserScreen } from "@/screens/library/WebDavImportBrowserScreen";
@@ -58,19 +57,6 @@ export type RootStackParamList = {
     highlight?: boolean;
     openTTS?: boolean;
   };
-  BookDetails:
-    | {
-        bookId: string;
-        catalogBook?: CachedBackendCatalogBook;
-        sourceId?: string;
-        coverUri?: string;
-      }
-    | {
-        bookId?: string;
-        catalogBook: CachedBackendCatalogBook;
-        sourceId?: string;
-        coverUri?: string;
-      };
   ReaderTOC: undefined;
   AudiobookPlayer: { sourceId?: string } | undefined;
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
@@ -225,20 +211,6 @@ export function RootNavigator() {
             sheetGrabberVisible: true,
             sheetExpandsWhenScrolledToEdge: true,
             sheetResizeAnimationEnabled: true,
-          }}
-        />
-        <Stack.Screen
-          name="BookDetails"
-          component={BookDetailsScreen}
-          options={{
-            presentation: "formSheet",
-            headerShown: false,
-            sheetAllowedDetents: [0.85, 1],
-            sheetGrabberVisible: true,
-            sheetExpandsWhenScrolledToEdge: true,
-            contentStyle: { backgroundColor: isDark ? colors.elevation2 : colors.background },
-            statusBarHidden: false,
-            statusBarStyle: isDark ? "light" : "dark",
           }}
         />
         <Stack.Screen
