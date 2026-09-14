@@ -9,7 +9,8 @@ export function allowReaderNavigation(
     // Only the original shell may occupy the top-level WebView.
     if (target.href.split("#")[0] === shell.href.split("#")[0]) return true;
     if (request.isTopFrame === true) return false;
-    if (target.href === "about:blank" || target.protocol === "blob:") return true;
+    // WKWebView reports Foliate chapter iframe.srcdoc as about:srcdoc.
+    if (target.href === "about:blank" || target.href === "about:srcdoc" || target.protocol === "blob:") return true;
     // Chapter frames and converted books are served beside the reader shell.
     if (shell.protocol === "file:") {
       const directory = shell.pathname.slice(0, shell.pathname.lastIndexOf("/") + 1);
