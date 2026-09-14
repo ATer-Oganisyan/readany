@@ -254,7 +254,12 @@ test('publishing a card queues its media from the card hash at the window priori
     () => ({ rows: [] }),                                       // advisory lock
     (sql) => {                                                  // card media source
       assert.match(sql, /FROM book_character_cards AS card/)
-      assert.match(sql, /card\.document_hash AS source_markup_hash/)
+      // Источник медиа — поля, из которых медиа делается, а не вся карточка:
+      // в document_hash входят createdAt, счётчик упоминаний и границы окна, и
+      // любая пересборка карточки перерисовывала портрет заново.
+      assert.match(sql, /appearancePrompt/)
+      assert.match(sql, /greeting/)
+      assert.doesNotMatch(sql, /card\.document_hash AS source_markup_hash/)
       return {
         rows: [{
           source_markup_hash: 'b'.repeat(64),

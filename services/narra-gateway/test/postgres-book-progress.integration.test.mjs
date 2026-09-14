@@ -118,7 +118,15 @@ test('PostgreSQL reports workers, leases and per-book progress in one snapshot',
     assert.deepEqual(book.runJobs, [{ name: 'roster_confirm', status: 'ready', count: 1 }])
     assert.deepEqual(book.editionJobs, [{ name: 'catalog_cover', status: 'running', count: 1 }])
     assert.deepEqual(book.roster, [{ tier: 'significant', count: 1 }])
-    assert.deepEqual(book.cards, { published: 1, lastWindowIndex: 0 })
+    // Дашборду карточной книги нужны окна и факт публикации: стадия у неё
+    // всегда одна и та же, и по ней не видно ни движения, ни беды.
+    assert.deepEqual(book.cards, {
+      published: 1,
+      lastWindowIndex: 0,
+      windows: { total: 0, ready: 0 },
+      publications: 0,
+      lastPublishedAt: null
+    })
   } finally {
     await pool.query(
       'DELETE FROM worker_heartbeats WHERE worker_id = ANY($1::text[])',
