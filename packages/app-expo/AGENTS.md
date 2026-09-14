@@ -47,3 +47,8 @@
 - DerivedData: `ios/build/codex-devicehub`
 
 После запуска проверь, что приложение открылось без RedBox и экран «Библиотека» доступен. Если запуск упал, укажи точный этап: prerequisites, native build, install, Metro или runtime.
+
+## TestFlight
+
+- Все TestFlight-сборки всегда используют production-бэкенд `https://api.narra.disrupt.builders`, EAS environment `production` и профиль `production`. Тестовый сервер для TestFlight запрещён.
+- Перед публикацией проверять production-окружение в готовом JS-бандле IPA, а не только в настройках запуска.
