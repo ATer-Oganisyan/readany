@@ -2831,6 +2831,102 @@ export function createPostgresBookMarkupRepository(pool, {
      * очередь заполнится фоновыми заданиями большой книги, и окно первых глав
      * следующей книги будет ждать за ними.
      */
+    /**
+     * Перенести карточку персонажа в окно, где у него есть чем обосноваться.
+     *
+     * Персонаж попадает в окно первого упоминания, и там у него может быть один
+     * проходной абзац. Карточка из одного фрагмента падает на `CARD_BIO_MISSING`
+     * — и персонаж теряется для всей книги, хотя дальше у него сто абзацев:
+     * «Иван Матвеевич» из «Обломова» с 95 фрагментами не получил карточки
+     * вовсе, потому что впервые был назван мимоходом в первом окне.
+     *
+     * Переносим в ближайшее окно, где фрагментов у него станет больше, а не в
+     * следующее по счёту: соседнее окно часто не добавляет ничего, и перенос в
+     * него был бы тем же падением через минуту. Если такого окна нет — значит
+     * больше про персонажа в книге и не сказано, и падение честное.
+     */
+    async deferCharacterCard({ runId, bookEditionId, characterKey, windowIndex, priority = 50 }) {
+      if (!runId || !bookEditionId || !characterKey) {
+        throw new TypeError('runId, bookEditionId and characterKey are required')
+      }
+      if (!Number.isSafeInteger(windowIndex) || windowIndex < 0) {
+        throw new TypeError('windowIndex must be a non-negative integer')
+      }
+      return transaction(pool, async (client) => {
+        const target = await client.query(
+          `WITH roster AS (
+             SELECT candidate_keys, canonical_name, names, mention_count,
+                    first_mention_text_offset
+               FROM book_character_roster
+              WHERE run_id = $1 AND character_key = $2
+           ),
+           current AS (
+             SELECT count(fragment.fragment_id)::int AS fragment_count
+               FROM roster
+               LEFT JOIN book_character_fragments AS fragment
+                 ON fragment.run_id = $1
+                AND fragment.character_key = ANY(roster.candidate_keys)
+                AND fragment.start_offset < (
+                  SELECT end_offset FROM book_card_windows
+                   WHERE run_id = $1 AND window_index = $3
+                )
+           )
+           SELECT window.window_index, roster.canonical_name, roster.names,
+                  roster.mention_count, roster.first_mention_text_offset,
+                  count(fragment.fragment_id)::int AS fragment_count
+             FROM book_card_windows AS window
+             CROSS JOIN roster
+             CROSS JOIN current
+             LEFT JOIN book_character_fragments AS fragment
+               ON fragment.run_id = $1
+              AND fragment.character_key = ANY(roster.candidate_keys)
+              AND fragment.start_offset < window.end_offset
+            WHERE window.run_id = $1
+              AND window.window_index > $3
+              AND window.status <> 'cancelled'
+            GROUP BY window.window_index, roster.canonical_name, roster.names,
+                     roster.mention_count, roster.first_mention_text_offset,
+                     current.fragment_count
+           HAVING count(fragment.fragment_id) > max(current.fragment_count)
+            ORDER BY window.window_index
+            LIMIT 1`,
+          [runId, characterKey, windowIndex]
+        )
+        const row = target.rows[0]
+        if (!row) return { deferred: false, windowIndex: null }
+        const nextWindow = Number(row.window_index)
+        const inserted = await client.query(
+          `INSERT INTO generation_jobs (
+             id, idempotency_key, job_type, book_edition_id, character_key,
+             target_version, status, priority, payload, analysis_run_id, card_window_index
+           ) VALUES ($1, $2, 'character_card', $3, $4, $5, 'queued', $6, $7::jsonb, $8, $9)
+           ON CONFLICT (idempotency_key) DO NOTHING
+           RETURNING id`,
+          [
+            idFactory(),
+            `${runId}:character-card:${nextWindow}:${characterKey}`,
+            bookEditionId, characterKey, CHARACTER_CARD_TARGET_VERSION, priority,
+            JSON.stringify({
+              card_revision: 1,
+              fragment_count: Number(row.fragment_count),
+              first_mention_text_offset: Number(row.first_mention_text_offset),
+              character_name: row.canonical_name,
+              character_names: row.names ?? [],
+              mention_count: Number(row.mention_count),
+              deferred_from_window: windowIndex
+            }),
+            runId, nextWindow
+          ]
+        )
+        return {
+          deferred: true,
+          windowIndex: nextWindow,
+          jobId: inserted.rows[0]?.id ?? null,
+          fragmentCount: Number(row.fragment_count)
+        }
+      })
+    },
+
     async advanceCardWindows({
       // Прогон тоже можно не называть: читатель знает только книгу, а карточный
       // прогон у неё один — последний. Без этого шаг читателя не мог бы

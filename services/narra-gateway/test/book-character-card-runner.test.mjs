@@ -34,8 +34,14 @@ const FRAGMENTS = [
   fragmentAt(3, 'Элизабет снова заметила эту привычку и промолчала.')
 ]
 
-function harness({ generatorResult, generatorError, storageBytes = TEXT_BYTES, input = {} } = {}) {
-  const calls = { advanced: [], requests: [], published: [] }
+function harness({
+  generatorResult,
+  generatorError,
+  storageBytes = TEXT_BYTES,
+  input = {},
+  deferral
+} = {}) {
+  const calls = { advanced: [], requests: [], published: [], deferred: [] }
   const repository = {
     async getCharacterCardInput() {
       return {
@@ -69,7 +75,15 @@ function harness({ generatorResult, generatorError, storageBytes = TEXT_BYTES, i
     async advanceCardWindows(input) {
       calls.advanced.push(input)
       return { closed: [0], enqueued: { windowIndex: 1, created: 2 } }
-    }
+    },
+    ...(deferral
+      ? {
+        async deferCharacterCard(request) {
+          calls.deferred.push(request)
+          return deferral
+        }
+      }
+      : {})
   }
   const storage = {
     async getBytes() { return { bytes: storageBytes, mimeType: 'text/plain' } }
@@ -234,4 +248,53 @@ test('a failed card still moves the window chain on', async () => {
     { runId: 'run-1', bookEditionId: 'edition-1', failingJobId: JOB.id }
   ])
   assert.deepEqual(calls.published, [])
+})
+
+test('a character with nothing to cite here is moved to a window where there is', async () => {
+  // Персонаж попадает в окно первого упоминания, и там у него может быть один
+  // проходной абзац. Пока такая карточка падала насовсем, персонаж терялся для
+  // всей книги: «Иван Матвеевич» из «Обломова» с 95 фрагментами дальше по
+  // тексту не получил карточки вовсе, потому что впервые был назван мимоходом.
+  const { runner, calls } = harness({
+    generatorError: Object.assign(new Error('нечем обосноваться'), { code: 'CARD_BIO_MISSING' }),
+    deferral: { deferred: true, windowIndex: 4, jobId: 'job-next', fragmentCount: 95 }
+  })
+  const result = await runner.run(JOB)
+  assert.equal(result.status, 'deferred')
+  assert.equal(result.deferredToWindow, 4)
+  assert.deepEqual(calls.published, [])
+  assert.deepEqual(calls.deferred, [{
+    runId: 'run-1',
+    bookEditionId: 'edition-1',
+    characterKey: 'char:elizabeth',
+    windowIndex: 0,
+    priority: 50
+  }])
+  // Цепочка окон двигается и здесь: перенос — это завершение задания, а не
+  // его исчезновение.
+  assert.equal(calls.advanced.length, 1)
+})
+
+test('a character with nothing to cite anywhere still fails, and fails loudly', async () => {
+  // Отказ репозитория переносить означает, что дальше в книге про персонажа не
+  // сказано ничего. Прятать такую карточку в «перенесена» значило бы вечно
+  // возить её по окнам и никогда не признать, что собрать её нечем.
+  const { runner, calls } = harness({
+    generatorError: Object.assign(new Error('нечем обосноваться'), { code: 'CARD_BIO_MISSING' }),
+    deferral: { deferred: false, windowIndex: null }
+  })
+  await assert.rejects(() => runner.run(JOB), (error) => error.code === 'CARD_BIO_MISSING')
+  assert.equal(calls.deferred.length, 1)
+  assert.deepEqual(calls.published, [])
+})
+
+test('a card that fails for any other reason is not quietly moved', async () => {
+  // Перенос лечит нехватку цитат, а не обрыв связи с моделью: таймаут в другом
+  // окне повторится так же, а задание тем временем перестанет считаться упавшим.
+  const { runner, calls } = harness({
+    generatorError: Object.assign(new Error('модель не ответила'), { code: 'TIMEOUT' }),
+    deferral: { deferred: true, windowIndex: 4 }
+  })
+  await assert.rejects(() => runner.run(JOB), (error) => error.code === 'TIMEOUT')
+  assert.deepEqual(calls.deferred, [])
 })
