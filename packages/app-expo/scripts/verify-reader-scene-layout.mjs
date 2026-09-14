@@ -2,6 +2,7 @@
  * Real Foliate/EPUB layout regression, including WebKit (not a DOM mock).
  * Build first: pnpm run build:reader
  * Run with Playwright installed: node scripts/verify-reader-scene-layout.mjs
+ * Add --image-only to check scene image fill independently of placeholder UI.
  * NODE_PATH may point to the Codex bundled Node packages; no backend is called.
  */
 import assert from "node:assert/strict";
@@ -87,6 +88,7 @@ async function measure(page, anchor) {
       background: win.getComputedStyle(slot).backgroundColor,
       tapHighlights: [...new Set([slot, ...slot.querySelectorAll('*')].map(el => win.getComputedStyle(el).webkitTapHighlightColor))],
       box: slot.firstElementChild ? bounds(slot.firstElementChild) : null,
+      imageFit: slot.querySelector('img') && win.getComputedStyle(slot.querySelector('img')).objectFit,
       fragments: slot.getClientRects().length,
       stroke: slot.querySelector('.readany-scene-flow-border rect') && {
         color: win.getComputedStyle(slot.querySelector('.readany-scene-flow-border rect')).stroke,
@@ -120,6 +122,35 @@ function checkSquare(layout, label) {
   assert.ok(layout.slot.width <= layout.columnWidth + 1, `${label}: within text column`);
   assert.ok(layout.slot.height <= layout.pageHeight + 1, `${label}: within page height`);
   assert.equal(layout.fragments, 1, `${label}: not fragmented`);
+  if (layout.imageFit) {
+    assert.equal(layout.imageFit, 'cover', `${label}: image fills the frame without letterboxing`);
+    for (const axis of ['width', 'height', 'x', 'y']) {
+      assert.ok(Math.abs(layout.box[axis] - layout.slot[axis]) < 1, `${label}: image matches frame ${axis}`);
+    }
+  }
+}
+
+async function checkImageFill(page, anchor, engine) {
+  for (const [width, height] of [[1536, 1024], [1024, 1536]]) {
+    await page.evaluate(async ({ anchor, width, height }) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#625154';
+      ctx.fillRect(0, 0, width, height);
+      replaceSceneSlot(anchor, canvas.toDataURL());
+      await findSceneInsert(anchor).querySelector('img').decode();
+      applySettings({ fontSize: width > height ? 21 : 22 });
+    }, { anchor, width, height });
+    await settle(page);
+    checkSquare(await measure(page, anchor), `${engine.name()} image ${width}x${height}`);
+    for (const viewport of [{ width: 844, height: 390 }, { width: 393, height: 740 }]) {
+      await page.setViewportSize(viewport);
+      await settle(page);
+      checkSquare(await measure(page, anchor), `${engine.name()} resized image ${width}x${height}`);
+    }
+  }
 }
 
 let failed = false;
@@ -163,6 +194,12 @@ try {
       checkSquare(initial, `${engine.name()} idle`);
       assert.ok(initial.next.width > initial.columnWidth * 0.8, 'Text below keeps full column width');
       assert.ok(initial.next.y >= initial.slot.y + initial.slot.height, 'Text starts below the square');
+      if (process.argv.includes('--image-only')) {
+        await checkImageFill(page, anchor, engine);
+        assert.deepEqual(pageErrors, [], 'No reader runtime errors');
+        console.log(`${engine.name()}: landscape and portrait images fill the scene after typography and viewport changes`);
+        continue;
+      }
       assert.equal(initial.action.color, 'rgba(255, 255, 255, 0.4)');
       assert.ok(initial.action.font.includes('SB Sans Interface'));
       assert.equal(initial.action.tag, 'button');
@@ -472,15 +509,18 @@ try {
 
       const imageDataUri = await page.evaluate(() => {
         const canvas = document.createElement('canvas');
-        canvas.width = canvas.height = 1024;
+        canvas.width = 1536;
+        canvas.height = 1024;
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#625154';
-        ctx.fillRect(0, 0, 1024, 1024);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         return canvas.toDataURL();
       });
       await page.evaluate(({ anchor, imageDataUri }) => replaceSceneSlot(anchor, imageDataUri), { anchor, imageDataUri });
       await settle(page);
       assert.deepEqual((await measure(page, anchor)).slot, initial.slot, 'Image arrival does not move text');
+
+      await checkImageFill(page, anchor, engine);
 
       await page.evaluate(() => applySettings({ fontSize: 28, lineHeight: 1.7, pageMargin: 16 }));
       await settle(page);
