@@ -43,6 +43,11 @@ describe("reader navigation", () => {
     ).toBe(false);
   });
 
+  it("allows iOS srcdoc chapter frames while blocking top-level srcdoc navigation", () => {
+    expect(allowReaderNavigation({ url: "about:srcdoc", isTopFrame: false }, shell)).toBe(true);
+    expect(allowReaderNavigation({ url: "about:srcdoc", isTopFrame: true }, shell)).toBe(false);
+  });
+
   it("allows local file chapters without allowing another top-level page", () => {
     const file = "file:///app/reader/reader.html";
     expect(
