@@ -15,7 +15,18 @@ final class SystemSheetZoomSourceRepository: NSObject {
 
   private var sources: [String: WeakBarButtonItem] = [:]
   private var pendingIdentifier: String?
+  private let targets = NSMapTable<NSString, UIView>.strongToWeakObjects()
   private let views = NSMapTable<NSString, UIView>.strongToWeakObjects()
+
+  func registerTarget(identifier: String, view: UIView) {
+    guard !identifier.isEmpty else { return }
+    targets.setObject(view, forKey: identifier as NSString)
+  }
+
+  func unregisterTarget(identifier: String, matching view: UIView) {
+    guard targets.object(forKey: identifier as NSString) === view else { return }
+    targets.removeObject(forKey: identifier as NSString)
+  }
 
   func register(identifier: String, view: UIView) {
     guard !identifier.isEmpty else { return }
@@ -30,7 +41,17 @@ final class SystemSheetZoomSourceRepository: NSObject {
   @available(iOS 26.0, *)
   func transition(identifier: String) -> UIViewController.Transition {
     if views.object(forKey: identifier as NSString) != nil {
-      return .zoom(options: nil, sourceViewProvider: { _ in
+      let options = UIViewController.Transition.ZoomOptions()
+      options.alignmentRectProvider = { context in
+        let destination = context.zoomedViewController.view!
+        guard let target = self.targets.object(forKey: identifier as NSString),
+          target.isDescendant(of: destination)
+        else { return nil }
+        destination.layoutIfNeeded()
+        guard !target.bounds.isEmpty else { return nil }
+        return target.convert(target.bounds, to: destination)
+      }
+      return .zoom(options: options, sourceViewProvider: { _ in
         self.views.object(forKey: identifier as NSString)
       })
     }
@@ -79,7 +100,11 @@ final class SystemSheetZoomSourceRepository: NSObject {
     guard let identifier = pendingIdentifier else { return }
     pendingIdentifier = nil
 
-    guard #available(iOS 26.0, *), let controller = notification.object as? UIViewController else {
+    guard
+      #available(iOS 26.0, *),
+      let controller = notification.object as? UIViewController,
+      controller.preferredTransition == nil
+    else {
       return
     }
 
@@ -91,7 +116,21 @@ final class SystemSheetZoomDestinationView: ExpoView {
   var sourceIdentifier = "" {
     didSet {
       guard oldValue != sourceIdentifier else { return }
+      SystemSheetZoomSourceRepository.shared.unregisterTarget(identifier: oldValue, matching: self)
+      registerAlignmentTarget()
       configureTransition()
+    }
+  }
+
+  var alignToContent = false {
+    didSet { registerAlignmentTarget() }
+  }
+
+  private func registerAlignmentTarget() {
+    if alignToContent {
+      SystemSheetZoomSourceRepository.shared.registerTarget(identifier: sourceIdentifier, view: self)
+    } else {
+      SystemSheetZoomSourceRepository.shared.unregisterTarget(identifier: sourceIdentifier, matching: self)
     }
   }
 
@@ -102,9 +141,6 @@ final class SystemSheetZoomDestinationView: ExpoView {
     }
   }
 
-  private weak var configuredScreen: RNSScreen?
-  private var configuredSourceIdentifier: String?
-
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     isUserInteractionEnabled = false
@@ -114,51 +150,32 @@ final class SystemSheetZoomDestinationView: ExpoView {
   override func didMoveToSuperview() {
     super.didMoveToSuperview()
 
-    guard superview != nil else {
-      clearTransition()
-      return
-    }
-
+    guard superview != nil else { return }
     configureTransition()
   }
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
 
-    guard window != nil else {
-      clearTransition()
-      return
-    }
-
+    guard window != nil else { return }
     configureTransition()
     updateDetent()
   }
 
   private func configureTransition() {
-    guard let screen = findScreen() else { return }
-
-    guard #available(iOS 26.0, *), !sourceIdentifier.isEmpty else {
-      clearTransition()
+    guard
+      #available(iOS 26.0, *),
+      !sourceIdentifier.isEmpty,
+      let screen = findScreen(),
+      screen.preferredTransition == nil
+    else {
       return
     }
 
-    guard configuredScreen !== screen || configuredSourceIdentifier != sourceIdentifier else {
-      return
-    }
-
-    clearTransition()
+    // UIKit owns the transition through interactive dismissal, including temporary
+    // view detachment. Keep it on the controller until that controller is released.
     let identifier = sourceIdentifier
     screen.preferredTransition = SystemSheetZoomSourceRepository.shared.transition(identifier: identifier)
-    configuredScreen = screen
-    configuredSourceIdentifier = identifier
-  }
-
-  private func clearTransition() {
-    if #available(iOS 26.0, *) {
-      configuredScreen?.preferredTransition = nil
-    }
-    configuredScreen = nil
-    configuredSourceIdentifier = nil
   }
 
   private func updateDetent() {

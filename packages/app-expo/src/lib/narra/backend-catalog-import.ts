@@ -46,6 +46,7 @@ async function performDownloadedBackendCatalogImport(
     ...importedBook.meta,
     title: catalogBook.title,
     author: catalogBook.author,
+    description: importedBook.meta.description || catalogBook.description,
     language: normalizeBookLanguage(catalogBook.language) ?? importedBook.meta.language,
   };
   const catalogIdentity = {

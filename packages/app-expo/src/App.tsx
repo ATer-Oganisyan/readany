@@ -404,12 +404,12 @@ function AppInner() {
         <Toaster
           theme={isDark ? "dark" : "light"}
           position="top-center"
-          duration={4000}
+          duration={3000}
           visibleToasts={2}
           enableStacking
           richColors={false}
           animation={TOAST_ANIMATION}
-          swipeToDismissDirection="horizontal"
+          swipeToDismissDirection="horizontal-up"
           backgroundComponent={toastBackground}
           icons={{
             success: <ToastIcon name="check-circle" color={colors.primary60} />,

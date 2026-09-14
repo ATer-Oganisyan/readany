@@ -8,11 +8,12 @@ export function NativeCharacterDetailsCells({
   cellBackgroundColor,
   items,
   isDark,
+  topSpacing = 0,
 }: NativeCharacterDetailsCellsProps) {
   const primaryColor = isDark ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.9)";
 
   return (
-    <View style={[styles.group, { backgroundColor: cellBackgroundColor }]}>
+    <View style={[styles.group, { backgroundColor: cellBackgroundColor, marginTop: topSpacing }]}>
       {items.map((item, index) => (
         <View key={item.key}>
           {index > 0 ? <View style={styles.divider} /> : null}

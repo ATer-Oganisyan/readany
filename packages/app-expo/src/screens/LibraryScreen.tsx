@@ -1,3 +1,4 @@
+import { openBookDetails } from "@/lib/library/open-book-details";
 import { BookCard } from "@/components/library/BookCard";
 import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
 import { ConnectedCatalogBookCard } from "@/components/library/ConnectedCatalogBookCard";
@@ -31,7 +32,6 @@ import { useBackendCatalog, useBackendCatalogActivity } from "@/hooks/use-backen
 import { useBookImportActions } from "@/hooks/use-book-import-actions";
 import { useCatalogCoverWindow } from "@/hooks/use-catalog-cover-window";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
-import { openMobileBook } from "@/lib/library/open-mobile-book";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { retryCatalogCover as retrySharedCatalogCover } from "@/lib/narra/catalog-cover-coordinator";
@@ -80,7 +80,6 @@ import {
   View,
 } from "react-native";
 import { TagManagementSheet } from "./library/TagManagementSheet";
-import { useBookDownload } from "./library/useBookDownload";
 import { useVectorizationQueue } from "./library/useVectorizationQueue";
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -129,8 +128,6 @@ type LibraryGridItem =
 
 type LibrarySection = "catalog" | "my-books";
 const LIBRARY_SECTION_STORAGE_KEY = "library_last_section";
-// Download finishes silently — user can re-tap the book to open it.
-const onBookDownloaded = () => {};
 
 export function LibraryScreen() {
   return (
@@ -331,11 +328,6 @@ function LibraryScreenContent() {
     };
   }, []);
 
-  const { downloadingBookId, downloadProgress, downloadBook } = useBookDownload({
-    loadBooks,
-    onSuccess: onBookDownloaded,
-  });
-
   const { vectorQueue, vectorizingBookId, vectorProgress, handleVectorize } = useVectorizationQueue(
     { extractorRef, nav },
   );
@@ -493,14 +485,10 @@ function LibraryScreenContent() {
   const isMyBooksEmptyState = showCatalog && librarySection === "my-books" && isLoaded && !hasBooks;
 
   const handleOpen = useCallback(
-    async (book: Book) => {
-      if (book.syncStatus === "remote") {
-        await downloadBook(book);
-        return;
-      }
-      await openMobileBook({ bookId: book.id, navigation: nav, t });
+    (book: Book, sourceId?: string, coverUri?: string) => {
+      void openBookDetails(nav, { bookId: book.id, coverUri }, sourceId);
     },
-    [downloadBook, nav, t],
+    [nav],
   );
 
   const catalogCoverLoadingEnabled = showCatalog && librarySection === "catalog";
@@ -576,7 +564,9 @@ function LibraryScreenContent() {
     ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
       setCatalogScrollY(nativeEvent.contentOffset.y);
       if (Platform.OS === "ios") {
-        setTopEdgeEffect(topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top));
+        setTopEdgeEffect(
+          topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top),
+        );
       }
       if (
         !showCatalog ||
@@ -645,19 +635,11 @@ function LibraryScreenContent() {
     [catalogState.refresh],
   );
 
-  // Нажатие на книгу каталога: своя книга открывается напрямую, чужая уходит в
-  // ридер вместе с описанием из каталога — качает и импортирует уже он, показывая
-  // свой лоудер вместо заглушки поверх обложки.
   const handleCatalogOpen = useCallback(
-    async (catalogBook: CachedBackendCatalogBook) => {
-      const existingBook = catalogBooksInLibrary.get(catalogBook.catalogKey);
-      if (existingBook) {
-        await handleOpen(existingBook);
-        return;
-      }
-      nav.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(catalogBook) });
+    (catalogBook: CachedBackendCatalogBook, sourceId?: string) => {
+      void openBookDetails(nav, { catalogBook: getCatalogBookWithCover(catalogBook) }, sourceId);
     },
-    [catalogBooksInLibrary, handleOpen, nav],
+    [nav],
   );
 
   const handleManageTags = useCallback((book: Book) => {
@@ -936,7 +918,6 @@ function LibraryScreenContent() {
             isVectorizing={vectorizingBookId === item.book.id}
             isQueued={vectorQueue.some((b) => b.id === item.book.id)}
             vectorProgress={vectorizingBookId === item.book.id ? vectorProgress : null}
-            downloadProgress={downloadingBookId === item.book.id ? downloadProgress : null}
             isSelectionMode={selectionMode}
             isSelected={selectedBookIds.has(item.book.id)}
             onSelect={toggleBookSelection}
@@ -961,8 +942,6 @@ function LibraryScreenContent() {
       vectorProgress,
       vectorQueue,
       vectorizingBookId,
-      downloadingBookId,
-      downloadProgress,
     ],
   );
 

@@ -26,7 +26,7 @@ function makeBook(): Book {
 }
 
 describe("buildSystemPrompt citations", () => {
-  it("treats interface language only as a fallback for a Russian book", () => {
+  it("passes interface language as context without a client language policy", () => {
     const book = makeBook();
     book.meta.language = "ru";
     const prompt = buildSystemPrompt({
@@ -37,8 +37,8 @@ describe("buildSystemPrompt citations", () => {
       userLanguage: "en",
     });
     expect(prompt).not.toContain("You MUST respond in en");
-    expect(prompt).toContain("latest substantive message");
-    expect(prompt).toContain("Interface language fallback");
+    expect(prompt).not.toContain("latest substantive message");
+    expect(prompt).toContain("Interface language: en.");
   });
   it("allows fallback citations only when a returned CFI can be validated", () => {
     const prompt = buildSystemPrompt({

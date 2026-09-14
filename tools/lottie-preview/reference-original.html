@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Play / Pause · Lottie</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:var(--bg,#111);color:var(--fg,#fff);font:16px/1.5 system-ui}main{max-width:720px;margin:48px auto;padding:24px}h1{font-size:24px;margin:0 0 8px}p{opacity:.65} .stage{height:340px;background:#941a00;display:grid;place-items:center;border-radius:24px;margin:24px 0;overflow:hidden}.disc{position:relative;border:1px solid #ff643a;background:linear-gradient(150deg,#de3103,#c32000);border-radius:50%;width:70px;height:70px;display:grid;place-items:center;cursor:pointer;padding:0;transform:scale(var(--zoom,3))}.disc.guides:before,.disc.guides:after{content:"";position:absolute;background:#ffffff60;pointer-events:none;z-index:2}.disc.guides:before{width:1px;height:100%}.disc.guides:after{height:1px;width:100%}#icon{width:65.64102564px;height:65.64102564px;pointer-events:none}.controls{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:20px 0}label{display:flex;gap:10px;align-items:center}button,select,input{font:inherit;accent-color:#ff9230}button,select{color:inherit;background:var(--panel,#282828);border:1px solid #ffffff30;border-radius:10px;padding:8px 14px}button{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #fff;outline-offset:4px}.timeline{display:grid;gap:8px}.timeline input{width:100%}a{color:inherit}output{font-variant-numeric:tabular-nums}
+</style>
+<main><h1>Play / Pause</h1><p>Текущий Lottie из приложения. Нажмите на иконку для переключения.</p>
+<div class="stage"><button class="disc" id="toggle" aria-label="Переключить play/pause" disabled><div id="icon"></div></button></div>
+<div class="controls"><label>Переход <select id="duration"><option value="150">150 мс</option><option value="300" selected>300 мс</option><option value="650">650 мс</option><option value="1000">1000 мс</option></select></label><label>Масштаб <select id="zoom"><option value="1">1×</option><option value="2">2×</option><option value="3" selected>3×</option><option value="4">4×</option></select></label><label><input type="checkbox" id="guides"> Центр</label></div>
+<label class="timeline">Кадр <output id="frameLabel">0 / 82</output><input aria-label="Кадр" type="range" id="frame" min="0" max="82" value="0" step="0.1"></label>
+<div class="controls"><button id="play">Показать play</button><button id="pause">Показать pause</button><button id="reload">Обновить JSON</button><a href="animation.json" download="anim_playpause.json">Скачать JSON</a></div><p id="status" role="status">Загрузка…</p>
+</main><script src="vendor/lottie.min.js"></script><script type="module">
+import {baseColors,primaryColors} from './tokens.js';
+document.documentElement.style.setProperty('--bg',baseColors.find(c=>c.name==='Background Primary').dark);
+document.documentElement.style.setProperty('--panel',baseColors.find(c=>c.name==='Elevation 2').dark);
+document.documentElement.style.setProperty('--fg',primaryColors.find(c=>c.name==='Primary').dark);
+const $=id=>document.getElementById(id);let anim,playing=false,raf=0;
+function show(frame){anim.goToAndStop(frame,true);$('frame').value=frame;$('frameLabel').value=`${Number(frame).toFixed(1)} / 82`;}
+function stop(){cancelAnimationFrame(raf);}
+function still(isPlaying){stop();playing=isPlaying;show(isPlaying?39:0);}
+async function load(){stop();$('toggle').disabled=true;try{const response=await fetch('animation.json',{cache:'no-store'});if(!response.ok)throw Error(response.status);const data=await response.json();anim?.destroy();anim=lottie.loadAnimation({container:$('icon'),renderer:'svg',loop:false,autoplay:false,animationData:data});anim.addEventListener('DOMLoaded',()=>{still(false);$('toggle').disabled=false;$('status').textContent='Готово · play смещён на 2 px · pause по центру';});}catch(e){$('status').textContent='Не удалось загрузить JSON: '+e.message;}}
+$('toggle').onclick=()=>{stop();playing=!playing;const start=playing?0:40,end=playing?39:82,duration=Number($('duration').value),begin=performance.now();function tick(now){const t=Math.min((now-begin)/duration,1);show(start+(end-start)*t);if(t<1)raf=requestAnimationFrame(tick);}raf=requestAnimationFrame(tick);};
+$('play').onclick=()=>still(false);$('pause').onclick=()=>still(true);$('reload').onclick=load;
+$('frame').oninput=e=>{stop();const f=Number(e.target.value);show(f);playing=f>=20&&f<65;};
+$('zoom').onchange=e=>$('toggle').style.setProperty('--zoom',e.target.value);
+$('guides').onchange=e=>$('toggle').classList.toggle('guides',e.target.checked);
+load();
+</script></html>

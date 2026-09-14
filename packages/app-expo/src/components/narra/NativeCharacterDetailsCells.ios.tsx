@@ -62,6 +62,7 @@ export function NativeCharacterDetailsCells({
   cellBackgroundColor,
   items,
   isDark,
+  topSpacing = DETAILS_SECTION_GAP,
 }: NativeCharacterDetailsCellsProps) {
   const supportsGlass = Number.parseInt(String(Platform.Version), 10) >= 26;
 
@@ -91,7 +92,7 @@ export function NativeCharacterDetailsCells({
                   shapes.roundedRectangle({ cornerRadius: 28, roundedCornerStyle: "continuous" }),
                 ),
               ]),
-          padding({ horizontal: 20, top: DETAILS_SECTION_GAP }),
+          padding({ horizontal: 20, top: topSpacing }),
         ]}
       >
         {items.map((item, index) => (

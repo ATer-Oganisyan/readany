@@ -2,8 +2,11 @@ import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
 import { READER_PAGE_THEMES } from "@/lib/reader/reader-themes";
 import { useNarraStore } from "@/stores";
 import { useTheme } from "@/styles/theme";
+import { spacingPixels } from "@deslop/primitives";
 import { BottomSheet, Form, Group, Host, Picker, Section, Text, Toggle } from "@expo/ui/swift-ui";
 import {
+  controlSize,
+  frame,
   labelsHidden,
   pickerStyle,
   presentationDetents,
@@ -83,7 +86,12 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                   label={t("reader.pageTheme", "Тема страницы")}
                   selection={readSettings.readerTheme ?? "original"}
                   onSelectionChange={(value) => onUpdateSetting("readerTheme", value)}
-                  modifiers={[pickerStyle("segmented"), labelsHidden()]}
+                  modifiers={[
+                    pickerStyle("segmented"),
+                    controlSize("large"),
+                    frame({ maxWidth: 10_000, height: spacingPixels[44] }),
+                    labelsHidden(),
+                  ]}
                 >
                   {READER_PAGE_THEMES.map((preset) => (
                     <Text key={preset.id} modifiers={[tag(preset.id)]}>
@@ -148,7 +156,14 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                 />
               </Section>
 
-              <Section title={t("reader.appearance", "Оформление")}>
+              <Section
+                title={t("reader.appearance", "Оформление")}
+                footer={
+                  <Text>
+                    {t("narra.sceneFrequencyDesc", "Как часто предлагать нарисовать сцену")}
+                  </Text>
+                }
+              >
                 <Picker
                   label={t("reader.viewMode", "Режим чтения")}
                   selection={readSettings.viewMode}
@@ -166,21 +181,12 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                   isOn={readSettings.showTopTitleProgress !== false}
                   onIsOnChange={(value) => onUpdateSetting("showTopTitleProgress", value)}
                 />
-              </Section>
 
-              <Section
-                title={t("narra.sceneFrequencyTitle", "Частота врезок")}
-                footer={
-                  <Text>
-                    {t("narra.sceneFrequencyDesc", "Как часто предлагать нарисовать сцену")}
-                  </Text>
-                }
-              >
                 <Picker
                   label={t("narra.sceneFrequencyTitle", "Частота врезок")}
                   selection={sceneInterval}
                   onSelectionChange={setSceneInterval}
-                  modifiers={[pickerStyle("segmented"), labelsHidden()]}
+                  modifiers={[pickerStyle("menu")]}
                 >
                   {SCENE_SUGGESTION_INTERVALS.map((value) => (
                     <Text key={value} modifiers={[tag(value)]}>

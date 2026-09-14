@@ -51,9 +51,12 @@ export const READER_PAGE_THEMES: ReaderPageThemePreset[] = [
   },
 ];
 
-/** Тема, с которой ридер открывается в соответствии с темой приложения. */
-export function getAppSyncedReaderTheme(isAppDark: boolean): ReaderPageTheme {
-  return isAppDark ? "dark" : "original";
+/** Сохранённый выбор приоритетнее темы приложения, которая служит начальным значением. */
+export function getAppSyncedReaderTheme(
+  isAppDark: boolean,
+  savedTheme?: ReaderPageTheme,
+): ReaderPageTheme {
+  return savedTheme ?? (isAppDark ? "dark" : "original");
 }
 
 /** Scene surfaces follow the page, never the surrounding application's theme. */

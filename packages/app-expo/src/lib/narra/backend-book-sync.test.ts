@@ -77,6 +77,7 @@ import { parseBackendManifest } from "./backend-book-contract";
 import {
   preserveBackendOriginalSource,
   retainBackendBookSync,
+  stopBackendBookSync,
   retryBackendBookAnalysis,
   startImportedBackendBook,
   useBackendBookStatus,
@@ -141,6 +142,18 @@ async function open(value: Book) {
 }
 
 describe("backend book import and persistence integration", () => {
+  it("stops a deleted book without allowing its old screen cleanup to stop a reopened session", async () => {
+    await open({ ...book(), sourceKind: "catalog", bookEditionId: "catalog-id" });
+    const releaseOld = releases.pop()!;
+    stopBackendBookSync("local");
+    expect(useBackendBookStatus.getState().books.local).toBeUndefined();
+    useNarraStore.getState().clearBook("local");
+    await open({ ...book(), sourceKind: "catalog", bookEditionId: "catalog-id" });
+    const current = useBackendBookStatus.getState().books.local;
+    expect(current).toBeDefined();
+    releaseOld();
+    expect(useBackendBookStatus.getState().books.local).toBe(current);
+  });
   it.each([
     ["EN_us", "en"],
     ["ru-RU", "ru"],

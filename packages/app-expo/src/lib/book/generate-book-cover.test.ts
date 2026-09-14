@@ -13,6 +13,7 @@ vi.mock("@/lib/narra/media", () => ({
 }));
 vi.mock("@readany/core/utils", () => ({ generateId: () => "request-1" }));
 vi.mock("./cover-job-repository", () => ({
+  recoverLegacyCoverJob: vi.fn(),
   deleteLocalCoverJob: vi.fn(async (bookId) => {
     jobs.delete(bookId);
   }),

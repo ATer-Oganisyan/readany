@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { withTimeout } from '../platform/concurrency.mjs'
 import { imageUpstreamError, shouldFallbackAfterImageError } from './image-policy.mjs'
+import { purposeChain } from './purpose-inheritance.mjs'
 import { requestOptionsForModel } from './model-request-config.mjs'
 export { omitsJsonResponseFormat } from './model-request-config.mjs'
 import { serviceUrl } from '../platform/service-url.mjs'
@@ -20,17 +21,6 @@ const PURPOSES = [
  * ошибка и нужна другая модель. Без наследования добавление назначения увело
  * бы его на маршрут по умолчанию — молча и у всех сразу.
  */
-const PURPOSE_PARENT = Object.freeze({ roster_confirm: 'structured_task' })
-
-function purposeChain(purpose) {
-  const chain = [purpose]
-  let current = purpose
-  while (PURPOSE_PARENT[current]) {
-    current = PURPOSE_PARENT[current]
-    chain.push(current)
-  }
-  return chain
-}
 
 function purposeSetting(env, prefix, purpose, suffix = '') {
   for (const name of purposeChain(purpose)) {
@@ -115,6 +105,31 @@ export function maxTokensFor(purpose, stream, env = process.env) {
   const value = Number(String(raw).trim() || fallback)
   if (!Number.isFinite(value) || value < 256) return fallback
   return Math.min(Math.round(value), 32_000)
+}
+
+/**
+ * Сколько ждать ответа модели.
+ *
+ * Потолок был зашит в код: 120 секунд на любой нестримовый вызов. Подтверждение
+ * состава большой книги в них не укладывается — «1Q84» на 756 тысячах знаков и
+ * 128 кандидатах упиралась в 504 ровно на 120.5 секунды и уходила в повтор,
+ * чтобы упереться снова. Ни модель, ни размер книги на это не влияли: менять
+ * было нечего.
+ *
+ * Наследование то же, что у потолка токенов: `LLM_TIMEOUT_MS_<PURPOSE>` точечно,
+ * `LLM_TIMEOUT_MS_STREAM` / `LLM_TIMEOUT_MS_COMPLETE` по умолчанию для режима.
+ * Верхняя граница — пять минут: дальше истекает запрос самого генератора, и
+ * ждать дольше значит держать воркер на задании, которое уже некому принять.
+ */
+export function timeoutMsFor(purpose, stream, env = process.env) {
+  const fallback = stream ? 180_000 : 120_000
+  const raw =
+    purposeSetting(env, 'LLM_TIMEOUT_MS_', String(purpose || '')) ||
+    env[stream ? 'LLM_TIMEOUT_MS_STREAM' : 'LLM_TIMEOUT_MS_COMPLETE'] ||
+    ''
+  const value = Number(String(raw).trim() || fallback)
+  if (!Number.isFinite(value) || value < 1_000) return fallback
+  return Math.min(Math.round(value), 300_000)
 }
 
 export function routeForPurpose(purpose, env = process.env) {
@@ -234,7 +249,7 @@ export async function requestChat({
             ? { stream_options: { include_usage: true } }
             : {})
         }),
-        signal: withTimeout(signal, stream ? 180_000 : 120_000)
+        signal: withTimeout(signal, timeoutMsFor(purpose, stream, env))
       })
       const terminalAttempt = {
         attempt_id: attemptId,

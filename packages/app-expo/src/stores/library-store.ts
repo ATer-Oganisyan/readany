@@ -1,5 +1,6 @@
 import { PolyfillTextDecoder } from "@/lib/book/legacy-text-decoder";
 import { getBookImportFormat, getBookImportName } from "@readany/core/utils/book-import-format";
+import { canRecoverLegacyCoverJob } from "@/lib/book/cover-job-recovery";
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
 import { ensureTxtUtf8Bytes } from "@/lib/book/txt-encoding";
 import { deleteLocalCoverJob, getLocalCoverJob } from "@/lib/book/cover-job-repository";
@@ -23,7 +24,9 @@ import {
 import {
   preserveBackendOriginalSource,
   startImportedBackendBook,
+  stopBackendBookSync,
 } from "@/lib/narra/backend-book-sync";
+import { clearRemovedBookData } from "@/lib/narra/media-cleanup";
 import { trySha256BackendFile } from "@/lib/narra/backend-file-hash";
 import { normalizeBookLanguage } from "@/lib/narra/book-language";
 import { BANNED_IMPORT_MESSAGE, findBannedImport } from "@/lib/narra/import-blocklist";
@@ -406,7 +409,7 @@ async function ensureGeneratedBookCover(
     }
   }
   const existingJob = await getLocalCoverJob(book.id);
-  if (existingJob?.status === "failed") return;
+  if (existingJob?.status === "failed" && !canRecoverLegacyCoverJob(existingJob)) return;
   const catalogBook = findBundledCatalogBookByTitle(book.meta.title);
   if (catalogBook && !existingJob) {
     const coverUrl = await installBundledCatalogCover(book.id, catalogBook);
@@ -1142,6 +1145,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     try {
       await db.initDatabase();
       await db.deleteBook(bookId, { preserveData });
+      stopBackendBookSync(bookId);
+      if (!preserveData) {
+        await clearRemovedBookData(bookId).catch((error) =>
+          console.warn("Failed to delete book media:", error),
+        );
+      }
       await deleteLocalCoverJob(bookId);
     } catch (err) {
       console.error("Failed to delete book from database:", err);
@@ -1169,14 +1178,21 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   },
 
   updateBook: async (bookId, updates) => {
-    set((state) => ({
-      books: state.books.map((b) => (b.id === bookId ? { ...b, ...updates } : b)),
-      allTags:
-        updates.tags !== undefined
-          ? Array.from(new Set([...state.allTags, ...updates.tags])).sort()
-          : state.allTags,
-    }));
-    debouncedSave("library-books", get().books);
+    const book = get().books.find((book) => book.id === bookId);
+    const unchanged =
+      book &&
+      Object.entries(updates).every(([key, value]) => Object.is(book[key as keyof Book], value));
+    if (!unchanged) {
+      set((state) => ({
+        books: state.books.map((b) => (b.id === bookId ? { ...b, ...updates } : b)),
+        allTags:
+          updates.tags !== undefined
+            ? Array.from(new Set([...state.allTags, ...updates.tags])).sort()
+            : state.allTags,
+      }));
+      debouncedSave("library-books", get().books);
+    }
+    // Memory may be ahead of the database after a failed write. Allow retries.
     await persistBookUpdate(bookId, updates).catch((err) =>
       console.error("Failed to update book in database:", err),
     );

@@ -6,6 +6,7 @@ import type { BackendCharacterAsset } from "./backend-book-contract";
 import { downloadVerifiedBackendFile } from "./backend-file-download";
 import { sha256BackendFile } from "./backend-file-hash";
 import { isCharacterUnlocked } from "./domain";
+import { protectBackendMedia, scheduleUnusedBackendMediaCleanup } from "./media-cleanup";
 import type { NarraCharacter } from "./types";
 
 const root = `${FileSystem.documentDirectory}narra-backend-media`;
@@ -16,6 +17,12 @@ interface AssetRequest {
 }
 const active = new Map<string, AssetRequest>();
 const verified = new Set<string>();
+
+function rememberVerified(uri: string) {
+  verified.delete(uri);
+  verified.add(uri);
+  if (verified.size > 256) verified.delete(verified.values().next().value!);
+}
 
 function mediaCancellationError(): Error {
   const error = new Error("Media consumer cancelled");
@@ -67,8 +74,12 @@ export async function materializeBackendCharacterAsset(
                 ? "m4a"
                 : "mp4";
   const destination = `${directory}/${asset.contentHash}.${extension}`;
+  const releaseProtection = protectBackendMedia(destination);
+  scheduleUnusedBackendMediaCleanup();
   const existing = active.get(destination);
-  if (existing && !existing.controller.signal.aborted) return consumeAsset(existing, signal);
+  if (existing && !existing.controller.signal.aborted) {
+    return consumeAsset(existing, signal).finally(releaseProtection);
+  }
   // Wait until a cancelled prior writer has removed its temporary file.
   if (existing) await existing.promise.catch(() => undefined);
   const controller = new AbortController();
@@ -81,7 +92,7 @@ export async function materializeBackendCharacterAsset(
       (verified.has(destination) ||
         (await sha256BackendFile(destination)).toLowerCase() === asset.contentHash)
     ) {
-      verified.add(destination);
+      rememberVerified(destination);
       return destination;
     }
     await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
@@ -97,7 +108,7 @@ export async function materializeBackendCharacterAsset(
       });
       if (controller.signal.aborted) throw new Error("Media cancelled");
       await FileSystem.moveAsync({ from: temporary, to: destination });
-      verified.add(destination);
+      rememberVerified(destination);
       return destination;
     } finally {
       await FileSystem.deleteAsync(temporary, { idempotent: true });
@@ -109,7 +120,7 @@ export async function materializeBackendCharacterAsset(
     if (active.get(destination) === request) active.delete(destination);
   };
   void task.then(clear, clear);
-  return consumeAsset(request, signal);
+  return consumeAsset(request, signal).finally(releaseProtection);
 }
 
 /** At most two characters across all active screens. Never start work for future characters. */

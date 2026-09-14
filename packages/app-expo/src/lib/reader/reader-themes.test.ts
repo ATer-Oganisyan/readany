@@ -108,6 +108,16 @@ describe("resolveReaderThemeColors", () => {
 });
 
 describe("getAppSyncedReaderTheme", () => {
+  it.each([false, true])("сохраняет сепию после восстановления настроек (dark=%s)", (isDark) => {
+    const restored = JSON.parse(JSON.stringify({ readerTheme: "sepia" }));
+    expect(getAppSyncedReaderTheme(isDark, restored.readerTheme)).toBe("sepia");
+  });
+
+  it("не заменяет явно выбранную светлую или тёмную тему при смене темы приложения", () => {
+    expect(getAppSyncedReaderTheme(true, "original")).toBe("original");
+    expect(getAppSyncedReaderTheme(false, "dark")).toBe("dark");
+  });
+
   it("открывает светлую тему приложения как Light с совместимым id", () => {
     expect(getAppSyncedReaderTheme(false)).toBe("original");
   });

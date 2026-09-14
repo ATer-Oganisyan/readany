@@ -39,7 +39,10 @@ export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
 //     размера склейки.
 // v6: абзац принадлежит окну, в котором начинается, — одинаково при постановке
 //     задания и при сборке карточки.
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v6'
+// v7: имя на «э» и трёхбуквенное имя больше не пропадают из инвентаря. Разбор
+//     даёт другой набор фрагментов, поэтому прогоны v6 переиспользовать нельзя:
+//     у книги, разобранной до правки, «Аомамэ» так и осталась бы без цитат.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v7'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'

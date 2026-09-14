@@ -2,15 +2,15 @@ import {
   SystemSheetZoomSource,
   prepareSheetZoom,
 } from "@/components/navigation/SystemSheetZoomSource";
-import { getFilledIconImageSource } from "@/components/ui/MishanaerIcon";
+import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
+import { useTTSBuffering } from "@/components/reader/tts/useTTSNativePlayer";
+import { AnimatedPlayPause } from "./animated-play-pause";
 import { navigate } from "@/lib/navigationRef";
-import { previousParagraphIndex } from "@/lib/tts-paragraph-navigation";
 import { useTTSStore } from "@/stores/tts-store";
 import { useColors } from "@/styles/theme";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import { Image, Platform, PlatformColor, Pressable, StyleSheet, Text, View } from "react-native";
-import PreviousParagraphIcon from "../../../assets/icons/sentence-backward.svg";
+import { Platform, PlatformColor, Pressable, StyleSheet, Text, View } from "react-native";
 import { AudiobookCover } from "./audiobook-cover";
 // Source: expo-ui-examples/mini-player/mini-player-accessory.tsx (MIT).
 
@@ -24,6 +24,10 @@ export function AudiobookPlayerAccessory({
   const chapter = useTTSStore((s) => s.currentChapterTitle);
   const playState = useTTSStore((s) => s.playState);
   const toggle = useTTSStore((s) => s.toggle);
+  const stop = useTTSStore((s) => s.stop);
+  const { buffering, confirmedBuffering } = useTTSBuffering(playState);
+  const isLoading =
+    playState === "loading" || (playState === "playing" && buffering && confirmedBuffering);
   const playing = playState === "playing" || playState === "loading";
   const LABEL = Platform.OS === "ios" ? PlatformColor("label") : colors.foreground;
   const SECONDARY_LABEL =
@@ -33,15 +37,6 @@ export function AudiobookPlayerAccessory({
     await prepareSheetZoom(sourceId);
     navigate("AudiobookPlayer", { sourceId });
   };
-  const previousIndex = useTTSStore((s) =>
-    previousParagraphIndex(s.paragraphIds, s.currentChunkIndex),
-  );
-  const onPrevious = () => {
-    const state = useTTSStore.getState();
-    const index = previousParagraphIndex(state.paragraphIds, state.currentChunkIndex);
-    if (index !== null) state.jumpToChunk(index);
-  };
-
   // 'inline' is the wide pill riding next to the collapsed tab circle once the
   // bar minimizes, not an icon-sized slot — so it keeps the artwork, title, and
   // transport controls, dropping the chapter line to fit.
@@ -61,32 +56,23 @@ export function AudiobookPlayerAccessory({
             {title}
           </Text>
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t(playing ? "tts.pause" : "tts.playShort")}
-          onPress={() => toggle()}
-          hitSlop={8}
-        >
-          <Image
-            source={getFilledIconImageSource(playing ? "pause" : "play")}
-            style={{ width: 16, height: 16, tintColor: LABEL }}
-          />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("tts.previousParagraph")}
-          accessibilityState={{ disabled: previousIndex === null }}
-          disabled={previousIndex === null}
-          onPress={onPrevious}
-          hitSlop={8}
-        >
-          <PreviousParagraphIcon
-            width={18}
-            height={18}
-            color={LABEL}
-            opacity={previousIndex === null ? 0.35 : 1}
-          />
-        </Pressable>
+        <View style={styles.inlineControls}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t(playing ? "tts.pause" : "tts.playShort")}
+            onPress={() => toggle()}
+            hitSlop={{ top: 6, bottom: 6 }}
+            style={styles.closeButton}
+          >
+            <AnimatedPlayPause
+              isPlaying={playing}
+              isLoading={isLoading}
+              color={colors.foreground}
+              size={16}
+              containerSize={32}
+            />
+          </Pressable>
+        </View>
       </SystemSheetZoomSource>
     );
   }
@@ -116,27 +102,22 @@ export function AudiobookPlayerAccessory({
         hitSlop={8}
         style={styles.button}
       >
-        <Image
-          source={getFilledIconImageSource(playing ? "pause" : "play")}
-          style={{ width: 20, height: 20, tintColor: LABEL }}
+        <AnimatedPlayPause
+          isPlaying={playing}
+          isLoading={isLoading}
+          color={colors.foreground}
+          size={20}
+          containerSize={32}
         />
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t("tts.previousParagraph")}
-        accessibilityState={{ disabled: previousIndex === null }}
-        disabled={previousIndex === null}
-        onPress={onPrevious}
-        hitSlop={8}
-        style={styles.button}
+        accessibilityLabel={t("common.close")}
+        onPress={stop}
+        hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+        style={styles.closeButton}
       >
-        <PreviousParagraphIcon
-          width={18}
-          height={18}
-          style={{ margin: 2 }}
-          color={LABEL}
-          opacity={previousIndex === null ? 0.35 : 1}
-        />
+        <MishanaerIcon name="x" size={28.8} color={colors.foreground} />
       </Pressable>
     </SystemSheetZoomSource>
   );
@@ -175,12 +156,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     mixBlendMode: "multiply",
   },
-  button: {
-    padding: 6,
+  closeButton: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  // The trailing inset is far wider than the leading one: the glyph is
-  // floating text, not a bounded card, so it needs generous room to clear
-  // the capsule curve.
+  button: {
+    width: 44,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inlineControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+  },
   inlineRow: {
     flex: 1,
     flexDirection: "row",
@@ -188,11 +180,12 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
     paddingLeft: 16,
-    paddingRight: 24,
+    paddingRight: 16,
   },
   inlineTitle: {
     flex: 1,
     fontSize: 13,
+    lineHeight: 18,
     fontWeight: "600",
   },
 });

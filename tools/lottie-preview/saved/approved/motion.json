@@ -1,0 +1,47 @@
+{
+  "clips": {
+    "forward": [
+      0,
+      0.3
+    ],
+    "reverse": [
+      0.7,
+      1
+    ],
+    "enter": [
+      1.4,
+      1.7
+    ],
+    "settle": [
+      1.7,
+      2
+    ],
+    "spin": [
+      2.1,
+      2.5
+    ],
+    "exit": [
+      2.8,
+      3.15
+    ],
+    "cancel": [
+      5.35,
+      5.6499999999999995
+    ]
+  },
+  "exitMs": 350,
+  "exitPhase": 0.75,
+  "entryPhase": 0,
+  "settlePhase": 0.75,
+  "settleMs": 300,
+  "turnMs": 400,
+  "center": [
+    160.6315707013294,
+    160.62456468878617
+  ],
+  "thickness": 23.82328712933665,
+  "pauseLegWidth": 47.6465742586733,
+  "anchorsPerContour": 8,
+  "exitAngle": -90,
+  "exitRepeatTurns": 0.5
+}

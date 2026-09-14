@@ -1,7 +1,7 @@
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
 import type { TTSPlayState } from "@readany/core/tts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useProgress } from "react-native-track-player";
+import { State, usePlaybackState, useProgress } from "react-native-track-player";
 import type { TTSNativePlayerProps } from "./TTSNativePlayer.types";
 
 function clamp(value: number, max: number) {
@@ -35,12 +35,41 @@ export function resolveChapterSeekTarget(position: number, totalChunks: number) 
   return Math.max(0, Math.min(Math.floor(safePosition), total - 1));
 }
 
+export function useTTSBuffering(playState: TTSPlayState) {
+  const nativePlayback = usePlaybackState();
+  const buffering =
+    nativePlayback.state === State.Buffering || nativePlayback.state === State.Loading;
+  const [confirmedBuffering, setConfirmedBuffering] = useState(false);
+  useEffect(() => {
+    setConfirmedBuffering(false);
+    if (playState !== "playing" || !buffering) return;
+    const timer = setTimeout(() => setConfirmedBuffering(true), 500);
+    return () => clearTimeout(timer);
+  }, [playState, buffering]);
+  return { buffering, confirmedBuffering };
+}
+
 export function useTTSNativePlayer(
   playState: TTSPlayState,
   onPlayPause: () => void | Promise<void>,
   chapterProgress: ChapterProgressOptions = {},
 ) {
   const progress = useProgress(100);
+  const { buffering, confirmedBuffering } = useTTSBuffering(playState);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const seekGeneration = useRef(0);
+  useEffect(
+    () => () => {
+      seekGeneration.current += 1;
+    },
+    [],
+  );
+  useEffect(() => {
+    if (playState === "paused" || playState === "stopped") {
+      seekGeneration.current += 1;
+      setIsSeeking(false);
+    }
+  }, [playState]);
   const chapterTimeline = getChapterTimeline(chapterProgress);
   const [isEditing, setIsEditing] = useState(false);
   const [localPosition, setLocalPosition] = useState(0);
@@ -76,21 +105,34 @@ export function useTTSNativePlayer(
     [duration],
   );
 
-  const beginSeeking = useCallback(() => setIsEditing(true), []);
+  const beginSeeking = useCallback(() => {
+    setIsEditing(true);
+  }, []);
   const commitSeeking = useCallback(() => {
     setIsEditing(false);
-    if (chapterTimeline.enabled) {
-      const targetIndex = resolveChapterSeekTarget(localPositionRef.current, chapterTimeline.total);
-      if (targetIndex === chapterTimeline.currentIndex && activeTrackDuration > 0) {
-        const fraction = Math.max(0, Math.min(localPositionRef.current - targetIndex, 1));
-        void seekActiveTTS(fraction * activeTrackDuration);
-        return;
+    const generation = ++seekGeneration.current;
+    setIsSeeking(playState === "playing" || playState === "loading");
+    void (async () => {
+      try {
+        if (chapterTimeline.enabled) {
+          const targetIndex = resolveChapterSeekTarget(
+            localPositionRef.current,
+            chapterTimeline.total,
+          );
+          if (targetIndex === chapterTimeline.currentIndex && activeTrackDuration > 0) {
+            const fraction = Math.max(0, Math.min(localPositionRef.current - targetIndex, 1));
+            await seekActiveTTS(fraction * activeTrackDuration);
+          } else {
+            await chapterProgress.onSeekChapterChunk?.(targetIndex);
+          }
+        } else if (!chapterProgress.chapterProgressOnly) {
+          await seekActiveTTS(localPositionRef.current);
+        }
+      } finally {
+        if (generation === seekGeneration.current) setIsSeeking(false);
       }
-      void chapterProgress.onSeekChapterChunk?.(targetIndex);
-      return;
-    }
-    if (!chapterProgress.chapterProgressOnly) void seekActiveTTS(localPositionRef.current);
-  }, [activeTrackDuration, chapterProgress, chapterTimeline]);
+    })().catch((error) => console.warn("[TTS] Seek failed:", error));
+  }, [activeTrackDuration, chapterProgress, chapterTimeline, playState]);
   const seekBackward = useCallback(() => void seekActiveTTSBy(-15), []);
   const seekForward = useCallback(() => void seekActiveTTSBy(15), []);
   const togglePlayback = useCallback(() => void onPlayPause(), [onPlayPause]);
@@ -111,7 +153,9 @@ export function useTTSNativePlayer(
     duration,
     durationLabel,
     hasDuration: duration > 0,
-    isLoading: playState === "loading",
+    isLoading:
+      playState === "loading" ||
+      (playState === "playing" && (isSeeking || (buffering && confirmedBuffering))),
     isPlaying: playState === "playing",
     localPosition,
     progressPercent,

@@ -45,6 +45,19 @@ describe("backend catalog API", () => {
   });
   afterEach(() => setNarraGatewayAdapter(null));
 
+  it.each([undefined, null, "  Аннотация  ", 42])(
+    "accepts optional description %s",
+    async (description) => {
+      adapter.mockResolvedValueOnce(
+        jsonResponse({ items: [{ ...languageBook(), description }], next_cursor: null }),
+      );
+      const result = await fetchBackendCatalogPage();
+      expect(result.items[0].description).toBe(
+        typeof description === "string" ? description.trim() : undefined,
+      );
+    },
+  );
+
   it.each([undefined, null, "ru", "en", "de", "fil"])(
     "preserves explicit language %s without guessing from names/keys",
     async (language) => {

@@ -369,9 +369,9 @@ export interface TTSState {
   paragraphIds: (string | undefined)[];
   segmentCfis: (string | undefined)[];
   narrationChapters: NarrationChapter[];
-  onSeekChapterSegment: ((segment: ChapterSegment) => void | Promise<void>) | null;
+  onSeekChapterSegment: ((segment: ChapterSegment, isCurrent?: () => boolean) => void | Promise<void>) | null;
   setNarrationChapter: (chapter: NarrationChapter) => void;
-  seekChapterSegment: (chapterId: string, index: number) => void;
+  seekChapterSegment: (chapterId: string, index: number) => void | Promise<void>;
   skipSentence: (direction: -1 | 1) => void;
 
   sleepTimerEndsAt: number | null;
@@ -503,7 +503,13 @@ export const useTTSStore = create<TTSState>()(
         clearRespeakTimer();
         const { playState } = get();
         if (playState !== "playing" && playState !== "loading") return;
-        _activeTTS?.pause();
+        if (playState === "loading") {
+          // Invalidate pending synthesis/reader seeks; a late result must not restart audio.
+          _sessionGeneration += 1;
+          detachAndStopAllPlayers();
+        } else {
+          _activeTTS?.pause();
+        }
         set({ playState: "paused" });
       },
 
@@ -673,9 +679,42 @@ export const useTTSStore = create<TTSState>()(
         const target = Math.max(0, Math.min(Math.floor(index), chapter.segments.length - 1));
         const segment = chapter.segments[target];
         if (!segment?.cfi) return;
-        if (state.onSeekChapterSegment) {
-          void state.onSeekChapterSegment(segment);
+        if (!isActivePlay(state.playState)) {
+          _sessionGeneration += 1;
+          detachAndStopAllPlayers();
+          _sessionSegments = chapter.segments.slice(target).map((item) => item.text);
+          _sessionCurrentIndex = 0;
+          set({ playState: "paused", currentLocationCfi: segment.cfi,
+            currentText: _sessionSegments.join(" "), currentSegmentText: segment.text,
+            currentChunkIndex: 0, totalChunks: _sessionSegments.length,
+            segmentCfis: chapter.segments.slice(target).map((item) => item.cfi),
+            paragraphIds: chapter.segments.slice(target).map((item) => item.paragraphId) });
           return;
+        }
+        if (state.onSeekChapterSegment) {
+          _sessionGeneration += 1;
+          const gen = _sessionGeneration;
+          detachAndStopAllPlayers();
+          _sessionSegments = chapter.segments.slice(target).map((item) => item.text);
+          _sessionCurrentIndex = 0;
+          set({ playState: "loading", currentLocationCfi: segment.cfi,
+            currentText: _sessionSegments.join(" "), currentSegmentText: segment.text,
+            currentChunkIndex: 0, totalChunks: _sessionSegments.length,
+            segmentCfis: chapter.segments.slice(target).map((item) => item.cfi),
+            paragraphIds: chapter.segments.slice(target).map((item) => item.paragraphId) });
+          return Promise.resolve().then(() => {
+            if (gen !== _sessionGeneration) return;
+            return state.onSeekChapterSegment?.(segment, () => gen === _sessionGeneration);
+          }).then(() => {
+            // A reader may find no playable text. Do not leave its spinner running forever.
+            if (gen === _sessionGeneration && get().playState === "loading") {
+              set({ playState: "stopped" });
+            }
+          }).catch((error) => {
+            if (gen !== _sessionGeneration) return;
+            console.error("[TTSStore] seek failed:", error);
+            set({ playState: "stopped" });
+          });
         }
         const queuedIndex = chapterSegmentIndex(
           state.segmentCfis.map((cfi) => ({ text: "", cfi })),

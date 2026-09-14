@@ -52,6 +52,9 @@ import {
   type ViewStyle,
 } from "react-native";
 
+import GlobeIcon from "../../assets/icons/mishanaer/filled/globe.svg";
+import PaintRollerIcon from "../../assets/icons/mishanaer/filled/paint-roller.svg";
+
 // Профильный стек + корневой стек: navigate по неизвестному маршруту всплывает к родителю
 type Nav = NativeStackNavigationProp<RootStackParamList & ProfileTabStackParamList>;
 type ProfileMenuIcon = {
@@ -540,6 +543,15 @@ export function ProfileScreen() {
               {section.key === "general" && (
                 <>
                   <View style={[s.nativePickerRow, s.menuItemBorder]}>
+                    <View pointerEvents="none" style={s.nativePickerIcon}>
+                      <PaintRollerIcon
+                        width={20}
+                        height={20}
+                        color={colors.mutedForeground}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                      />
+                    </View>
                     <NativeSettingsPicker
                       label={t("settings.theme", "Тема")}
                       selectedValue={themeMode}
@@ -553,6 +565,15 @@ export function ProfileScreen() {
                     />
                   </View>
                   <View style={[s.nativePickerRow, s.menuItemBorder]}>
+                    <View pointerEvents="none" style={s.nativePickerIcon}>
+                      <GlobeIcon
+                        width={20}
+                        height={20}
+                        color={colors.mutedForeground}
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                      />
+                    </View>
                     <NativeSettingsPicker
                       label={t("settings.language", "Язык")}
                       selectedValue={languageValue}
@@ -807,7 +828,14 @@ const makeStyles = (colors: ThemeColors) =>
       letterSpacing: 0.8,
       marginBottom: 8,
     },
-    nativePickerRow: { minHeight: 58 },
+    nativePickerRow: { minHeight: 58, paddingLeft: 32 },
+    nativePickerIcon: {
+      position: "absolute",
+      left: 16,
+      top: 0,
+      bottom: 0,
+      justifyContent: "center",
+    },
     menuCard: {
       backgroundColor: colors.elevation1,
       borderRadius: radius.card,

@@ -16,6 +16,7 @@ export interface BackendCatalogBook {
   title: string;
   author: string;
   genres: string[];
+  description?: string;
   /** Missing in older caches/responses; null and undefined both mean unknown. */
   language?: string | null;
   format: string;
@@ -148,6 +149,8 @@ function parseCatalogBook(value: unknown): BackendCatalogBook | null {
     title,
     author,
     genres,
+    description:
+      typeof raw.description === "string" ? raw.description.trim() || undefined : undefined,
     language: normalizeBookLanguage(raw.language),
     format,
     contentSha256: contentSha256.toLowerCase(),

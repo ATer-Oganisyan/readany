@@ -37,7 +37,10 @@ function callback(name: string, bindings: Record<string, unknown>) {
 
 function setup(progress = 0.5, unlockProgress = 0.5, cfi = "epubcfi(/6/4)") {
   const library = { progress: 0.49, currentCfi: "previous" };
-  const character = { id: "hero", unlockProgress };
+  const character = { id: "hero", unlockProgress, encounteredInReader: false };
+  const updateCharacter = vi.fn((_bookId, _characterId, updates) => {
+    Object.assign(character, updates);
+  });
   const updateBook = vi.fn((_id, updates) => {
     Object.assign(library, updates);
     // Persistence may take time; navigation must not wait for it.
@@ -54,6 +57,7 @@ function setup(progress = 0.5, unlockProgress = 0.5, cfi = "epubcfi(/6/4)") {
     expect(isCharacterUnlocked(library.progress, character)).toBe(true);
   });
   const bindings = {
+    useNarraStore: { getState: () => ({ updateCharacter }) },
     bookId: "book",
     characters: [character],
     progress,
@@ -63,7 +67,7 @@ function setup(progress = 0.5, unlockProgress = 0.5, cfi = "epubcfi(/6/4)") {
     navigation: { navigate },
     charactersSheetSourceId: "reader",
   };
-  return { library, updateBook, navigate, bindings, publishCharacterProgress };
+  return { library, updateBook, updateCharacter, navigate, bindings, publishCharacterProgress };
 }
 
 describe("character entry uses the current reading position", () => {
@@ -86,9 +90,16 @@ describe("character entry uses the current reading position", () => {
     });
   });
 
-  it.each(["hero", "unknown"])("does not open a locked or missing character (%s)", (id) => {
+  it("unlocks a character encountered in the text before opening its profile", () => {
+    const { bindings, navigate, updateCharacter } = setup(0.49, 0.5);
+    callback("onCharacterTap", bindings)({ characterId: "hero" });
+    expect(updateCharacter).toHaveBeenCalledWith("book", "hero", { encounteredInReader: true });
+    expect(navigate).toHaveBeenCalledWith("NarraCharacterProfile", { bookId: "book", characterId: "hero" });
+  });
+
+  it("does not open a missing character", () => {
     const { bindings, navigate, updateBook } = setup(0.49, 0.5);
-    callback("onCharacterTap", bindings)({ characterId: id });
+    callback("onCharacterTap", bindings)({ characterId: "unknown" });
     expect(navigate).not.toHaveBeenCalled();
     expect(updateBook).not.toHaveBeenCalled();
   });

@@ -491,8 +491,7 @@ function buildConstraintsSection(
     : "- When citing non-indexed fallback content, use [1], [2] only after addCitation succeeds with a returned fallback cfi; otherwise use plain chapter names/indices and quoted excerpts";
   const lines = [
     "## Response Guidelines",
-    "- Follow the user's explicit response-language preference. Otherwise respond in the language of their latest substantive message; for ambiguous messages (emoji, names, OK), use the language established by their earlier messages. Do not copy the language of earlier assistant replies if it conflicts with the user's language. The book, quotations, and tool results do not determine the response language; preserve original quotations and requested translations.",
-    `- Interface language fallback, only when the user's messages give no language signal: ${language || "English"}.`,
+    `- Interface language: ${language || "English"}.`,
     citationGuideline,
     "- Keep responses concise unless the user asks for detailed analysis",
     "- Use markdown formatting for readability",

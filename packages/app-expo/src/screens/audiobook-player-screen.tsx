@@ -1,3 +1,6 @@
+import { useAudiobookArtwork } from "@/components/tts/use-audiobook-artwork";
+import { useCoverSheetColors } from "@/hooks/use-cover-sheet-colors";
+import { useColors } from "@/styles/theme";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 // Presentation adapted from expo-ui-examples/mini-player/player-screen.tsx.
 // MIT attribution: vendor/expo-ui-examples-LICENSE.txt.
@@ -10,7 +13,7 @@ import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { useTTSStore } from "@/stores/tts-store";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Platform, View } from "react-native";
 import TrackPlayer from "react-native-track-player";
 import { useShallow } from "zustand/react/shallow";
@@ -19,12 +22,14 @@ export function AudiobookPlayerScreen({
   navigation,
   route,
 }: NativeStackScreenProps<RootStackParamList, "AudiobookPlayer">) {
+  const colors = useColors();
   const [timerVisible, setTimerVisible] = useState(false);
   const [volume, setVolume] = useState(1);
   const state = useTTSStore(
     useShallow((s) => ({
       playState: s.playState,
       title: s.currentBookTitle,
+      artwork: s.currentArtwork,
       chapter: s.currentChapterTitle,
       bookId: s.currentBookId,
       cfi: s.currentLocationCfi,
@@ -42,6 +47,16 @@ export function AudiobookPlayerScreen({
       clearSleepTimer: s.clearSleepTimer,
     })),
   );
+  const artwork = useAudiobookArtwork();
+  const coverColor = useCoverSheetColors(artwork);
+  const backgroundColor = coverColor?.color ?? colors.background;
+  useLayoutEffect(() => {
+    if (Platform.OS === "ios") {
+      navigation.setOptions({
+        contentStyle: { backgroundColor },
+      });
+    }
+  }, [backgroundColor, navigation]);
   const bookAuthor = useLibraryStore(
     (s) => s.books.find((book) => book.id === state.bookId)?.meta.author,
   );
@@ -75,6 +90,8 @@ export function AudiobookPlayerScreen({
     <View collapsable={false} style={Platform.OS === "ios" ? undefined : { flex: 1 }}>
       <SystemSheetZoomDestination sourceId={route.params?.sourceId} expanded={false} />
       <AudiobookPlayerContent
+        backgroundColor={Platform.OS === "ios" ? backgroundColor : undefined}
+        accentColor={coverColor?.accent}
         title={state.title}
         author={author}
         chapter={chapter?.chapter.title || state.chapter}

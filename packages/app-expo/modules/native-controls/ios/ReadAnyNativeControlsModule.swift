@@ -56,6 +56,10 @@ public final class ReadAnyNativeControlsModule: Module {
       try Self.averageBottomImageColor(uri: uri, bottomFraction: bottomFraction)
     }
 
+    AsyncFunction("averageTopImageColor") { (uri: URL, fraction: Double) -> String in
+      try Self.averageBottomImageColor(uri: uri, bottomFraction: fraction, fromTop: true)
+    }
+
     AsyncFunction("promptForText") { (
       title: String,
       message: String,
@@ -151,6 +155,7 @@ public final class ReadAnyNativeControlsModule: Module {
     }
 
     View(SystemSheetZoomDestinationView.self) {
+      Prop("alignToContent") { (view, value: Bool) in view.alignToContent = value }
       Prop("sourceId") { (view, value: String) in view.sourceIdentifier = value }
       Prop("expanded") { (view, value: Bool) in view.expanded = value }
     }
@@ -209,7 +214,8 @@ public final class ReadAnyNativeControlsModule: Module {
 
   private static func averageBottomImageColor(
     uri: URL,
-    bottomFraction: Double
+    bottomFraction: Double,
+    fromTop: Bool = false
   ) throws -> String {
     let data = try Data(contentsOf: uri)
     guard let image = UIImage(data: data), let cgImage = image.cgImage else {
@@ -220,7 +226,7 @@ public final class ReadAnyNativeControlsModule: Module {
     let source = CIImage(cgImage: cgImage)
     let sampleRect = CGRect(
       x: source.extent.minX,
-      y: source.extent.minY,
+      y: fromTop ? source.extent.maxY - source.extent.height * fraction : source.extent.minY,
       width: source.extent.width,
       height: source.extent.height * fraction
     )
@@ -527,6 +533,7 @@ final class ReadAnyReaderToolbar: ExpoView {
   func updateConfiguration() {
     toolbar.tintColor = toolbarTintColor
     toolbar.barStyle = isDark ? .black : .default
+    toolbar.overrideUserInterfaceStyle = isDark ? .dark : .light
 
     let currentSpeechLabel = speechLoading
       ? speechLoadingLabel
@@ -595,6 +602,12 @@ final class ReadAnyReaderToolbar: ExpoView {
     configuration.imagePlacement = .leading
     configuration.imagePadding = 7
     configuration.baseForegroundColor = toolbarTintColor
+    // Deslop Body: SB Sans Interface Regular, 16 pt.
+    configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+      var attributes = attributes
+      attributes.font = UIFont(name: "SB Sans Interface", size: 16) ?? UIFont.systemFont(ofSize: 16)
+      return attributes
+    }
     configuration.showsActivityIndicator = isLoading
     button.configuration = configuration
     button.titleLabel?.numberOfLines = 1
