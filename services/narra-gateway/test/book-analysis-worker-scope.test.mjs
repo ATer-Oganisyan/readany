@@ -3,7 +3,6 @@ import test from 'node:test'
 import { createBookAnalysisPrepareWorker } from '../analysis/book-analysis-prepare-worker.mjs'
 import { createBookAnalysisPublishWorker } from '../analysis/book-analysis-publish-worker.mjs'
 import { createBookAnalysisResolveWorker } from '../analysis/book-analysis-resolve-worker.mjs'
-import { createBookAnalysisScanWorker } from '../analysis/book-analysis-scan-worker.mjs'
 import { createBookAnalysisSynthesizeWorker } from '../analysis/book-analysis-synthesize-worker.mjs'
 import { createBookAnalysisValidateWorker } from '../analysis/book-analysis-validate-worker.mjs'
 
@@ -28,11 +27,6 @@ test('every analysis stage passes the configured run allowlist to its queue clai
   }
   const workers = [
     createBookAnalysisPrepareWorker({ ...common, storage: {} }),
-    createBookAnalysisScanWorker({
-      ...common,
-      storage: { async getBytesRange() {} },
-      generator: { async scanBookChunk() {} }
-    }),
     createBookAnalysisResolveWorker(common),
     createBookAnalysisSynthesizeWorker({ ...common, generator: {} }),
     createBookAnalysisValidateWorker({ ...common, storage: {} }),
@@ -42,7 +36,7 @@ test('every analysis stage passes the configured run allowlist to its queue clai
   for (const worker of workers) assert.deepEqual(await worker.runOnce(), { status: 'idle' })
 
   assert.deepEqual(claims.map(({ options }) => options.stages[0]), [
-    'prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish'
+    'prepare', 'resolve', 'synthesize', 'validate', 'publish'
   ])
   assert.ok(claims.every(({ options }) => options.runIds === runIds))
 })

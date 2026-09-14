@@ -3,8 +3,8 @@ import { normalizeBookAnalysisPipelineId } from './book-analysis-pipeline.mjs'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export const BOOK_ANALYSIS_CLI_USAGE = `Usage:
-  npm run book-analysis -- start --book-edition-id <uuid> [--pipeline narra|external] [--priority <number>]
-  npm run book-analysis -- restart --book-edition-id <uuid> [--pipeline narra|external] [--priority <number>]
+  npm run book-analysis -- start --book-edition-id <uuid> [--pipeline cards|external] [--priority <number>]
+  npm run book-analysis -- restart --book-edition-id <uuid> [--pipeline cards|external] [--priority <number>]
   npm run book-analysis -- status --run-id <uuid>
   npm run book-analysis -- result --run-id <uuid>`
 

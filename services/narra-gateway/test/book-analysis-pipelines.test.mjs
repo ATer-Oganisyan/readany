@@ -44,17 +44,18 @@ function contentHash(value) {
   return hash(JSON.stringify(canonical(value)))
 }
 
-test('pipeline registry defaults to cards and rejects unknown selectors', () => {
-  // Умолчание — карточки: narra на каталоге до конца так и не дошла, и новый
-  // разбор идёт ими. Прежнее поведение возвращается настройкой, не выкладкой.
+test('pipeline registry defaults to cards and refuses the retired pipeline', () => {
+  // Разбор идёт карточками, и другого выбора для книги на русском уже нет:
+  // narra снята вместе со стратегией. Отказ называет её по имени — настройка
+  // была верной ещё вчера, и «неизвестный конвейер» читалось бы как опечатка.
   assert.equal(bookAnalysisPipelineFromEnv({}), BOOK_ANALYSIS_PIPELINE_CARDS)
-  assert.equal(
-    bookAnalysisPipelineFromEnv({ BOOK_ANALYSIS_PIPELINE: 'narra' }),
-    BOOK_ANALYSIS_PIPELINE_NARRA
-  )
   assert.equal(
     bookAnalysisPipelineFromEnv({ BOOK_ANALYSIS_PIPELINE: 'external' }),
     BOOK_ANALYSIS_PIPELINE_EXTERNAL
+  )
+  assert.throws(
+    () => bookAnalysisPipelineFromEnv({ BOOK_ANALYSIS_PIPELINE: BOOK_ANALYSIS_PIPELINE_NARRA }),
+    (error) => error.code === 'INVALID_ARGUMENT' && /снят/.test(error.message)
   )
   assert.throws(
     () => bookAnalysisPipelineFromEnv({ BOOK_ANALYSIS_PIPELINE: 'fallback' }),
@@ -62,28 +63,28 @@ test('pipeline registry defaults to cards and rejects unknown selectors', () => 
   )
 })
 
-test('both adapters implement one strategy contract without sharing scan topology', () => {
+test('the surviving adapters implement one strategy contract', () => {
   const chunks = [
     { id: 'chunk-1', ordinal: 0 },
     { id: 'chunk-2', ordinal: 1 }
   ]
-  const narra = getBookAnalysisPipeline('narra')
   const external = getBookAnalysisPipeline('external')
-  for (const strategy of [narra, external]) {
+  const cards = getBookAnalysisPipeline(BOOK_ANALYSIS_PIPELINE_CARDS)
+  for (const strategy of [external, cards]) {
     assert.equal(typeof strategy.createScanJobs, 'function')
     assert.equal(typeof strategy.reconcileIdentities, 'function')
     assert.equal(typeof strategy.synthesizeCharacter, 'function')
     assert.equal(strategy.outputSchemaVersion, 3)
     assert.equal(strategy.analysisVersion, 'book-markup-v3')
   }
-  assert.equal(narra.createScanJobs(chunks).length, 2)
   assert.deepEqual(external.createScanJobs(chunks), [{
     shardKey: 'pipeline:external', chunkId: 'chunk-1', payload: { scope: 'book' }
   }])
+  assert.equal(getBookAnalysisPipeline.length, 1)
 })
 
 test('worker strategy selection fails closed on changed durable versions', () => {
-  assert.equal(bookAnalysisPipelineForRun({ pipelineId: 'narra' }).id, 'narra')
+  assert.equal(bookAnalysisPipelineForRun({ pipelineId: 'external' }).id, 'external')
   assert.throws(
     () => bookAnalysisPipelineForRun({
       pipelineId: 'external',
@@ -91,14 +92,22 @@ test('worker strategy selection fails closed on changed durable versions', () =>
     }),
     (error) => error.code === 'PIPELINE_VERSION_UNSUPPORTED'
   )
+  // Прогон без pipeline_id — прогон снятого конвейера: колонка появилась позже.
+  assert.throws(
+    () => bookAnalysisPipelineForRun({ pipelineId: null }),
+    (error) => error.code === 'INVALID_ARGUMENT' && /снят/.test(error.message)
+  )
 })
 
-test('narra and external cache identities are disjoint for the same content hash', () => {
+test('cards and external cache identities are disjoint for the same content hash', () => {
   const contentHash = 'a'.repeat(64)
-  const narra = bookAnalysisPipelineCacheKey({ pipelineId: 'narra', contentHash })
+  const cards = bookAnalysisPipelineCacheKey({
+    pipelineId: BOOK_ANALYSIS_PIPELINE_CARDS,
+    contentHash
+  })
   const external = bookAnalysisPipelineCacheKey({ pipelineId: 'external', contentHash })
-  assert.notEqual(narra, external)
-  assert.match(narra, /narra:book-analysis-v51/)
+  assert.notEqual(cards, external)
+  assert.match(cards, /cards:cards-v/)
   assert.match(external, /external:external-autiobook-v1\.d532bdd0/)
   assert.match(external, /normalized-text-v2:schema-3:book-markup-v3/)
 })
@@ -383,7 +392,7 @@ test('side-by-side evaluation applies one golden scorer to two independent runs'
     }],
     gates: { precision: 0, recall: 0, f1: 0, criticalMerges: 0, duplicateRate: 1 }
   }
-  const results = ['narra', 'external'].map((pipelineId, index) => {
+  const results = [BOOK_ANALYSIS_PIPELINE_CARDS, 'external'].map((pipelineId, index) => {
     const strategy = getBookAnalysisPipeline(pipelineId)
     const run = {
       id: `run-${pipelineId}`,
@@ -409,7 +418,7 @@ test('side-by-side evaluation applies one golden scorer to two independent runs'
   })
   const comparison = compareBookAnalysisPipelines({ fixture, results })
   assert.equal(comparison.sourceContentHash, sourceContentHash)
-  assert.equal(comparison.scores.narra.metrics.full.recall, 1)
+  assert.equal(comparison.scores.cards.metrics.full.recall, 1)
   assert.equal(comparison.scores.external.metrics.full.recall, 0)
-  assert.notEqual(comparison.scores.narra.runId, comparison.scores.external.runId)
+  assert.notEqual(comparison.scores.cards.runId, comparison.scores.external.runId)
 })

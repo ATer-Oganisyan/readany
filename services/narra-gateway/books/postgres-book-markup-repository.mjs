@@ -165,7 +165,17 @@ async function requireLeasedJob(client, job) {
 export function createPostgresBookMarkupRepository(pool, {
   idFactory = randomUUID,
   privateMaterialTtlDays = 7,
-  beforeCreateReaderScene = async () => {}
+  beforeCreateReaderScene = async () => {},
+  /**
+   * Ставить ли портрет и приветствие сразу за публикацией карточки.
+   *
+   * Разметка каталога публикует карточки сотнями, и каждая тянет за собой два
+   * медиа-задания: на пятистах книгах это порядка двенадцати тысяч картинок и
+   * озвучек на одном media-воркере. Когда нужна только разметка, эта автоматика
+   * выключается — на запрос читателя (`ensureCharacterBundle`) медиа
+   * по-прежнему собирается, иначе открытая книга осталась бы без портретов.
+   */
+  cardMediaEnqueueEnabled = true
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new TypeError('a pg-compatible pool is required')
@@ -175,6 +185,9 @@ export function createPostgresBookMarkupRepository(pool, {
   }
   if (typeof beforeCreateReaderScene !== 'function') {
     throw new TypeError('beforeCreateReaderScene must be a function')
+  }
+  if (typeof cardMediaEnqueueEnabled !== 'boolean') {
+    throw new TypeError('cardMediaEnqueueEnabled must be a boolean')
   }
 
   async function touchPrivateRetention(client, bookEditionId) {
@@ -3552,15 +3565,17 @@ export function createPostgresBookMarkupRepository(pool, {
         // Портрет ставится здесь же и по хэшу этой карточки: `appearancePrompt`
         // берётся из неё, поэтому revision медиа меняется только вместе с
         // новой `card_revision`.
-        const media = await ensureCharacterMediaJobs({
-          bookEditionId,
-          characterKey,
-          bundleVersion: BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
-          priority: mediaPriority,
-          sourceKind: 'card',
-          runId,
-          client
-        })
+        const media = cardMediaEnqueueEnabled
+          ? await ensureCharacterMediaJobs({
+            bookEditionId,
+            characterKey,
+            bundleVersion: BOOK_ANALYSIS_CHARACTER_BUNDLE_VERSION,
+            priority: mediaPriority,
+            sourceKind: 'card',
+            runId,
+            client
+          })
+          : { status: 'skipped', created: false, jobs: [], bundleId: null, mediaRevision: null }
         await client.query(
           `UPDATE generation_jobs
            SET status = 'ready', result = $2::jsonb, last_error_code = NULL,

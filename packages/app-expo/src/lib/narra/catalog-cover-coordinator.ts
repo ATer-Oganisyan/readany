@@ -75,6 +75,19 @@ const sharedQueue = new CatalogCoverQueue({
 });
 
 export const catalogCoverCoordinator = new CatalogCoverCoordinator(sharedQueue);
+
+/**
+ * Пока читатель ждёт книгу, обложки каталога уступают ей и канал, и минутный
+ * лимит запросов: подписанная ссылка нужна каждой обложке отдельно.
+ */
+export async function withCatalogCoversSuspended<T>(work: () => Promise<T>): Promise<T> {
+  sharedQueue.suspend();
+  try {
+    return await work();
+  } finally {
+    sharedQueue.resume();
+  }
+}
 export const retryCatalogCover = (book: CachedBackendCatalogBook) =>
   catalogCoverCoordinator.retry(book);
 

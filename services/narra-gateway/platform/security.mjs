@@ -127,6 +127,10 @@ export function createFixedWindowLimiter({ windowMs, limit, key, now = () => Dat
     res.setHeader('RateLimit-Remaining', String(Math.max(0, limit - bucket.count)))
     res.setHeader('RateLimit-Reset', String(Math.ceil(bucket.resetAt / 1000)))
     if (bucket.count > limit) {
+      // Клиент обязан знать, когда окно сбросится: иначе он повторяет попытку
+      // внутри того же окна и получает тот же отказ. На этом ломалось открытие
+      // книги из глубины каталога — подписанные ссылки обложек выбирали лимит.
+      res.setHeader('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - timestamp) / 1000))))
       return res.status(429).json({ error: 'Слишком много запросов', code: 'RATE' })
     }
     if (buckets.size > 10_000) {

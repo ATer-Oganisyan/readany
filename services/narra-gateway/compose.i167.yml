@@ -391,7 +391,7 @@ services:
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment, *book-analysis-scan-policy-environment]
       WORKER_TYPE: book-analysis-pool
-      BOOK_ANALYSIS_STAGES: ${BOOK_ANALYSIS_POOL_STAGES:-scan}
+      BOOK_ANALYSIS_STAGES: ${BOOK_ANALYSIS_POOL_STAGES:-prepare}
 
   book-media-worker:
     <<: *book-analysis-worker
@@ -439,6 +439,10 @@ services:
       # которым хранилище ни к чему.
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
       BOOK_MARKUP_WORKER_JOB_TYPES: character_card,roster_confirm
+      # Разметка каталога публикует карточки сотнями, и каждая тянет портрет и
+      # приветствие. Когда нужна только разметка, автоматика выключается: на
+      # запрос читателя медиа по-прежнему собирается.
+      BOOK_CARD_MEDIA_ENQUEUE: ${BOOK_CARD_MEDIA_ENQUEUE:-true}
       WORKER_TYPE: book-card
 
   generation-queue-operator:

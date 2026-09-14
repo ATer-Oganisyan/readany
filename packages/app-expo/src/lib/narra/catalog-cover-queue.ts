@@ -57,6 +57,7 @@ export class CatalogCoverQueue {
   private pending: QueueEntry[] = [];
   private disposed = false;
   private paused = false;
+  private suspendCount = 0;
   private desired = new Map<string, CachedBackendCatalogBook>();
 
   constructor(options: CatalogCoverQueueOptions) {
@@ -64,6 +65,24 @@ export class CatalogCoverQueue {
     this.loadCover = options.load;
     this.onLoaded = options.onLoaded;
     this.onError = options.onError;
+  }
+
+  /**
+   * Открытие книги важнее обложек. Скачивание исходника делит с ними и канал,
+   * и минутный лимит запросов гейтвея: каждая обложка тратит запрос за
+   * подписанной ссылкой. Пока идёт импорт, очередь молчит, а прерванные
+   * обложки вернутся в неё сами — они остались в desired.
+   */
+  suspend(): void {
+    this.suspendCount += 1;
+    if (this.suspendCount > 1) return;
+    for (const controller of this.active.values()) controller.abort();
+  }
+
+  resume(): void {
+    if (this.suspendCount === 0) return;
+    this.suspendCount -= 1;
+    if (this.suspendCount === 0) this.pump();
   }
 
   enqueue(books: CachedBackendCatalogBook[]): void {
@@ -135,12 +154,27 @@ export class CatalogCoverQueue {
     for (const controller of this.active.values()) controller.abort();
   }
 
-  getDiagnostics(): { active: number; pending: number; entries: number } {
-    return { active: this.active.size, pending: this.pending.length, entries: this.entries.size };
+  getDiagnostics(): {
+    active: number;
+    pending: number;
+    entries: number;
+    suspended: boolean;
+  } {
+    return {
+      active: this.active.size,
+      pending: this.pending.length,
+      entries: this.entries.size,
+      suspended: this.suspendCount > 0,
+    };
   }
 
   private pump(): void {
-    while (!this.disposed && !this.paused && this.active.size < this.concurrency) {
+    while (
+      !this.disposed &&
+      !this.paused &&
+      this.suspendCount === 0 &&
+      this.active.size < this.concurrency
+    ) {
       const entry = this.pending.shift();
       if (!entry) return;
       const controller = new AbortController();

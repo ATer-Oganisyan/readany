@@ -1,11 +1,11 @@
 import {
-  BOOK_ANALYSIS_PIPELINE_NARRA,
+  BOOK_ANALYSIS_PIPELINE_CARDS,
   getBookAnalysisPipeline
 } from './book-analysis-pipeline.mjs'
 
 export function createBookAnalysisCoordinator({
   repository,
-  defaultPipelineId = BOOK_ANALYSIS_PIPELINE_NARRA
+  defaultPipelineId = BOOK_ANALYSIS_PIPELINE_CARDS
 }) {
   if (!repository || typeof repository.ensureAnalysisRun !== 'function') {
     throw new TypeError('book analysis repository is required')

@@ -4,6 +4,7 @@ import test from 'node:test'
 import { createBookAnalysisPublishWorker } from '../analysis/book-analysis-publish-worker.mjs'
 import { createBookAnalysisSynthesizeWorker } from '../analysis/book-analysis-synthesize-worker.mjs'
 import { createBookAnalysisValidateWorker } from '../analysis/book-analysis-validate-worker.mjs'
+import { EXTERNAL_PIPELINE_IMPLEMENTATION_VERSION } from '../analysis/book-analysis-pipeline.mjs'
 
 const leaseToken = '11111111-1111-4111-8111-111111111111'
 const job = {
@@ -11,28 +12,30 @@ const job = {
 }
 const quietLogger = { info() {}, error() {} }
 
-test('synthesize workers isolate one character and send only selected evidence to the model', async () => {
-  const observations = Array.from({ length: 300 }, (_, index) => ({
-    id: `observation-${index}`,
-    type: 'character_action',
-    fact: `Факт ${index}`,
-    evidence: { quote: `цитата ${index}`, startOffset: index * 20, endOffset: index * 20 + 8 },
-    confidence: 0.9
-  }))
-  let modelInput
+test('synthesize worker builds the profile from exact evidence without calling the model', async () => {
+  // Отбор улик моделью был стадией снятого конвейера. У оставшегося external
+  // профиль собирается из точных реплик, и обращения к модели здесь быть не
+  // должно вовсе — иначе за неё платили бы там, где ответ уже известен.
   let completion
+  const observations = [{
+    id: 'observation-1',
+    type: 'character_dialogue',
+    fact: 'Анна ответила',
+    evidence: { quote: 'Точная реплика.', startOffset: 0, endOffset: 15 },
+    confidence: 0.99
+  }]
   const repository = {
     async claimAnalysisJob() { return job },
     async getSynthesizeInput() {
       return {
-        mode: 'character_profile', runId: 'run-1', title: 'Книга', author: 'Автор',
-        textLength: 10_000,
+        mode: 'character_profile', runId: 'run-1', pipelineId: 'external',
+        pipelineImplementationVersion: EXTERNAL_PIPELINE_IMPLEMENTATION_VERSION,
+        title: 'Книга', author: 'Автор', textLength: 10_000,
         snapshot: { id: 'snapshot-1' },
         entity: {
-          id: 'database-only-id',
           entityKey: 'character:anna', entityKind: 'character', canonicalName: 'Анна',
           aliases: [], resolutionStatus: 'confirmed', confidence: 0.9,
-          evidenceIds: observations.map(({ id }) => id),
+          evidenceIds: ['observation-1'],
           data: { firstEvidenceStartOffset: 0 }
         },
         observations
@@ -48,9 +51,8 @@ test('synthesize workers isolate one character and send only selected evidence t
   const worker = createBookAnalysisSynthesizeWorker({
     repository,
     generator: {
-      async synthesizeCharacterProfile(input) {
-        modelInput = input
-        return { profile: { creative: {} } }
+      async synthesizeCharacterProfile() {
+        assert.fail('external synthesis must not call the model')
       }
     },
     workerId: 'synthesis-worker-1',
@@ -60,10 +62,8 @@ test('synthesize workers isolate one character and send only selected evidence t
   })
   const result = await worker.runOnce()
   assert.equal(result.status, 'completed')
-  assert.ok(modelInput.evidence.length <= 240)
-  assert.deepEqual(modelInput.entity.evidenceIds, modelInput.evidence.map(({ id }) => id))
-  assert.equal(Object.hasOwn(modelInput.entity, 'id'), false)
-  assert.deepEqual(completion.selectedEvidenceIds, modelInput.entity.evidenceIds)
+  assert.deepEqual(completion.selectedEvidenceIds, ['observation-1'])
+  assert.equal(completion.profile.speechExamples[0].value, 'Точная реплика.')
 })
 
 test('validate and publish workers keep publication behind an independent valid report', async () => {

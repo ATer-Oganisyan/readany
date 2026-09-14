@@ -93,7 +93,8 @@ test('fixed-window limiter rejects requests above the configured limit', () => {
   })
   const response = () => ({
     statusCode: 200,
-    setHeader() {},
+    headers: {},
+    setHeader(name, value) { this.headers[name.toLowerCase()] = value },
     status(code) { this.statusCode = code; return this },
     json(payload) { this.payload = payload; return this }
   })
@@ -105,6 +106,8 @@ test('fixed-window limiter rejects requests above the configured limit', () => {
   const blocked = response()
   middleware({}, blocked, () => assert.fail('must not continue'))
   assert.equal(blocked.statusCode, 429)
+  // Клиент должен ждать сброса окна, а не повторять попытку внутри него.
+  assert.equal(blocked.headers['retry-after'], '1')
   timestamp = 1_101
   let called = false
   middleware({}, response(), () => { called = true })

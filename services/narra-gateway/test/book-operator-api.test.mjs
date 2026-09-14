@@ -339,7 +339,7 @@ test('operator cannot activate a correction without its reviewed SHA-256 hash', 
   assert.deepEqual(input.calls, [])
 })
 
-test('operator restart accepts only the explicit narra or external pipeline selector', async () => {
+test('operator restart accepts only an explicit selector of a live pipeline', async () => {
   const input = dependencies()
   await withServer(input, async (baseUrl) => {
     const selected = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
@@ -353,13 +353,15 @@ test('operator restart accepts only the explicit narra or external pipeline sele
       { bookEditionId: BOOK_ID, pipelineId: 'external', priority: 100 }
     ]])
 
-    const invalid = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
-      method: 'POST',
-      headers: { authorization: AUTH, 'content-type': 'application/json' },
-      body: JSON.stringify({ pipeline: 'fallback' })
-    })
-    assert.equal(invalid.status, 400)
-    assert.equal((await invalid.json()).code, 'INVALID_ARGUMENT')
+    for (const pipeline of ['fallback', 'narra']) {
+      const invalid = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
+        method: 'POST',
+        headers: { authorization: AUTH, 'content-type': 'application/json' },
+        body: JSON.stringify({ pipeline })
+      })
+      assert.equal(invalid.status, 400)
+      assert.equal((await invalid.json()).code, 'INVALID_ARGUMENT')
+    }
   })
 })
 

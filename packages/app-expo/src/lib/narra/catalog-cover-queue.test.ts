@@ -42,6 +42,32 @@ describe("catalog cover queue", () => {
     ).toEqual(["book-0", "book-1", "book-2", "book-3"]);
   });
 
+  it("stops loading covers while a book is being opened", async () => {
+    const aborts: AbortSignal[] = [];
+    const load = vi.fn(async (item: CachedBackendCatalogBook, signal: AbortSignal) => {
+      aborts.push(signal);
+      await new Promise<void>((resolve) => {
+        if (signal.aborted) resolve();
+        else signal.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return `file:///covers/${item.catalogKey}.jpg`;
+    });
+    const queue = new CatalogCoverQueue({ concurrency: 2, load, onLoaded: vi.fn() });
+
+    queue.prioritize([book(0), book(1)], [book(2)]);
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+
+    queue.suspend();
+    expect(aborts.every((signal) => signal.aborted)).toBe(true);
+    await vi.waitFor(() => expect(queue.getDiagnostics().active).toBe(0));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(queue.getDiagnostics().suspended).toBe(true);
+
+    queue.resume();
+    await vi.waitFor(() => expect(load.mock.calls.length).toBeGreaterThan(2));
+    queue.dispose();
+  });
+
   it("deduplicates loads and respects the concurrency limit", async () => {
     const resolvers: Array<() => void> = [];
     let active = 0;

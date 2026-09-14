@@ -34,6 +34,7 @@ import {
   BOOK_ANALYSIS_NORMALIZATION_VERSION,
   BOOK_ANALYSIS_PIPELINE_IDS,
   BOOK_ANALYSIS_PIPELINE_NARRA,
+  BOOK_ANALYSIS_RETIRED_PIPELINE_IDS,
   bookAnalysisPipelineForRun,
   bookAnalysisPipelineCacheKey,
   bookAnalysisPublicationProvenance,
@@ -379,7 +380,7 @@ async function requireLeasedJob(client, job, expectedStage) {
 export function bookAnalysisRunIdempotencyKey({
   bookEditionId,
   inputHash,
-  pipelineId = BOOK_ANALYSIS_PIPELINE_NARRA,
+  pipelineId = BOOK_ANALYSIS_PIPELINE_CARDS,
   pipelineImplementationVersion,
   pipelineVersion,
   promptVersion,
@@ -412,9 +413,9 @@ export function bookAnalysisRunIdempotencyKey({
 
 export function createPostgresBookAnalysisRepository(pool, {
   idFactory = randomUUID,
-  defaultPipelineId = BOOK_ANALYSIS_PIPELINE_NARRA,
+  defaultPipelineId = BOOK_ANALYSIS_PIPELINE_CARDS,
   // Конвейер, назначенный изданию поимённо. Возвращает id конвейера или null:
-  // null означает «этой книге ничего не назначено», а не «взять narra».
+  // null означает «этой книге ничего не назначено», а не «взять умолчание».
   pipelineForEdition = () => null,
   mediaGenerationEnabled = true
 } = {}) {
@@ -782,10 +783,19 @@ export function createPostgresBookAnalysisRepository(pool, {
           [safeBookEditionId, inputHash]
         )
         const previous = previousResult.rows[0]
+        // Наследование конвейера от предыдущего прогона не воскрешает снятый:
+        // иначе перезапуск каталожной книги, разобранной старым конвейером,
+        // возвращал бы её на него же — и весь перевод каталога на карточки
+        // сводился бы к повтору прежнего разбора.
+        const inheritedPipelineId = BOOK_ANALYSIS_RETIRED_PIPELINE_IDS.includes(
+          previous?.pipeline_id
+        )
+          ? null
+          : previous?.pipeline_id
         const strategy = getBookAnalysisPipeline(
           pipelineId
             ?? assignedPipelineId(safeBookEditionId, edition.scope)
-            ?? previous?.pipeline_id
+            ?? inheritedPipelineId
             ?? repositoryDefaultPipelineId
         )
         const inherited = previous?.pipeline_id === strategy.id ? previous : null
@@ -1571,6 +1581,11 @@ export function createPostgresBookAnalysisRepository(pool, {
       })
     },
 
+    /**
+     * Чанковое scan-задание принадлежало снятому конвейеру narra: воркеров у
+     * этой стадии больше нет, и задания с таким `pipeline_id` не выдаются.
+     * Метод остаётся доступом к историческим строкам, не путём работы.
+     */
     async getScanInput(job) {
       const result = await pool.query(
         `SELECT run.id AS run_id, run.book_edition_id, run.prompt_version,

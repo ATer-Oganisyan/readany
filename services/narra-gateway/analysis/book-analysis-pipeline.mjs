@@ -1,24 +1,26 @@
 import {
-  BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION,
   BOOK_ANALYSIS_MARKUP_VERSION,
   BOOK_ANALYSIS_PIPELINE_VERSION,
-  BOOK_ANALYSIS_PROMPT_VERSION,
-  BOOK_ANALYSIS_SCHEMA_VERSION,
-  BOOK_ANALYSIS_SYNTHESIS_VERSION
+  BOOK_ANALYSIS_SCHEMA_VERSION
 } from './book-analysis-contracts.mjs'
-import {
-  buildBookIdentityReconciliationRequest,
-  validateBookIdentityMerges
-} from './book-analysis-identity-reconciliation.mjs'
-import { selectCharacterSynthesisEvidence } from './book-analysis-synthesis.mjs'
 
+/**
+ * Снятый конвейер. Идентификатор остаётся: им помечены прогоны, разобравшие
+ * каталог до перехода на карточки, и строка `pipeline_id` у них никуда не
+ * делась. Новый прогон с ним не запускается и его задания не разбираются —
+ * опубликованная разметка при этом читается как прежде: она лежит в
+ * `book_markup_versions`, а не пересчитывается конвейером.
+ */
 export const BOOK_ANALYSIS_PIPELINE_NARRA = 'narra'
 export const BOOK_ANALYSIS_PIPELINE_EXTERNAL = 'external'
 export const BOOK_ANALYSIS_PIPELINE_CARDS = 'cards'
 export const BOOK_ANALYSIS_PIPELINE_IDS = Object.freeze([
-  BOOK_ANALYSIS_PIPELINE_NARRA,
   BOOK_ANALYSIS_PIPELINE_EXTERNAL,
   BOOK_ANALYSIS_PIPELINE_CARDS
+])
+/** Историческое значение `pipeline_id`, которое конвейера за собой не имеет. */
+export const BOOK_ANALYSIS_RETIRED_PIPELINE_IDS = Object.freeze([
+  BOOK_ANALYSIS_PIPELINE_NARRA
 ])
 
 export const BOOK_ANALYSIS_NORMALIZATION_VERSION = 'normalized-text-v2'
@@ -54,6 +56,7 @@ export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'
 
 const PIPELINE_IDS = new Set(BOOK_ANALYSIS_PIPELINE_IDS)
+const RETIRED_PIPELINE_IDS = new Set(BOOK_ANALYSIS_RETIRED_PIPELINE_IDS)
 
 function pipelineInputError(message) {
   return Object.assign(new TypeError(message), { code: 'INVALID_ARGUMENT' })
@@ -61,6 +64,13 @@ function pipelineInputError(message) {
 
 export function normalizeBookAnalysisPipelineId(value, name = 'pipeline') {
   const normalized = String(value || '').trim().toLowerCase()
+  // Снятый конвейер называется отдельно: «narra не входит в список» звучало бы
+  // как опечатка, хотя настройка была верной ещё вчера.
+  if (RETIRED_PIPELINE_IDS.has(normalized)) {
+    throw pipelineInputError(
+      `${name}: конвейер ${normalized} снят; разбор идёт карточками (${BOOK_ANALYSIS_PIPELINE_CARDS})`
+    )
+  }
   if (!PIPELINE_IDS.has(normalized)) {
     throw pipelineInputError(`${name} must be one of: ${BOOK_ANALYSIS_PIPELINE_IDS.join(', ')}`)
   }
@@ -68,16 +78,9 @@ export function normalizeBookAnalysisPipelineId(value, name = 'pipeline') {
 }
 
 /**
- * Конвейер по умолчанию — карточки.
- *
- * Прежним умолчанием была narra, и она остаётся в коде: по ней разобран
- * каталог, и её прогоны читаются как прежде. Но новый разбор идёт карточками —
- * они проверены на канареечных книгах и на приватных загрузках, а narra на
- * каталоге до конца так и не дошла: из 1605 книг у 1261 прогон остался
- * отменённым.
- *
- * Вернуть прежнее поведение можно настройкой, не выкладкой:
- * `BOOK_ANALYSIS_PIPELINE=narra`.
+ * Конвейер по умолчанию — карточки. Другого для книг на русском уже нет:
+ * narra снята, её стратегия удалена, и `BOOK_ANALYSIS_PIPELINE=narra` теперь
+ * не запускает старый разбор, а отказывает на старте.
  */
 export function bookAnalysisPipelineFromEnv(env = process.env) {
   return normalizeBookAnalysisPipelineId(
@@ -169,67 +172,12 @@ export function bookAnalysisPipelineForEdition(bookEditionId, env = process.env)
     ?? bookAnalysisPipelineFromEnv(env)
 }
 
-function narraScanJobs(chunks) {
-  return chunks.map((chunk) => ({
-    shardKey: `chunk:${chunk.ordinal}`,
-    chunkId: chunk.id,
-    payload: { chunkOrdinal: chunk.ordinal }
-  }))
-}
-
 function externalScanJobs(chunks) {
   return [{
     shardKey: 'pipeline:external',
     chunkId: chunks[0].id,
     payload: { scope: 'book' }
   }]
-}
-
-async function reconcileNarraIdentities({
-  input,
-  entities,
-  generator,
-  reconciliationVersion,
-  resolveEntities,
-  log
-}) {
-  if (!generator) return { entities, acceptedIdentityMerges: [] }
-  const characters = entities.filter(({ entityKind }) => entityKind === 'character')
-  const recovery = characters.length >= 3
-  const request = buildBookIdentityReconciliationRequest({
-    ...input,
-    entities,
-    pipelineVersion: input.pipelineVersion,
-    reconciliationVersion,
-    recovery
-  })
-  if (!request) {
-    log?.warn('resolve.identity_skipped', 'Глобальная сверка имён пропущена из-за лимитов', {
-      run: input.runId,
-      pipeline_id: input.pipelineId,
-      character_count: entities.filter(({ entityKind }) => entityKind === 'character').length
-    })
-    return { entities, acceptedIdentityMerges: [] }
-  }
-  const proposed = await generator.reconcileBookCharacterIdentities(request)
-  const acceptedIdentityMerges = validateBookIdentityMerges({
-    request,
-    proposedMerges: proposed.merges
-  })
-  const reconciled = acceptedIdentityMerges.length
-    ? await resolveEntities({
-        observations: input.observations,
-        identityMerges: acceptedIdentityMerges
-      })
-    : entities
-  log?.info('resolve.identity_reconciled', 'Имена персонажей сверены по всей книге', {
-    run: input.runId,
-    pipeline_id: input.pipelineId,
-    proposed_merge_count: proposed.merges.length,
-    accepted_merge_count: acceptedIdentityMerges.length,
-    recovery
-  })
-  return { entities: reconciled, acceptedIdentityMerges }
 }
 
 async function reconcileExternalIdentities({ input, entities }) {
@@ -245,54 +193,6 @@ async function reconcileExternalIdentities({ input, entities }) {
         : entity
     ),
     acceptedIdentityMerges: []
-  }
-}
-
-function narraProfileRequest(input) {
-  const selectedEvidence = selectCharacterSynthesisEvidence(input.observations).map((observation) => ({
-    id: observation.id,
-    type: observation.type,
-    fact: observation.fact,
-    quote: observation.evidence.quote,
-    startOffset: observation.evidence.startOffset,
-    endOffset: observation.evidence.endOffset,
-    confidence: observation.confidence
-  }))
-  return {
-    selectedEvidence,
-    entity: {
-      entityKey: input.entity.entityKey,
-      entityKind: input.entity.entityKind,
-      canonicalName: input.entity.canonicalName,
-      aliases: input.entity.aliases.slice(0, 16),
-      resolutionStatus: input.entity.resolutionStatus,
-      confidence: input.entity.confidence,
-      evidenceIds: selectedEvidence.map(({ id }) => id),
-      data: {
-        observationCount: input.entity.data.observationCount,
-        firstEvidenceStartOffset: input.entity.data.firstEvidenceStartOffset,
-        lastEvidenceEndOffset: input.entity.data.lastEvidenceEndOffset
-      }
-    }
-  }
-}
-
-async function synthesizeNarraCharacter({ input, generator, synthesisVersion }) {
-  const request = narraProfileRequest(input)
-  const generated = await generator.synthesizeCharacterProfile({
-    runId: input.runId,
-    snapshotId: input.snapshot.id,
-    synthesisVersion,
-    bookTitle: input.title,
-    bookAuthor: input.author,
-    textLength: input.textLength,
-    entity: request.entity,
-    evidence: request.selectedEvidence
-  })
-  return {
-    synthesisVersion,
-    selectedEvidenceIds: request.selectedEvidence.map(({ id }) => id),
-    profile: generated.profile
   }
 }
 
@@ -336,22 +236,6 @@ async function synthesizeExternalCharacter({ input }) {
 }
 
 const STRATEGIES = new Map([
-  [BOOK_ANALYSIS_PIPELINE_NARRA, Object.freeze({
-    id: BOOK_ANALYSIS_PIPELINE_NARRA,
-    implementationVersion: BOOK_ANALYSIS_PIPELINE_VERSION,
-    orchestrationVersion: BOOK_ANALYSIS_PIPELINE_VERSION,
-    extractorVersion: BOOK_ANALYSIS_PROMPT_VERSION,
-    synthesisVersion: BOOK_ANALYSIS_SYNTHESIS_VERSION,
-    reconciliationVersion: BOOK_ANALYSIS_IDENTITY_RECONCILIATION_VERSION,
-    normalizationVersion: BOOK_ANALYSIS_NORMALIZATION_VERSION,
-    outputSchemaVersion: BOOK_ANALYSIS_SCHEMA_VERSION,
-    analysisVersion: BOOK_ANALYSIS_MARKUP_VERSION,
-    scanScope: 'chunk',
-    createScanJobs: narraScanJobs,
-    reconcileIdentities: reconcileNarraIdentities,
-    synthesizeCharacter: synthesizeNarraCharacter,
-    quality: Object.freeze({ requireTextCoverage: true })
-  })],
   [BOOK_ANALYSIS_PIPELINE_EXTERNAL, Object.freeze({
     id: BOOK_ANALYSIS_PIPELINE_EXTERNAL,
     implementationVersion: EXTERNAL_PIPELINE_IMPLEMENTATION_VERSION,
@@ -367,8 +251,8 @@ const STRATEGIES = new Map([
     reconcileIdentities: reconcileExternalIdentities,
     synthesizeCharacter: synthesizeExternalCharacter,
     quality: Object.freeze({ requireTextCoverage: false })
-  })]
-  ,[BOOK_ANALYSIS_PIPELINE_CARDS, Object.freeze({
+  })],
+  [BOOK_ANALYSIS_PIPELINE_CARDS, Object.freeze({
     id: BOOK_ANALYSIS_PIPELINE_CARDS,
     implementationVersion: CARDS_PIPELINE_IMPLEMENTATION_VERSION,
     orchestrationVersion: BOOK_ANALYSIS_PIPELINE_VERSION,
@@ -412,8 +296,14 @@ export function getBookAnalysisPipeline(value) {
   return STRATEGIES.get(normalizeBookAnalysisPipelineId(value))
 }
 
+/**
+ * Прогон без `pipeline_id` — это прогон снятого конвейера: колонка появилась
+ * позже него. Такой прогон не продолжается, и отказ обязан называть причину:
+ * иначе «стратегия не найдена» выглядит как поломка конфигурации.
+ */
 export function bookAnalysisPipelineForRun(run) {
-  const strategy = getBookAnalysisPipeline(run?.pipelineId ?? BOOK_ANALYSIS_PIPELINE_NARRA)
+  const pipelineId = run?.pipelineId ?? BOOK_ANALYSIS_PIPELINE_NARRA
+  const strategy = getBookAnalysisPipeline(pipelineId)
   const mismatches = [
     ['implementation', run?.pipelineImplementationVersion, strategy.implementationVersion],
     ['normalization', run?.normalizationVersion, strategy.normalizationVersion],

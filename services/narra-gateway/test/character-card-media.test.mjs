@@ -320,6 +320,45 @@ test('publishing a card queues its media from the card hash at the window priori
   assert.ok(pool.queries.every(({ transaction }) => transaction))
 })
 
+test('массовая разметка может публиковать карточки, не заказывая медиа', async () => {
+  // Каждая карточка тянет портрет и приветствие, а разметка каталога публикует
+  // их сотнями: на пятистах книгах это порядка двенадцати тысяч заданий на
+  // одном media-воркере. Выключатель снимает именно эту автоматику — карточка
+  // при этом публикуется целиком.
+  const pool = scriptedPool([
+    () => ({ rows: [{ id: 'job-card', status: 'running' }] }), // requireLeasedJob
+    () => ({ rows: [] }),                                       // disable prior revisions
+    () => ({ rows: [{ id: 'card-1' }] }),                       // insert card
+    () => ({ rows: [] })                                        // finish the card job
+  ])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174000',
+    cardMediaEnqueueEnabled: false
+  })
+  const result = await repository.publishCharacterCard(
+    { id: 'job-card', bookEditionId: 'edition-1', characterKey: 'char:elizabeth-bennet', leaseToken: 'lease-1' },
+    {
+      runId: 'run-1',
+      bookEditionId: 'edition-1',
+      characterKey: 'char:elizabeth-bennet',
+      windowIndex: 0,
+      cardRevision: 1,
+      fragmentSetHash: HASH,
+      normalizedTextHash: HASH,
+      promptVersion: 'character-card-prompt-v1',
+      mediaPriority: CARD_MEDIA_PRIORITY.foreground,
+      card: card()
+    }
+  )
+  assert.equal(result.status, 'published')
+  assert.equal(result.media.status, 'skipped')
+  assert.ok(
+    pool.queries.every(({ sql }) => !/INSERT INTO generation_jobs/.test(sql)),
+    'ни одного медиа-задания'
+  )
+  assert.ok(pool.queries.every(({ sql }) => !/character_media_bundles/.test(sql)))
+})
+
 test('publishing a card without an enabled card row refuses to queue media', async () => {
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'job-card', status: 'running' }] }),

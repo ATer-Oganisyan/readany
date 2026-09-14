@@ -16,9 +16,9 @@ test('an unset stage list selects the whole canonical pipeline', () => {
 })
 
 test('selected stages keep pipeline order regardless of argument order', () => {
-  assert.deepEqual(parseAnalysisStages('publish,scan'), ['scan', 'publish'])
+  assert.deepEqual(parseAnalysisStages('publish,resolve'), ['resolve', 'publish'])
   assert.deepEqual(parseAnalysisStages('validate synthesize'), ['synthesize', 'validate'])
-  assert.deepEqual(parseAnalysisStages('scan,scan'), ['scan'])
+  assert.deepEqual(parseAnalysisStages('resolve,resolve'), ['resolve'])
 })
 
 test('the external pipeline is selectable but never part of the canonical default', () => {

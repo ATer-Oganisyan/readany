@@ -74,10 +74,27 @@ async function gatewayJson(path: string, signal?: AbortSignal): Promise<JsonReco
         undefined,
         undefined,
         backendCode,
+        rateLimitRetryAfterMs(response),
       );
     }
     return payload;
   });
+}
+
+/**
+ * Минутный лимит запросов гейтвея тратится в том числе на подписанные ссылки
+ * обложек, поэтому в глубине каталога открытие книги может упереться в 429.
+ * Сервер сообщает, когда окно сбросится; повторять раньше бессмысленно.
+ */
+function rateLimitRetryAfterMs(response: Response): number | undefined {
+  const retryAfter = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(60_000, Math.round(retryAfter * 1000));
+  }
+  const resetAt = Number(response.headers.get("ratelimit-reset"));
+  if (!Number.isFinite(resetAt) || resetAt <= 0) return undefined;
+  const waitMs = resetAt * 1000 - Date.now();
+  return waitMs > 0 ? Math.min(60_000, Math.round(waitMs)) : undefined;
 }
 
 function backendErrorCodeToNarraCode(status: number, backendCode?: string): NarraErrorCode {

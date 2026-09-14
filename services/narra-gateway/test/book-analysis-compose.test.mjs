@@ -37,7 +37,7 @@ test('canonical v3 analysis runs as one multi-stage worker in the book-backend p
   assert.match(worker, /profiles: \["book-backend"\]/)
   assert.match(worker, /WORKER_TYPE: book-analysis$/m)
   // Единая очередь book_analysis_jobs: отдельных сервисов на стадию больше нет.
-  for (const stage of ['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish']) {
+  for (const stage of ['prepare', 'resolve', 'synthesize', 'validate', 'publish']) {
     assert.ok(!compose.includes(`  book-analysis-${stage}:\n`), `stale ${stage} service`)
   }
   assert.doesNotMatch(compose, /book-analysis-\w+-worker-runner\.mjs/)
@@ -50,9 +50,9 @@ test('a hot-stage pool stays available as an explicit opt-in profile', () => {
   )
   assert.match(pool, /profiles: \["book-analysis-pool"\]/)
   assert.match(pool, /command: \["node", "analysis\/book-analysis-worker\.mjs"\]/)
-  assert.match(pool, /BOOK_ANALYSIS_STAGES: \$\{BOOK_ANALYSIS_POOL_STAGES:-scan\}/)
+  assert.match(pool, /BOOK_ANALYSIS_STAGES: \$\{BOOK_ANALYSIS_POOL_STAGES:-prepare\}/)
   assert.match(pool, /replicas: \$\{BOOK_ANALYSIS_POOL_REPLICAS:-2\}/)
-  assert.match(envExample, /^BOOK_ANALYSIS_POOL_STAGES=scan$/m)
+  assert.match(envExample, /^BOOK_ANALYSIS_POOL_STAGES=prepare$/m)
   assert.match(envExample, /^BOOK_ANALYSIS_WORKER_REPLICAS=1$/m)
 })
 

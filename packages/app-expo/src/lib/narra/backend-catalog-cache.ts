@@ -2,7 +2,7 @@ import { markInteraction } from "@/lib/diagnostics/interaction-performance";
 import { getPlatformService } from "@readany/core/services";
 import * as FileSystem from "expo-file-system/legacy";
 import type { BackendCatalogBook, BackendCatalogGenre } from "./backend-catalog-api";
-import { downloadVerifiedBackendFile } from "./backend-file-download";
+import { COVER_DOWNLOAD_RETRY, downloadVerifiedBackendFile } from "./backend-file-download";
 import {
   BOOK_CATALOG_LANGUAGE_CONTRACT,
   type CatalogLanguage,
@@ -121,6 +121,7 @@ export async function materializeBackendCatalogCover(
     expectedByteSize: book.cover.byteSize,
     label: "Backend catalog cover",
     signal,
+    ...COVER_DOWNLOAD_RETRY,
   });
   await FileSystem.moveAsync({ from: temporaryPath, to: path });
   return path;

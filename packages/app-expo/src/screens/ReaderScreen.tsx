@@ -31,6 +31,7 @@ import {
   useBackendBookStatus,
 } from "@/lib/narra/backend-book-sync";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
+import { withCatalogCoversSuspended } from "@/lib/narra/catalog-cover-coordinator";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
 import { BackendSceneError, isBackendSceneReady } from "@/lib/narra/backend-scene";
 import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
@@ -281,11 +282,13 @@ export function ReaderScreen(props: Props) {
       // нижней части каталога открывались только с третьей-четвёртой попытки.
       let importedBook: Book;
       try {
-        importedBook = await importBackendCatalogBook(catalogBook, {
-          importBooks,
-          updateBook,
-          signal: controller.signal,
-        });
+        importedBook = await withCatalogCoversSuspended(() =>
+          importBackendCatalogBook(catalogBook, {
+            importBooks,
+            updateBook,
+            signal: controller.signal,
+          }),
+        );
       } catch (error) {
         if (controller.signal.aborted) throw error;
         if (!existingBook || !(await isStoredBookFileAvailable(existingBook))) throw error;

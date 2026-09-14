@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { createPostgresBookAnalysisRepository } from './book-analysis-repository.mjs'
 import { createBookAnalysisPrepareWorker } from './book-analysis-prepare-worker.mjs'
-import { createBookAnalysisScanWorker } from './book-analysis-scan-worker.mjs'
 import { createBookAnalysisResolveWorker } from './book-analysis-resolve-worker.mjs'
 import { createBookAnalysisSynthesizeWorker } from './book-analysis-synthesize-worker.mjs'
 import { createBookAnalysisValidateWorker } from './book-analysis-validate-worker.mjs'
@@ -14,7 +13,9 @@ import { createExternalBookAdapterClient } from '../providers/external-book-adap
 import { parseEnvBool, parseEnvInt, parseEnvUuidList } from '../platform/env.mjs'
 import { runWorkerLoop, withWorkerRuntime } from '../platform/worker-runtime.mjs'
 
-export const CANONICAL_STAGES = ['prepare', 'scan', 'resolve', 'synthesize', 'validate', 'publish']
+// Стадии `scan` в списке нет: сканирующим заданием жил снятый конвейер narra.
+// Задания той же стадии у external разбирает слот `external` — он и остался.
+export const CANONICAL_STAGES = ['prepare', 'resolve', 'synthesize', 'validate', 'publish']
 const EXTERNAL_STAGE = 'external'
 const KNOWN_STAGES = [...CANONICAL_STAGES, EXTERNAL_STAGE]
 
@@ -64,13 +65,13 @@ function buildStageWorkers({ stages, repository, workerId, runIds, leaseSeconds,
   const needs = (...names) => names.some((name) => stages.includes(name))
 
   let storage = null
-  if (needs('prepare', 'scan', 'validate', EXTERNAL_STAGE)) {
+  if (needs('prepare', 'validate', EXTERNAL_STAGE)) {
     storage = createBookObjectStorageFromEnv(env)
-    if (!storage) throw new Error('BOOK_STORAGE_BUCKET is required for prepare, scan, validate and external stages')
+    if (!storage) throw new Error('BOOK_STORAGE_BUCKET is required for prepare, validate and external stages')
   }
 
   let generator = null
-  if (needs('scan', 'resolve', 'synthesize')) {
+  if (needs('resolve', 'synthesize')) {
     generator = createGenerationServiceClient({
       baseUrl: env.GENERATOR_BASE_URL,
       token: env.GENERATOR_SERVICE_TOKEN,
@@ -78,11 +79,10 @@ function buildStageWorkers({ stages, repository, workerId, runIds, leaseSeconds,
     })
   }
 
-  const scanPolicy = needs('prepare', 'scan') ? createBookAnalysisScanPolicyFromEnv(env) : null
+  const scanPolicy = needs('prepare') ? createBookAnalysisScanPolicyFromEnv(env) : null
 
   const factories = {
     prepare: () => createBookAnalysisPrepareWorker({ ...common, storage, chunkOptions: scanPolicy.chunk }),
-    scan: () => createBookAnalysisScanWorker({ ...common, storage, generator, scanPolicy }),
     resolve: () => createBookAnalysisResolveWorker({ ...common, generator }),
     synthesize: () => createBookAnalysisSynthesizeWorker({ ...common, generator }),
     validate: () => createBookAnalysisValidateWorker({ ...common, storage }),
