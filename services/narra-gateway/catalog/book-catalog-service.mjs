@@ -360,9 +360,37 @@ export function createBookCatalogService({
       const cards = typeof store.listPublishedCharacterCards === 'function'
         ? await store.listPublishedCharacterCards(bookEditionId)
         : []
-      const preview = typeof analysisRepository.getLatestAnalysisPreview === 'function'
+      let preview = typeof analysisRepository.getLatestAnalysisPreview === 'function'
         ? await analysisRepository.getLatestAnalysisPreview(bookEditionId)
         : null
+      // Upload completion and analysis-run creation used to be separate
+      // operations. A restart or a mixed-version deployment could therefore
+      // leave a verified private source in `marking_up` without a queued run.
+      // Manifest polling is already part of the reader session, so use it as
+      // an idempotent repair point instead of leaving the book unavailable.
+      if (
+        !preview &&
+        snapshot.edition?.scope === 'private' &&
+        snapshot.edition?.sourceStorage === 'temporary' &&
+        snapshot.edition?.status === 'marking_up'
+      ) {
+        const ensured = await ensureCanonicalAnalysis(snapshot.edition)
+        preview = typeof analysisRepository.getLatestAnalysisPreview === 'function'
+          ? await analysisRepository.getLatestAnalysisPreview(bookEditionId)
+          : null
+        preview ??= {
+          run: {
+            id: ensured.analysisRunId,
+            stage: ensured.analysisStage,
+            status: ensured.analysisStatus,
+            lastErrorCode: null,
+            updatedAt: null,
+            textLength: null
+          },
+          scan: { completedChunks: 0, totalChunks: 0 },
+          characters: []
+        }
+      }
       const textLength = Number(preview?.run?.textLength)
       const readerTextOffset = Number.isSafeInteger(textLength) && textLength > 0
         ? analysisReaderTextOffset(snapshot, textLength)

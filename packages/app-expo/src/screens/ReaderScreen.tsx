@@ -1162,12 +1162,19 @@ function ReaderContent({ route, navigation }: Props) {
         setProgress(absoluteFraction);
       }
 
-      // «стр. N из M» по всей книге — из foliate location (нет в scrolled/fixed)
-      setBookLocation(detail.location?.total ? detail.location : null);
+      // Fixed layouts expose physical pages; reflowable books retain estimated
+      // text locations. The header adds one to its zero-based current value.
+      setBookLocation(
+        detail.isFixedLayout && detail.page?.total
+          ? { current: detail.page.current - 1, total: detail.page.total }
+          : detail.location?.total
+            ? detail.location
+            : null,
+      );
 
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
 
-      if (detail.location?.total) {
+      if (!detail.isFixedLayout && detail.location?.total) {
         const totalBookCharacters = totalBookCharactersRef.current;
         const fraction = absoluteFraction;
         if (totalBookCharacters && totalBookCharacters > 0) {
