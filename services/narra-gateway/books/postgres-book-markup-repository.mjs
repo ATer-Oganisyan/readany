@@ -742,8 +742,28 @@ export function createPostgresBookMarkupRepository(pool, {
     // прогон. Запрос без фильтра брал любую через LIMIT 1: новая карточка
     // получала медиа предыдущего анализа, а смена её документа портрет не
     // обновляла, потому что `source_markup_hash` в bundle оставался чужим.
+    // Источник медиа — не вся карточка, а только то, из чего медиа делается.
+    // Пока им был `document_hash`, любая пересборка карточки перерисовывала
+    // портрет и переозвучивала приветствие: в хэш входят и `createdAt`, и
+    // счётчик упоминаний, и границы окна. У «Задачи трёх тел» после повторного
+    // разбора у половины персонажей промпт внешности совпал побайтно, а
+    // портреты всё равно рисовались заново; у ван Тоха их набралось тринадцать
+    // при одной-единственной ревизии карточки.
+    //
+    // Поля ровно те, что читает генератор: портрет строится по внешности, био,
+    // роли и возрасту, приветствие — по greeting, голос — по полу и имени.
     const result = await client.query(
-      `SELECT card.document_hash AS source_markup_hash,
+      `SELECT lpad(md5(
+                concat_ws(E'\n',
+                  coalesce(card.document->>'name', ''),
+                  coalesce(card.document->>'fullName', ''),
+                  coalesce(card.document->>'gender', ''),
+                  coalesce(card.document->>'age', ''),
+                  coalesce(card.document->'role'->>'value', ''),
+                  coalesce(card.document->'bio'->>'value', ''),
+                  coalesce(card.document->>'appearancePrompt', ''),
+                  coalesce(card.document->>'greeting', ''))
+              ), 64, '0') AS source_markup_hash,
               card.card_revision, card.run_id, card.window_index,
               bundle.id AS bundle_id, bundle.status AS bundle_status,
               bundle.source_markup_hash AS previous_source_markup_hash,

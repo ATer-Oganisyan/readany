@@ -124,7 +124,12 @@ async function seedCharacter(pool, { runId, characterKey, startOffset }) {
   )
 }
 
-async function insertCardJob(pool, { bookEditionId, runId, characterKey, windowIndex }) {
+async function insertCardJob(
+  pool,
+  // Ключ идемпотентности уникален на задание: один персонаж одного прогона
+  // может переиздаваться несколько раз, из разных окон.
+  { bookEditionId, runId, characterKey, windowIndex, suffix = '' }
+) {
   const jobId = randomUUID()
   await pool.query(
     `INSERT INTO generation_jobs (
@@ -132,7 +137,7 @@ async function insertCardJob(pool, { bookEditionId, runId, characterKey, windowI
        target_version, status, priority, payload, analysis_run_id, card_window_index
      ) VALUES ($1, $2, 'character_card', $3, $4, 'character-card-v1', 'queued', 65,
        '{}'::jsonb, $5, $6)`,
-    [jobId, `${runId}:card:${characterKey}`, bookEditionId, characterKey, runId, windowIndex]
+    [jobId, `${runId}:card:${characterKey}${suffix}`, bookEditionId, characterKey, runId, windowIndex]
   )
   return jobId
 }
@@ -429,21 +434,17 @@ test('a portrait is drawn from the card of its own analysis run', {
     )
     assert.equal(enabled.rows.length, 2)
 
-    // Портрет второго прогона ссылается на документ второго прогона.
-    const cards = await pool.query(
-      `SELECT run_id, document_hash FROM book_character_cards
-       WHERE book_edition_id = $1 AND character_key = $2`,
-      [first.bookEditionId, characterKey]
-    )
-    const hashByRun = new Map(cards.rows.map((row) => [row.run_id, row.document_hash]))
+    // Портрет обновился: внешность второго прогона другая. Сверяется ревизия,
+    // а не хэш документа — источником медиа служат поля, из которых медиа
+    // делается, а не вся карточка целиком.
     const bundle = await pool.query(
-      `SELECT source_markup_hash FROM character_media_bundles
+      `SELECT media_revision FROM character_media_bundles
        WHERE book_edition_id = $1 AND character_key = $2`,
       [first.bookEditionId, characterKey]
     )
     assert.equal(bundle.rows.length, 1)
-    assert.equal(bundle.rows[0].source_markup_hash, hashByRun.get(second.runId))
-    assert.notEqual(bundle.rows[0].source_markup_hash, hashByRun.get(first.runId))
+    assert.equal(Number(bundle.rows[0].media_revision), 2)
+    assert.equal(secondPublished.media.mediaRevision, 2)
   } finally {
     await isolated.release()
   }
@@ -554,6 +555,60 @@ test('a card publishes its media at the window priority and the portrait waits f
       }),
       null
     )
+  } finally {
+    await isolated.release()
+  }
+})
+
+test('пересобранная карточка с той же внешностью не перерисовывает портрет', {
+  skip: !connectionString
+}, async () => {
+  // Источником медиа был хэш всей карточки, а в него входят и `createdAt`, и
+  // счётчик упоминаний, и границы окна. Любая пересборка — новый прогон, новое
+  // окно — перерисовывала портрет и переозвучивала приветствие: у ван Тоха их
+  // набралось тринадцать при одной-единственной ревизии карточки, у «Задачи
+  // трёх тел» промпт внешности совпал побайтно, а портреты рисовались заново.
+  const isolated = await createIsolatedPostgres(connectionString)
+  const { pool } = isolated
+  try {
+    const repository = createPostgresBookMarkupRepository(pool)
+    const { bookEditionId, runId } = await seed(pool)
+    const characterKey = 'char:early'
+    await seedCharacter(pool, { runId, characterKey, startOffset: 1_000 })
+
+    const publish = async (revision, windowIndex, overrides) => {
+      const jobId = await insertCardJob(pool, {
+        bookEditionId, runId, characterKey, windowIndex, suffix: `:rev-${revision}`
+      })
+      const job = await claimJob(pool, jobId)
+      return repository.publishCharacterCard(job, {
+        runId,
+        bookEditionId,
+        characterKey,
+        windowIndex,
+        cardRevision: revision,
+        fragmentSetHash: hash(`frags:char:early:${revision}`),
+        normalizedTextHash: hash('normalized'),
+        promptVersion: 'character-card-prompt-v1',
+        mediaPriority: CARD_MEDIA_PRIORITY.foreground,
+        card: cardDocument({
+          characterKey,
+          name: 'Ранний',
+          firstMentionTextOffset: 1_000,
+          windowEndOffset: 40_000,
+          ...overrides
+        })
+      })
+    }
+
+    const first = await publish(1, 0, {})
+    // Та же внешность, другое окно: карточка пересобрана, медиа — нет.
+    const same = await publish(2, 1, {})
+    assert.equal(same.media.mediaRevision, first.media.mediaRevision)
+
+    // Внешность изменилась — вот теперь портрет обязан обновиться.
+    const changed = await publish(3, 2, { appearancePrompt: 'совсем другая внешность' })
+    assert.equal(changed.media.mediaRevision, first.media.mediaRevision + 1)
   } finally {
     await isolated.release()
   }
