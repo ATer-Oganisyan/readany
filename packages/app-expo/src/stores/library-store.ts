@@ -1,4 +1,5 @@
 import { PolyfillTextDecoder } from "@/lib/book/legacy-text-decoder";
+import { getMobileFileStat } from "@/lib/book/mobile-import-file-stat";
 import { getBookImportFormat, getBookImportName } from "@readany/core/utils/book-import-format";
 import { canRecoverLegacyCoverJob } from "@/lib/book/cover-job-recovery";
 import { isLegacyGeneratedBookCover } from "@/lib/book/cover-display";
@@ -66,6 +67,8 @@ export interface KnownBookImport {
 export interface LibraryImportFile {
   uri: string;
   name?: string;
+  /** Size reported by the system picker before its temporary URL is released. */
+  size?: number;
   knownBook?: KnownBookImport;
 }
 
@@ -202,21 +205,6 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 const MOBILE_IMPORT_METADATA_MAX_BYTES = 32 * 1024 * 1024;
-
-async function getMobileFileStat(
-  path: string,
-): Promise<{ size: number; md5?: string; modificationTime?: number }> {
-  const LegacyFileSystem = await import("expo-file-system/legacy");
-  const info = await LegacyFileSystem.getInfoAsync(path);
-  return {
-    size: info.exists && !info.isDirectory ? (info.size ?? 0) : 0,
-    md5: undefined,
-    modificationTime:
-      info.exists && !info.isDirectory && typeof info.modificationTime === "number"
-        ? info.modificationTime * 1000
-        : undefined,
-  };
-}
 
 async function extractMobileImportMetadata(params: {
   filePath: string;
@@ -1223,7 +1211,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           const ext = format;
           const fileName = originalName;
           const platform = getPlatformService();
-          const { size: fileSize, md5 } = await getMobileFileStat(filePath);
+          const { size: fileSize, md5 } = await getMobileFileStat(filePath, fileInfo.size);
           if (!fileSize) throw new Error("Book source is empty or unavailable");
           // MD5 is unavailable for some iOS document-provider URLs. Try the
           // backend SHA-256 identity, but never block import if that provider

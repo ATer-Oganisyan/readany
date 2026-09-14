@@ -103,7 +103,11 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
       });
       if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-      const files = result.assets.map((asset) => ({ uri: asset.uri, name: asset.name }));
+      const files = result.assets.map((asset) => ({
+        uri: asset.uri,
+        name: asset.name,
+        size: asset.size,
+      }));
       const summary = await importBooks(files);
       showImportSummary(summary, undefined, true);
     } catch (error) {
