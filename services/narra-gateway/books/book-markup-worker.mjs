@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { parseEnvInt, parseEnvUuidList } from '../platform/env.mjs'
+import { parseEnvBool, parseEnvInt, parseEnvUuidList } from '../platform/env.mjs'
 import { createGenerationServiceClient } from '../providers/generation-service-client.mjs'
 import {
   createGenerationWorker,
@@ -50,7 +50,9 @@ try {
     logger: log
   })
   await heartbeat.start()
-  const baseRepository = createPostgresBookMarkupRepository(pool)
+  const baseRepository = createPostgresBookMarkupRepository(pool, {
+    cardMediaEnqueueEnabled: parseEnvBool(process.env, 'BOOK_CARD_MEDIA_ENQUEUE', true)
+  })
   const repository = {
     ...baseRepository,
     claimGenerationJob(id) {

@@ -1,0 +1,194 @@
+diff --git a/build/swift-ui/Slider/index.d.ts b/build/swift-ui/Slider/index.d.ts
+index 41c61a99783ce7f364af69746f9af9eb7772cce6..bef6564661c5fbfbe0851f48bd2be9b1b412e792 100644
+--- a/build/swift-ui/Slider/index.d.ts
++++ b/build/swift-ui/Slider/index.d.ts
+@@ -1,5 +1,7 @@
+ import { type CommonViewModifierProps } from '../types';
+ export interface SliderProps extends CommonViewModifierProps {
++  /** On iOS 26+, shows the thumb only during native slider editing. */
++  hideThumbUnlessEditing?: boolean;
+     /**
+      * The current value of the slider.
+      */
+diff --git a/ios/SliderView.swift b/ios/SliderView.swift
+index 6383933625b4c015109babfee9f6050bcb1c4039..0cd6ea32e520d93cdb06f4b84a8c81e173b8577c 100644
+--- a/ios/SliderView.swift
++++ b/ios/SliderView.swift
+@@ -14,7 +14,7 @@ struct SliderView: ExpoSwiftUI.View {
+ 
+   var body: some View {
+ #if !os(tvOS)
+-    sliderContent
++    sliderWithThumbVisibility
+       .onAppear {
+         value = clamp(props.value ?? 0.0)
+       }
+@@ -35,6 +35,15 @@ struct SliderView: ExpoSwiftUI.View {
+   }
+ 
+ #if !os(tvOS)
++  @ViewBuilder
++  private var sliderWithThumbVisibility: some View {
++    if #available(iOS 26.0, macOS 26.0, *) {
++      sliderContent.sliderThumbVisibility(props.hideThumbUnlessEditing && !isEditing ? .hidden : .visible)
++    } else {
++      sliderContent
++    }
++  }
++
+   private func clamp(_ raw: Float) -> Float {
+     let lower = Swift.max(props.min ?? -.infinity, props.lowerLimit ?? -.infinity)
+     let upper = Swift.min(props.max ?? .infinity, props.upperLimit ?? .infinity)
+@@ -136,6 +145,7 @@ struct SliderView: ExpoSwiftUI.View {
+ }
+ 
+ final class SliderProps: UIBaseViewProps {
++  @Field var hideThumbUnlessEditing: Bool = false
+   @Field var value: Float?
+   @Field var step: Float?
+   @Field var min: Float?
+diff --git a/src/swift-ui/Slider/index.tsx b/src/swift-ui/Slider/index.tsx
+index 50bef889a8e845b49a478de644b470bf919ff7c6..10ac21aa6490f2a878c865bc2e780cffd23c9e70 100644
+--- a/src/swift-ui/Slider/index.tsx
++++ b/src/swift-ui/Slider/index.tsx
+@@ -5,6 +5,8 @@ import { Slot } from '../SlotView';
+ import { type CommonViewModifierProps } from '../types';
+ 
+ export interface SliderProps extends CommonViewModifierProps {
++  /** On iOS 26+, shows the thumb only during native slider editing. */
++  hideThumbUnlessEditing?: boolean;
+   /**
+    * The current value of the slider.
+    */
+diff --git a/src/jetpack-compose/SegmentedButton/index.tsx b/src/jetpack-compose/SegmentedButton/index.tsx
+--- a/src/jetpack-compose/SegmentedButton/index.tsx
++++ b/src/jetpack-compose/SegmentedButton/index.tsx
+@@ -23,6 +23,8 @@
+ };
+ 
+ export interface SegmentedButtonProps {
++  /** Whether to show the native selection icon. Defaults to true. */
++  showIcon?: boolean;
+   /**
+    * Whether the button is currently selected (used inside `SingleChoiceSegmentedButtonRow`).
+    */
+diff --git a/build/jetpack-compose/SegmentedButton/index.d.ts b/build/jetpack-compose/SegmentedButton/index.d.ts
+--- a/build/jetpack-compose/SegmentedButton/index.d.ts
++++ b/build/jetpack-compose/SegmentedButton/index.d.ts
+@@ -18,6 +18,8 @@
+     disabledInactiveContainerColor?: ColorValue;
+ };
+ export interface SegmentedButtonProps {
++  /** Whether to show the native selection icon. Defaults to true. */
++  showIcon?: boolean;
+     /**
+      * Whether the button is currently selected (used inside `SingleChoiceSegmentedButtonRow`).
+      */
+diff --git a/android/src/main/java/expo/modules/ui/SegmentedButtonView.kt b/android/src/main/java/expo/modules/ui/SegmentedButtonView.kt
+--- a/android/src/main/java/expo/modules/ui/SegmentedButtonView.kt
++++ b/android/src/main/java/expo/modules/ui/SegmentedButtonView.kt
+@@ -35,6 +35,7 @@
+ @OptimizedComposeProps
+ data class SegmentedButtonProps(
+   val selected: Boolean = false,
++  val showIcon: Boolean = true,
+   val checked: Boolean = false,
+   val enabled: Boolean = true,
+   val colors: SegmentedButtonColors = SegmentedButtonColors(),
+@@ -94,6 +95,7 @@
+     with(singleScope) {
+       SegmentedButton(
+         selected = props.selected,
++        icon = { if (props.showIcon) SegmentedButtonDefaults.Icon(active = props.selected) },
+         onClick = onClick,
+         shape = shape,
+         enabled = props.enabled,
+@@ -106,6 +108,7 @@
+     with(multiScope) {
+       SegmentedButton(
+         checked = props.checked,
++        icon = { if (props.showIcon) SegmentedButtonDefaults.Icon(active = props.checked) },
+         onCheckedChange = { onCheckedChange(GenericEventPayload1(it)) },
+         shape = shape,
+         enabled = props.enabled,
+diff --git a/src/jetpack-compose/ModalBottomSheet/index.tsx b/src/jetpack-compose/ModalBottomSheet/index.tsx
+--- a/src/jetpack-compose/ModalBottomSheet/index.tsx
++++ b/src/jetpack-compose/ModalBottomSheet/index.tsx
+@@ -43,6 +43,10 @@
+ };
+ 
+ export interface ModalBottomSheetProps {
++  /** Draw the standard drag handle over the sheet content. */
++  overlayDragHandle?: boolean;
++  /** Let content draw behind system bars; the child handles safe-area padding. */
++  edgeToEdgeContent?: boolean;
+   /**
+    * The children of the `ModalBottomSheet` component.
+    * Can include a `ModalBottomSheet.DragHandle` slot for a custom drag handle.
+diff --git a/build/jetpack-compose/ModalBottomSheet/index.d.ts b/build/jetpack-compose/ModalBottomSheet/index.d.ts
+--- a/build/jetpack-compose/ModalBottomSheet/index.d.ts
++++ b/build/jetpack-compose/ModalBottomSheet/index.d.ts
+@@ -30,6 +30,10 @@
+     shouldDismissOnClickOutside?: boolean;
+ };
+ export interface ModalBottomSheetProps {
++  /** Draw the standard drag handle over the sheet content. */
++  overlayDragHandle?: boolean;
++  /** Let content draw behind system bars; the child handles safe-area padding. */
++  edgeToEdgeContent?: boolean;
+     /**
+      * The children of the `ModalBottomSheet` component.
+      * Can include a `ModalBottomSheet.DragHandle` slot for a custom drag handle.
+diff --git a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
+--- a/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
++++ b/android/src/main/java/expo/modules/ui/ModalBottomSheetView.kt
+@@ -3,6 +3,10 @@
+ package expo.modules.ui
+ 
+ import android.graphics.Color
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.WindowInsets
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
+ import androidx.compose.material3.BottomSheetDefaults
+ import androidx.compose.material3.ExperimentalMaterial3Api
+ import androidx.compose.material3.ModalBottomSheet
+@@ -36,6 +40,8 @@
+   val contentColor: Color? = null,
+   val scrimColor: Color? = null,
+   val showDragHandle: Boolean = true,
++  val overlayDragHandle: Boolean = false,
++  val edgeToEdgeContent: Boolean = false,
+   val sheetGesturesEnabled: Boolean = true,
+   val properties: ModalBottomSheetPropertiesRecord = ModalBottomSheetPropertiesRecord(),
+   val modifiers: ModifierList = emptyList()
+@@ -97,7 +103,11 @@
+     contentColor = resolvedContentColor,
+     scrimColor = resolvedScrimColor,
+     sheetGesturesEnabled = props.sheetGesturesEnabled,
++    contentWindowInsets = {
++      if (props.edgeToEdgeContent) WindowInsets(0, 0, 0, 0) else BottomSheetDefaults.windowInsets
++    },
+     dragHandle = when {
++      props.overlayDragHandle -> null
+       dragHandleSlotView != null -> {
+         { with(UIComposableScope()) { with(dragHandleSlotView) { Content() } } }
+       }
+@@ -112,7 +122,16 @@
+     ),
+     modifier = ModifierRegistry.applyModifiers(props.modifiers, appContext, composableScope, globalEventDispatcher)
+   ) {
+-    Children(UIComposableScope(), filter = { !isSlotView(it) })
++    if (props.overlayDragHandle) {
++      Box {
++        Children(UIComposableScope(), filter = { !isSlotView(it) })
++        if (props.showDragHandle) {
++          BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.TopCenter))
++        }
++      }
++    } else {
++      Children(UIComposableScope(), filter = { !isSlotView(it) })
++    }
+   }
+ 
+   LaunchedEffect(Unit) {

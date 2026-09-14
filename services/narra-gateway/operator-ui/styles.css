@@ -195,3 +195,6 @@ input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #0088ff20; }
   .operation-time { grid-column: 1; }
   .operation-main { grid-column: 1; }
 }
+
+/* Переходы между страницами оператора живут в шапке каждой из них. */
+.topbar-side { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }

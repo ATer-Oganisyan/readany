@@ -1,9 +1,5 @@
 import { normalizeBookMarkupV3 } from '../analysis/book-analysis-contracts.mjs'
-import {
-  BOOK_ANALYSIS_PIPELINE_EXTERNAL,
-  BOOK_ANALYSIS_PIPELINE_NARRA,
-  normalizeBookAnalysisPipelineId
-} from '../analysis/book-analysis-pipeline.mjs'
+import { normalizeBookAnalysisPipelineId } from '../analysis/book-analysis-pipeline.mjs'
 import { scoreFrozenIdentity } from './score-frozen-identity.mjs'
 
 function comparisonError(message) {
@@ -41,18 +37,14 @@ export function compareBookAnalysisPipelines({ fixture, results }) {
   if (normalized[0].run.inputHash !== normalized[1].run.inputHash) {
     throw comparisonError('pipeline runs must use the same source content hash')
   }
+  // Сравниваются два любых действующих конвейера, а не заранее названная пара:
+  // пара меняется вместе с набором конвейеров, а мерка — золотой скорер и один
+  // и тот же исходник — остаётся той же.
   const byPipeline = new Map(normalized.map((value) => [value.pipelineId, value]))
-  if (
-    byPipeline.size !== 2 ||
-    !byPipeline.has(BOOK_ANALYSIS_PIPELINE_NARRA) ||
-    !byPipeline.has(BOOK_ANALYSIS_PIPELINE_EXTERNAL)
-  ) {
-    throw comparisonError('comparison requires one narra and one external run')
+  if (byPipeline.size !== 2) {
+    throw comparisonError('comparison requires two different pipelines')
   }
-  const scores = Object.fromEntries([
-    BOOK_ANALYSIS_PIPELINE_NARRA,
-    BOOK_ANALYSIS_PIPELINE_EXTERNAL
-  ].map((pipelineId) => {
+  const scores = Object.fromEntries([...byPipeline.keys()].map((pipelineId) => {
     const value = byPipeline.get(pipelineId)
     return [pipelineId, {
       runId: value.run.id,

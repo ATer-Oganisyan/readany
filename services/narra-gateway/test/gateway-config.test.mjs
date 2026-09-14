@@ -17,7 +17,7 @@ test('the whole environment is parsed once and handed back frozen', () => {
   assert.ok(Object.isFrozen(config))
   assert.equal(config.PRODUCTION, false)
   assert.equal(config.ANALYTICS_ENV, 'development')
-  assert.equal(config.API_LIMIT, 120)
+  assert.equal(config.API_LIMIT, 600)
   assert.equal(config.SPEECH_CONCURRENCY, 5)
   // Гейты конкурентности собираются здесь же, а не при первом запросе.
   assert.equal(typeof config.llmGate.status, 'function')

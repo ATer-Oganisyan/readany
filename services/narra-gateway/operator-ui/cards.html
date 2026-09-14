@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Narra — разметка карточками</title>
+  <link rel="stylesheet" href="./assets/styles.css">
+  <link rel="stylesheet" href="./assets/status.css">
+  <link rel="stylesheet" href="./assets/cards.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Narra operator</p>
+      <h1>Разметка карточками</h1>
+    </div>
+    <div class="topbar-side">
+      <a class="button secondary" href="./">Разметка книг</a>
+      <a class="button secondary" href="./status">Воркеры и книги</a>
+      <label class="refresh-toggle">
+        <input id="auto-refresh" type="checkbox" checked>
+        <span>Обновлять</span>
+      </label>
+      <div class="live-state" title="Данные обновляются каждые 10 секунд">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="live-label">Подключение…</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="cards-page">
+    <section class="status-section">
+      <div class="status-head">
+        <h2>Запущенные книги</h2>
+        <p class="muted" id="runs-note"></p>
+      </div>
+      <div class="cards-toolbar">
+        <label class="cards-search">
+          <span class="visually-hidden">Поиск по названию или автору</span>
+          <input id="search" type="search" placeholder="Название или автор" autocomplete="off">
+        </label>
+        <div class="cards-filters" id="filters" role="group" aria-label="Фильтр по состоянию"></div>
+        <button class="button secondary" id="sort-toggle" type="button">Сначала новые</button>
+      </div>
+      <div class="cards-table-wrap">
+        <table class="cards-table">
+          <thead>
+            <tr>
+              <th class="col-num">#</th>
+              <th>Книга</th>
+              <th>Запущена</th>
+              <th>Состояние</th>
+              <th class="col-num">Окна</th>
+              <th class="col-num">Карточки</th>
+              <th class="col-num">Публикации</th>
+              <th>Ошибки</th>
+            </tr>
+          </thead>
+          <tbody id="runs-body"></tbody>
+        </table>
+      </div>
+      <p class="empty-note" id="runs-empty" hidden>Ни одной книги не запущено карточками.</p>
+    </section>
+  </main>
+
+  <script type="module" src="./assets/cards.js"></script>
+</body>
+</html>

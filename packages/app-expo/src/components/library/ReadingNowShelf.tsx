@@ -3,7 +3,7 @@ import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
-import { type ThemeColors, spacing, useColors } from "@/styles/theme";
+import { spacing } from "@/styles/theme";
 import type { Book } from "@readany/core/types";
 /**
  * ReadingNowShelf — секция «Читаю сейчас» в библиотеке: нативный горизонтальный
@@ -36,8 +36,6 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
   onDelete,
   onOpen,
 }: ReadingNowShelfProps) {
-  const colors = useColors();
-  const s = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const [failedCoverKeys, setFailedCoverKeys] = useState<Set<string>>(() => new Set());
 
@@ -97,7 +95,17 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                 accessibilityLabel={book.meta.title}
                 accessibilityHint={t("notes.openBook", "Открыть книгу")}
                 cover={
-                  <View style={s.coverCanvas}>
+                  <View
+                    style={[
+                      s.coverCanvas,
+                      {
+                        backgroundColor: loadingCoverColorForTitleAuthor({
+                          title: book.meta.title,
+                          author: book.meta.author,
+                        }),
+                      },
+                    ]}
+                  >
                     {hasUsableCover && coverUri ? (
                       <Image
                         source={{ uri: coverUri }}
@@ -118,19 +126,7 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
                         style={s.coverImage}
                         resizeMode="cover"
                       />
-                    ) : (
-                      <View
-                        style={[
-                          s.fallbackCover,
-                          {
-                            backgroundColor: loadingCoverColorForTitleAuthor({
-                              title: book.meta.title,
-                              author: book.meta.author,
-                            }),
-                          },
-                        ]}
-                      />
-                    )}
+                    ) : null}
                     <BookSpineOverlay coverWidth={CARD_WIDTH} />
                     <BookCoverTypography
                       title={book.meta.title}
@@ -153,22 +149,15 @@ export const ReadingNowShelf = memo(function ReadingNowShelf({
   );
 });
 
-const makeStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    section: { marginBottom: spacing.xxl },
-    carousel: { overflow: "visible" },
-    row: { gap: spacing.lg },
-    coverCanvas: {
-      width: "100%",
-      height: "100%",
-      position: "relative",
-      isolation: "isolate",
-    },
-    coverImage: { width: "100%", height: "100%" },
-    fallbackCover: {
-      flex: 1,
-      overflow: "hidden",
-      padding: spacing.md,
-      backgroundColor: colors.bookCoverSurface,
-    },
-  });
+const s = StyleSheet.create({
+  section: { marginBottom: spacing.xxl },
+  carousel: { overflow: "visible" },
+  row: { gap: spacing.lg },
+  coverCanvas: {
+    width: "100%",
+    height: "100%",
+    position: "relative",
+    isolation: "isolate",
+  },
+  coverImage: { width: "100%", height: "100%" },
+});

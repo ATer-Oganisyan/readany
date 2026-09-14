@@ -166,13 +166,18 @@ describe("fixed-layout startup lifecycle", () => {
     renderer.setAttribute("spread", "none");
     await settle();
     const loadScene = vi.fn(async () => "blob:scene-after-0");
-    await renderer.setInterstitials([{ key: "scene-0", afterIndex: 0, load: loadScene }]);
+    const interstitials = [{ key: "scene-0", afterIndex: 0, load: loadScene }];
+    await renderer.setInterstitials(interstitials);
 
     const opening = renderer.next();
     await settle();
     frames.find((frame) => frame.src === "blob:page-0")?.dispatchEvent(new Event("load"));
     await opening;
     expect(renderer.index).toBe(0);
+
+    const frameCount = frames.length;
+    await renderer.setInterstitials(interstitials);
+    expect(frames).toHaveLength(frameCount);
 
     const scene = renderer.next();
     await settle();
@@ -187,6 +192,45 @@ describe("fixed-layout startup lifecycle", () => {
     await nextPage;
     expect(renderer.index).toBe(1);
     expect(book.sections).toHaveLength(4);
+    renderer.destroy();
+  });
+
+  it("returns to the physical page when the active interstitial is removed", async () => {
+    const { renderer, book, frames } = harness();
+    renderer.open(book);
+    renderer.setAttribute("spread", "none");
+    await settle();
+    await renderer.setInterstitials([
+      { key: "scene-0", afterIndex: 0, load: async () => "blob:scene-after-0" },
+    ]);
+
+    const opening = renderer.next();
+    await settle();
+    frames.find((frame) => frame.src === "blob:page-0")?.dispatchEvent(new Event("load"));
+    await opening;
+
+    const scene = renderer.next();
+    await settle();
+    frames.find((frame) => frame.src === "blob:scene-after-0")?.dispatchEvent(new Event("load"));
+    await scene;
+
+    const removal = renderer.setInterstitials([]);
+    await settle();
+    frames
+      .filter((frame) => frame.src === "blob:page-0")
+      .at(-1)
+      ?.dispatchEvent(new Event("load"));
+    await removal;
+
+    expect(renderer.index).toBe(0);
+    const nextPage = renderer.next();
+    await settle();
+    frames
+      .filter((frame) => frame.src === "blob:page-1")
+      .at(-1)
+      ?.dispatchEvent(new Event("load"));
+    await nextPage;
+    expect(renderer.index).toBe(1);
     renderer.destroy();
   });
 

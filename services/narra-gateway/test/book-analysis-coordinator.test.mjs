@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createBookAnalysisCoordinator } from '../analysis/book-analysis-coordinator.mjs'
-import {
-  BOOK_ANALYSIS_PIPELINE_VERSION,
-  BOOK_ANALYSIS_PROMPT_VERSION
-} from '../analysis/book-analysis-contracts.mjs'
+import { BOOK_ANALYSIS_PIPELINE_VERSION } from '../analysis/book-analysis-contracts.mjs'
+import { CARDS_PIPELINE_INVENTORY_VERSION } from '../analysis/book-analysis-pipeline.mjs'
 
 test('coordinator starts one versioned idempotent analysis run', async () => {
   let requested
@@ -32,6 +30,7 @@ test('coordinator starts one versioned idempotent analysis run', async () => {
     prepareJobId: 'job-1'
   })
   assert.equal(requested.pipelineVersion, BOOK_ANALYSIS_PIPELINE_VERSION)
-  assert.equal(requested.promptVersion, BOOK_ANALYSIS_PROMPT_VERSION)
+  // Умолчание — карточки: персонажей находит инвентарь имён, а не scan-промпт.
+  assert.equal(requested.promptVersion, CARDS_PIPELINE_INVENTORY_VERSION)
   assert.equal((await coordinator.status('run-1')).id, 'run-1')
 })

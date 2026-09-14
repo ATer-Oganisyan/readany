@@ -92,7 +92,10 @@ export function loadGatewayConfig(env = process.env) {
   }
   const REFRESH_LIMIT = envInt('REFRESH_LIMIT_PER_HOUR', 20, 1_000)
   const REFRESH_ATTEMPT_LIMIT = envInt('REFRESH_ATTEMPT_LIMIT_PER_HOUR', 40, 10_000)
-  const API_LIMIT = envInt('API_LIMIT_PER_MINUTE', 120, 10_000)
+  // Каталог берёт по запросу на страницу и ещё по одному на подписанную ссылку
+  // каждой обложки. При 1500 книгах 120 запросов в минуту выбирались обычной
+  // прокруткой, и следующее действие читателя — открыть книгу — получало 429.
+  const API_LIMIT = envInt('API_LIMIT_PER_MINUTE', 600, 10_000)
   const EVENT_LIMIT = envInt('EVENT_LIMIT_PER_MINUTE', 10, 1_000)
   const AI_LIMIT = envInt('AI_LIMIT_PER_MINUTE', 30, 1_000)
   const AI_DAILY_LIMIT = envInt('AI_LIMIT_PER_DAY', 500, 100_000)

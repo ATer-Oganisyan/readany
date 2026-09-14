@@ -33,7 +33,7 @@ test('analysis run key binds source and both pipeline versions', () => {
     pipelineVersion: 'book-analysis-v8',
     promptVersion: 'scan-v1'
   }), [
-    'book-analysis-cache', 'narra', 'book-analysis-v51', 'a'.repeat(64),
+    'book-analysis-cache', 'cards', CARDS_PIPELINE_IMPLEMENTATION_VERSION, 'a'.repeat(64),
     'book-analysis-v8', 'scan-v1', 'normalized-text-v2', 'schema-3',
     'book-markup-v3', 'book-1'
   ].join(':'))
@@ -169,9 +169,11 @@ test('restart creates the next isolated run and leaves the previous publication 
 
   assert.equal(restarted.created, true)
   assert.equal(restarted.run.runSequence, 2)
-  assert.equal(restarted.run.pipelineId, 'narra')
   assert.equal(restarted.prepareJob.priority, 100)
   const insertedRun = pool.queries.find(({ sql }) => /INSERT INTO book_analysis_runs/.test(sql))
+  // Снятый конвейер не наследуется: иначе перезапуск каталожной книги возвращал
+  // бы её на него же, и перевод каталога на карточки сводился бы к повтору.
+  assert.equal(insertedRun.params[8], 'external')
   assert.equal(insertedRun.params[10], 'normalized-text-v2')
   assert.ok(pool.queries.every(({ sql }) => !/(UPDATE|DELETE FROM) book_analysis_publications/.test(sql)))
 })
@@ -254,64 +256,7 @@ test('non-retryable analysis failure marks the job and run failed immediately', 
   assert.ok(pool.queries.some(({ sql }) => /UPDATE book_analysis_runs/.test(sql)))
 })
 
-test('prepare completion writes chunks and scan jobs before advancing the barrier', async () => {
-  const pool = scriptedPool([
-    () => ({ rows: [{ id: 'prepare-1', max_attempts: 5, attempts: 1 }] }),
-    () => ({ rows: [{ id: 'run-1', text_length: '100' }] }),
-    () => ({ rows: [] }),
-    () => ({ rows: [] }),
-    () => ({ rows: [] }),
-    () => ({ rows: [{
-      chunk_count: 1, first_ordinal: 0, last_ordinal: 0,
-      first_offset: '0', last_offset: '100', covered_chars: '100',
-      discontinuity_count: 0
-    }] }),
-    () => ({ rows: [] }),
-    () => ({ rows: [] })
-  ])
-  const repository = createPostgresBookAnalysisRepository(pool, {
-    idFactory: () => '123e4567-e89b-42d3-a456-426614174002'
-  })
-  const result = await repository.completePrepare({
-    id: 'prepare-1', runId: 'run-1', leaseToken: '123e4567-e89b-42d3-a456-426614174003'
-  }, {
-    normalizedTextObjectKey: 'analysis/run-1/normalized-text-v1.txt',
-    normalizedTextHash: 'b'.repeat(64),
-    textLength: 100,
-    sections: [{ key: 'document', startOffset: 0, endOffset: 100 }],
-    contentNavigation: {
-      version: 'book-navigation-v1', source: 'document', items: [], segments: []
-    },
-    chunks: [{
-      id: '123e4567-e89b-42d3-a456-426614174004',
-      ordinal: 0,
-      chapterKey: 'document',
-      coreStartOffset: 0,
-      coreEndOffset: 100,
-      contextStartOffset: 0,
-      contextEndOffset: 100,
-      contentHash: 'c'.repeat(64),
-      metadata: {}
-    }]
-  })
-  assert.deepEqual(result, { textLength: 100, chunkCount: 1, stage: 'scan' })
-  const sql = pool.queries.map(({ sql }) => sql)
-  const insertChunk = sql.findIndex((value) => /INSERT INTO book_analysis_chunks/.test(value))
-  const insertJob = sql.findIndex((value) => /INSERT INTO book_analysis_jobs/.test(value))
-  const readyPrepare = sql.findIndex((value) => /UPDATE book_analysis_jobs[\s\S]*status = 'ready'/.test(value))
-  const advance = sql.findIndex((value) => /UPDATE book_analysis_runs SET stage = \$2/.test(value))
-  assert.ok(insertChunk > 0 && insertChunk < insertJob)
-  assert.ok(insertJob < readyPrepare && readyPrepare < advance)
-  // Стадия стала параметром, потому что у конвейера карточек сканирующей стадии
-  // нет; сканирующий пайплайн обязан по-прежнему уходить на `scan`.
-  assert.equal(pool.queries[advance].params[1], 'scan')
-  const scanInsert = pool.queries.find(({ sql: value }) => /INSERT INTO book_analysis_jobs/.test(value))
-  assert.deepEqual(JSON.parse(scanInsert.params[5]), { chunkOrdinal: 0 })
-  assert.equal(scanInsert.params[6], 'narra')
-  assert.ok(sql.some((value) => /lag\(core_end_offset\)/.test(value)))
-})
-
-test('external prepare keeps Narra chunks but creates one book-level scan job', async () => {
+test('external prepare chunks the book but creates one book-level scan job', async () => {
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'prepare-1', max_attempts: 5, attempts: 1 }] }),
     () => ({ rows: [{
@@ -388,7 +333,7 @@ test('resolve completion freezes evidence before advancing to synthesize', async
   }
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'resolve-1', max_attempts: 5, attempts: 1 }] }),
-    () => ({ rows: [{ id: 'run-1', text_length: '100' }] }),
+    () => ({ rows: [{ id: 'run-1', text_length: '100', pipeline_id: 'cards' }] }),
     () => ({ rows: [observation] }),
     () => ({ rows: [] }),
     () => ({ rows: [] }),

@@ -51,9 +51,17 @@ test('queue resume requires one pause id, a bounded limit and explicit execution
   })
 })
 
-test('the operator can pause character cards, not only the older job types', () => {
+test('the operator can pause both card job types, not only the older ones', () => {
   // Без `character_card` в списке пауза его не принимала, и остановить
   // конвейер карточек было нечем: он продолжал идти и тратить вызовы модели.
+  // `roster_confirm` ставит следующие карточки, и без него пауза выглядела
+  // сработавшей, а очередь наполнялась заново.
+  for (const jobType of ['character_card', 'roster_confirm']) {
+    const paused = parseGenerationQueueCommand([
+      'pause', '--job-type', jobType, '--edition', EDITION, '--reason', 'BUDGET'
+    ])
+    assert.equal(paused.selector.jobType, jobType)
+  }
   const command = parseGenerationQueueCommand([
     'pause', '--job-type', 'character_card', '--edition', EDITION, '--reason', 'BUDGET'
   ])

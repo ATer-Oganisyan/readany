@@ -1,17 +1,17 @@
-import { useAudiobookArtwork } from "@/components/tts/use-audiobook-artwork";
-import { useCoverSheetColors } from "@/hooks/use-cover-sheet-colors";
-import { useColors } from "@/styles/theme";
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 // Presentation adapted from expo-ui-examples/mini-player/player-screen.tsx.
 // MIT attribution: vendor/expo-ui-examples-LICENSE.txt.
 import { useTTSNativePlayer } from "@/components/reader/tts/useTTSNativePlayer";
-import { TTSSleepTimerSheet } from "@/components/tts/TTSSleepTimerSheet";
 import { AudiobookPlayerContent } from "@/components/tts/audiobook-player-content";
+import { AudiobookPlayerSheet } from "@/components/tts/audiobook-player-sheet";
+import { useAudiobookArtwork } from "@/components/tts/use-audiobook-artwork";
+import { useCoverSheetColors } from "@/hooks/use-cover-sheet-colors";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
 import { findNarrationChapter } from "@/lib/tts-chapter-progress";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { useTTSStore } from "@/stores/tts-store";
+import { useColors } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { Platform, View } from "react-native";
@@ -23,7 +23,6 @@ export function AudiobookPlayerScreen({
   route,
 }: NativeStackScreenProps<RootStackParamList, "AudiobookPlayer">) {
   const colors = useColors();
-  const [timerVisible, setTimerVisible] = useState(false);
   const [volume, setVolume] = useState(1);
   const state = useTTSStore(
     useShallow((s) => ({
@@ -33,29 +32,23 @@ export function AudiobookPlayerScreen({
       chapter: s.currentChapterTitle,
       bookId: s.currentBookId,
       cfi: s.currentLocationCfi,
-      rate: s.config.rate,
-      sleepTimerEndsAt: s.sleepTimerEndsAt,
       currentChunkIndex: s.currentChunkIndex,
       segmentCfis: s.segmentCfis,
       chapters: s.narrationChapters,
       seekChapterSegment: s.seekChapterSegment,
       skipSentence: s.skipSentence,
       toggle: s.toggle,
-      updateConfig: s.updateConfig,
       stop: s.stop,
-      setSleepTimer: s.setSleepTimer,
-      clearSleepTimer: s.clearSleepTimer,
     })),
   );
   const artwork = useAudiobookArtwork();
   const coverColor = useCoverSheetColors(artwork);
   const backgroundColor = coverColor?.color ?? colors.background;
   useLayoutEffect(() => {
-    if (Platform.OS === "ios") {
-      navigation.setOptions({
-        contentStyle: { backgroundColor },
-      });
-    }
+    if (Platform.OS === "android") return;
+    navigation.setOptions({
+      contentStyle: { backgroundColor },
+    });
   }, [backgroundColor, navigation]);
   const bookAuthor = useLibraryStore(
     (s) => s.books.find((book) => book.id === state.bookId)?.meta.author,
@@ -87,47 +80,42 @@ export function AudiobookPlayerScreen({
   }, []);
 
   return (
-    <View collapsable={false} style={Platform.OS === "ios" ? undefined : { flex: 1 }}>
-      <SystemSheetZoomDestination sourceId={route.params?.sourceId} expanded={false} />
-      <AudiobookPlayerContent
-        backgroundColor={Platform.OS === "ios" ? backgroundColor : undefined}
-        accentColor={coverColor?.accent}
-        title={state.title}
-        author={author}
-        chapter={chapter?.chapter.title || state.chapter}
-        volume={volume}
-        onVolumeChange={(value) => {
-          setVolume(value);
-          void TrackPlayer.setVolume(value).catch((error) =>
-            console.warn("[Audiobook] Volume change failed", error),
-          );
-        }}
-        rate={state.rate}
-        timerActive={Boolean(state.sleepTimerEndsAt)}
-        player={player}
-        onPreviousSentence={() => state.skipSentence(-1)}
-        onNextSentence={() => state.skipSentence(1)}
-        canGoToPreviousSentence={Boolean(chapter && chapter.index > 0)}
-        canGoToNextSentence={Boolean(
-          chapter && chapter.index < chapter.chapter.segments.length - 1,
-        )}
-        onStop={() => {
-          state.stop();
-          navigation.goBack();
-        }}
-        onRead={() =>
-          navigation.popTo("Reader", {
-            bookId: state.bookId,
-            cfi: state.cfi || undefined,
-            openTTS: true,
-          })
-        }
-        onRateChange={(rate) => state.updateConfig({ rate })}
-        onSetTimer={state.setSleepTimer}
-        onClearTimer={state.clearSleepTimer}
-        onCustomTimer={() => setTimerVisible(true)}
-      />
-      <TTSSleepTimerSheet visible={timerVisible} onClose={() => setTimerVisible(false)} />
-    </View>
+    <AudiobookPlayerSheet backgroundColor={backgroundColor} onDismiss={() => navigation.goBack()}>
+      <View collapsable={false}>
+        <SystemSheetZoomDestination sourceId={route.params?.sourceId} expanded={false} />
+        <AudiobookPlayerContent
+          backgroundColor={backgroundColor}
+          accentColor={coverColor?.accent}
+          title={state.title}
+          author={author}
+          chapter={chapter?.chapter.title || state.chapter}
+          volume={volume}
+          onVolumeChange={(value) => {
+            setVolume(value);
+            void TrackPlayer.setVolume(value).catch((error) =>
+              console.warn("[Audiobook] Volume change failed", error),
+            );
+          }}
+          player={player}
+          onPreviousSentence={() => state.skipSentence(-1)}
+          onNextSentence={() => state.skipSentence(1)}
+          canGoToPreviousSentence={Boolean(chapter && chapter.index > 0)}
+          canGoToNextSentence={Boolean(
+            chapter && chapter.index < chapter.chapter.segments.length - 1,
+          )}
+          onStop={() => {
+            state.stop();
+            navigation.goBack();
+          }}
+          onRead={() =>
+            navigation.popTo("Reader", {
+              bookId: state.bookId,
+              cfi: state.cfi || undefined,
+              openTTS: true,
+            })
+          }
+        />
+      </View>
+    </AudiobookPlayerSheet>
   );
 }

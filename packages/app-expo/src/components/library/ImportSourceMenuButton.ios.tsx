@@ -10,13 +10,12 @@ import type { ImportSourceMenuButtonProps } from "./ImportSourceMenuButton.types
 
 interface NativeImportMenuButtonProps {
   label: string;
-  urlLabel: string;
   localLabel: string;
   color: string;
   foregroundColor: string;
   disabled: boolean;
   showsMenu: boolean;
-  onUrlPress: () => void;
+  onButtonPress: () => void;
   onLocalPress: () => void;
   style: { width: number; height: number };
 }
@@ -28,10 +27,8 @@ const NativeImportMenuButton = requireNativeView(
 
 export function ImportSourceMenuButton({
   label,
-  urlLabel,
   localLabel,
   disabled = false,
-  onUrlPress,
   onLocalPress,
 }: ImportSourceMenuButtonProps) {
   const { colors } = useTheme();
@@ -41,13 +38,12 @@ export function ImportSourceMenuButton({
     <View style={{ width, height: EMPTY_STATE_ACTION_HEIGHT }}>
       <NativeImportMenuButton
         label={label}
-        urlLabel={urlLabel}
         localLabel={localLabel}
         color={colors.primary}
         foregroundColor={colors.primaryForeground}
         disabled={disabled}
-        showsMenu
-        onUrlPress={onUrlPress}
+        showsMenu={false}
+        onButtonPress={onLocalPress}
         onLocalPress={onLocalPress}
         style={{ width, height: EMPTY_STATE_ACTION_HEIGHT }}
       />

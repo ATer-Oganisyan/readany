@@ -8,6 +8,12 @@ vi.mock("react-native", () => ({
   View: "View",
   StyleSheet: { create: <T,>(styles: T) => styles, hairlineWidth: 1 },
 }));
+vi.mock("@expo/ui/jetpack-compose", () => ({
+  Host: "ComposeHost",
+  Icon: "Icon",
+  IconButton: "IconButton",
+}));
+vi.mock("@expo/ui/jetpack-compose/modifiers", () => ({ size: vi.fn() }));
 vi.mock("@expo/ui/swift-ui", () => ({ Host: "Host", Image: "Symbol" }));
 vi.mock("expo-glass-effect", () => ({
   GlassView: "GlassView",

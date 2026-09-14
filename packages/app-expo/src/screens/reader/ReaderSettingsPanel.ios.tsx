@@ -14,17 +14,13 @@ import {
   tag,
   tint,
 } from "@expo/ui/swift-ui/modifiers";
-import type { ReadSettings } from "@readany/core/types";
 import { requireNativeView } from "expo";
 import { type ComponentType, type ReactNode, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-
-interface Props {
-  visible: boolean;
-  readSettings: ReadSettings;
-  onClose: () => void;
-  onUpdateSetting: <K extends keyof ReadSettings>(key: K, value: ReadSettings[K]) => void;
-}
+import {
+  type ReaderSettingsPanelProps as Props,
+  READER_TEXT_SETTINGS,
+} from "./reader-settings-options";
 
 interface NativeNavigationStackProps {
   title: string;
@@ -102,58 +98,26 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
               </Section>
 
               <Section title={t("reader.textSettings", "Текст")}>
-                <NativeValueStepper
-                  label={t("reader.fontSize", "Размер шрифта")}
-                  value={readSettings.fontSize}
-                  valueLabel={String(readSettings.fontSize)}
-                  min={12}
-                  max={64}
-                  step={1}
-                  decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
-                  incrementAccessibilityLabel={t("common.increase", "Увеличить")}
-                  onValueChange={({ nativeEvent }) =>
-                    onUpdateSetting("fontSize", nativeEvent.value)
-                  }
-                />
-                <NativeValueStepper
-                  label={t("reader.lineHeight", "Высота линии")}
-                  value={Math.round(readSettings.lineHeight * 10)}
-                  valueLabel={readSettings.lineHeight.toFixed(1)}
-                  min={12}
-                  max={25}
-                  step={1}
-                  decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
-                  incrementAccessibilityLabel={t("common.increase", "Увеличить")}
-                  onValueChange={({ nativeEvent }) =>
-                    onUpdateSetting("lineHeight", nativeEvent.value / 10)
-                  }
-                />
-                <NativeValueStepper
-                  label={t("reader.paragraphSpacing", "Расстояние между абзацами")}
-                  value={readSettings.paragraphSpacing}
-                  valueLabel={String(readSettings.paragraphSpacing)}
-                  min={0}
-                  max={24}
-                  step={2}
-                  decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
-                  incrementAccessibilityLabel={t("common.increase", "Увеличить")}
-                  onValueChange={({ nativeEvent }) =>
-                    onUpdateSetting("paragraphSpacing", nativeEvent.value)
-                  }
-                />
-                <NativeValueStepper
-                  label={t("reader.pageMargin", "Поле страницы")}
-                  value={readSettings.pageMargin}
-                  valueLabel={String(readSettings.pageMargin)}
-                  min={0}
-                  max={48}
-                  step={4}
-                  decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
-                  incrementAccessibilityLabel={t("common.increase", "Увеличить")}
-                  onValueChange={({ nativeEvent }) =>
-                    onUpdateSetting("pageMargin", nativeEvent.value)
-                  }
-                />
+                {READER_TEXT_SETTINGS.map((setting) => (
+                  <NativeValueStepper
+                    key={setting.key}
+                    label={t(setting.label, setting.fallback)}
+                    value={Math.round(readSettings[setting.key] * setting.scale)}
+                    valueLabel={
+                      setting.scale === 10
+                        ? readSettings[setting.key].toFixed(1)
+                        : String(readSettings[setting.key])
+                    }
+                    min={setting.min}
+                    max={setting.max}
+                    step={setting.step}
+                    decrementAccessibilityLabel={t("common.decrease", "Уменьшить")}
+                    incrementAccessibilityLabel={t("common.increase", "Увеличить")}
+                    onValueChange={({ nativeEvent }) =>
+                      onUpdateSetting(setting.key, nativeEvent.value / setting.scale)
+                    }
+                  />
+                ))}
               </Section>
 
               <Section

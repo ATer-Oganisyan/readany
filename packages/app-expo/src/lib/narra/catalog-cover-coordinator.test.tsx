@@ -82,7 +82,7 @@ describe("shared catalog cover windows", () => {
     expect(onLoaded).toHaveBeenCalledTimes(1);
     coordinator.removeWindow(category);
     await settle();
-    expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0 });
+    expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0, suspended: false });
     expect(coordinator.getConsumerCount()).toBe(0);
   });
 
@@ -103,12 +103,12 @@ describe("shared catalog cover windows", () => {
       "window-edition-1",
       "window-edition-4",
     ]);
-    expect(queue.getDiagnostics()).toEqual({ active: 3, pending: 3, entries: 6 });
+    expect(queue.getDiagnostics()).toEqual({ active: 3, pending: 3, entries: 6, suspended: false });
     coordinator.removeWindow(library);
     coordinator.removeWindow(search);
     await settle();
     expect(io.maximumActive()).toBe(3);
-    expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0 });
+    expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0, suspended: false });
   });
 
   it("drops a stale success even when the native loader ignores abort", async () => {
@@ -134,7 +134,7 @@ describe("shared catalog cover windows", () => {
     expect(onLoaded.mock.calls[0][0]).toBe("window-book-2");
     expect(onError).not.toHaveBeenCalled();
     expect(io.maximumActive()).toBe(1);
-    expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0 });
+    expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0, suspended: false });
   });
 
   it("restarts a quickly wanted-again aborted cover only after the old task settles", async () => {
@@ -154,7 +154,7 @@ describe("shared catalog cover windows", () => {
     await settle();
     expect(onLoaded).toHaveBeenCalledTimes(1);
     expect(io.maximumActive()).toBe(1);
-    expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0 });
+    expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0, suspended: false });
   });
 
   it("leaves no pending tasks or consumers after 50 slow-load open/close cycles", async () => {
@@ -171,7 +171,12 @@ describe("shared catalog cover windows", () => {
       expect(queue.getDiagnostics().active).toBe(3);
       coordinator.removeWindow(owner);
       await settle();
-      expect(queue.getDiagnostics()).toEqual({ active: 0, pending: 0, entries: 0 });
+      expect(queue.getDiagnostics()).toEqual({
+        active: 0,
+        pending: 0,
+        entries: 0,
+        suspended: false,
+      });
       expect(coordinator.getConsumerCount()).toBe(0);
     }
     expect(io.maximumActive()).toBe(3);

@@ -27,6 +27,7 @@ import {
   rosterRevisionsAfterConfirmation,
   validateRosterConfirmation
 } from './book-roster-confirmation.mjs'
+import { createCardPublicationRunner } from './book-card-publication-runner.mjs'
 import { createOperationalLogger } from '../platform/operational-log.mjs'
 
 export const ROSTER_CONFIRM_JOB_TYPE = 'roster_confirm'
@@ -53,6 +54,14 @@ export function createRosterConfirmRunner({
   }
   const log = createOperationalLogger({ component: 'roster-confirm', logger })
 
+  // Публикация висит и здесь, а не только на карточке. У книги без персонажей
+  // карточек не будет ни одной, а значит и публиковать разметку будет некому:
+  // прогон «Мцыри» так и остался на `synthesize`, а книга — в «обрабатывается»
+  // навсегда. Закрытое окно — тот же самый момент «состав перестал меняться».
+  const publicationRunner = typeof repository.getCardPublicationInput === 'function'
+    ? createCardPublicationRunner({ repository, storage, maxTextBytes, logger })
+    : null
+
   async function readNormalizedText(input) {
     const stored = await storage.getBytes({
       objectKey: input.normalizedTextObjectKey,
@@ -65,6 +74,55 @@ export function createRosterConfirmRunner({
       )
     }
     return stored.bytes.toString('utf8')
+  }
+
+  /**
+   * Полный заход публикует всегда, а не только когда сам закрыл окно.
+   *
+   * Публикация случается в момент закрытия окна, и у книги без персонажей этот
+   * момент приходится на первый заход: к полному окно уже `ready`, закрывать
+   * нечего, и публиковать оказывалось некому. «Мцыри» так и остался с
+   * закрытым окном и нулём публикаций. Повторная публикация безвредна —
+   * артефакт и канал уникальны, — а пропущенная держит книгу в
+   * «обрабатывается» навсегда.
+   */
+  async function publishClosedWindows(input, _advanced, normalizedText) {
+    if (!publicationRunner) return
+    await publishOrFinish(input, normalizedText)
+  }
+
+  async function publishOrFinish(input, normalizedText) {
+    const published = await publicationRunner
+      .publish({ runId: input.runId, normalizedText })
+      .catch((error) => {
+        log.error('roster.publication_failed', 'Разметку из карточек опубликовать не удалось', {
+          run: input.runId,
+          edition: input.bookEditionId,
+          error_code: error?.code ?? 'UNKNOWN'
+        })
+        return null
+      })
+    if (published?.published !== false || published?.reason !== 'no_cards') return
+    // Публиковать нечего: проекция требует хотя бы одну карточку, и это
+    // правильно — пустая разметка не разметка. Но прогон обязан на чём-то
+    // закончиться, иначе книга навсегда останется в «обрабатывается».
+    if (typeof repository.finishCardsRunWithoutCharacters !== 'function') return
+    const finished = await repository
+      .finishCardsRunWithoutCharacters({ runId: input.runId })
+      .catch((error) => {
+        log.error('roster.finish_failed', 'Прогон без персонажей закрыть не удалось', {
+          run: input.runId,
+          edition: input.bookEditionId,
+          error_code: error?.code ?? 'UNKNOWN'
+        })
+        return null
+      })
+    if (finished?.finished) {
+      log.info('roster.finished_without_characters', 'Прогон закрыт: персонажей в книге нет', {
+        run: input.runId,
+        edition: input.bookEditionId
+      })
+    }
   }
 
   return {
@@ -114,7 +172,7 @@ export function createRosterConfirmRunner({
           run: input.runId,
           window_index: input.windowIndex
         })
-        return repository.completeRosterConfirmation(job, {
+        const empty = await repository.completeRosterConfirmation(job, {
           runId: input.runId,
           bookEditionId: input.bookEditionId,
           windowIndex: input.windowIndex,
@@ -122,6 +180,14 @@ export function createRosterConfirmRunner({
           revisions: [],
           skipped: true
         })
+        if (input.windowIndex === null) {
+          const advancedEmpty = await repository.advanceCardWindows({
+            runId: input.runId,
+            bookEditionId: input.bookEditionId
+          })
+          await publishClosedWindows(input, advancedEmpty, text)
+        }
+        return empty
       }
 
       log.info('roster.started', 'Подтверждаю состав книги', {
@@ -166,6 +232,7 @@ export function createRosterConfirmRunner({
           runId: input.runId,
           bookEditionId: input.bookEditionId
         })
+        await publishClosedWindows(input, advanced, text)
       }
 
       log.info('roster.confirmed', 'Состав книги подтверждён', {

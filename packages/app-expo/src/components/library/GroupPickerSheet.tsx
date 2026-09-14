@@ -71,9 +71,7 @@ export function GroupPickerSheet({
         >
           <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
             <View style={styles.handle} />
-            <Text style={styles.title}>
-              {t("library.moveToGroup", "移入分组")}
-            </Text>
+            <Text style={styles.title}>{t("library.moveToGroup", "移入分组")}</Text>
 
             {groups.length > 0 && (
               <View style={styles.groupList}>
@@ -115,9 +113,7 @@ export function GroupPickerSheet({
                 onPress={() => setIsCreating(true)}
               >
                 <FolderPlusIcon size={20} color={colors.primary} />
-                <Text style={styles.newGroupText}>
-                  {t("library.createGroup", "新建分组")}
-                </Text>
+                <Text style={styles.newGroupText}>{t("library.createGroup", "新建分组")}</Text>
               </TouchableOpacity>
             )}
 
@@ -127,9 +123,7 @@ export function GroupPickerSheet({
                 activeOpacity={0.7}
                 onPress={() => handleSelect(undefined)}
               >
-                <Text style={styles.ungroupedText}>
-                  {t("library.removeFromGroup", "移出分组")}
-                </Text>
+                <Text style={styles.ungroupedText}>{t("library.removeFromGroup", "移出分组")}</Text>
               </TouchableOpacity>
             )}
           </Pressable>
@@ -147,6 +141,7 @@ const makeStyles = (colors: ThemeColors, bottomInset: number) =>
       backgroundColor: "rgba(0,0,0,0.3)",
     },
     sheet: {
+      ...(Platform.OS === "android" ? { maxHeight: "80%" as const } : {}),
       backgroundColor: colors.card,
       borderTopLeftRadius: radius.xxl,
       borderTopRightRadius: radius.xxl,

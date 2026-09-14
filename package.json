@@ -47,7 +47,8 @@
       "react-native-track-player@4.1.2": "patches/react-native-track-player@4.1.2.patch",
       "sonner-native@0.27.0": "patches/sonner-native@0.27.0.patch",
       "expo-modules-jsi@57.0.4": "patches/expo-modules-jsi@57.0.4.patch",
-      "react-native-webview@13.16.1": "patches/react-native-webview@13.16.1.patch"
+      "react-native-webview@13.16.1": "patches/react-native-webview@13.16.1.patch",
+      "@expo/ui@57.0.11": "patches/@expo__ui@57.0.11.patch"
     }
   },
   "packageManager": "pnpm@9.15.0"

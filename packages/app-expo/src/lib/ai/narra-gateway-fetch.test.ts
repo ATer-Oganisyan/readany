@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readGatewayResponseText } from "./narra-gateway-consumer";
 
@@ -373,6 +374,13 @@ describe("Narra gateway build configuration", () => {
       baseUrl: "https://api-test.narra.disrupt.builders",
       authMode: "installation",
     });
+  });
+
+  it("builds TestFlight with the production EAS environment and gateway", () => {
+    const config = JSON.parse(readFileSync(new URL("../../../eas.json", import.meta.url), "utf8"));
+    expect(config.build.production.environment).toBe("production");
+    expect(config.build.production.env.EXPO_PUBLIC_NARRA_ENVIRONMENT).toBe("production");
+    expect(config.build.production.env.EXPO_PUBLIC_NARRA_GATEWAY_URL).toBe("https://api.narra.disrupt.builders");
   });
 
   it("locks production builds to the production gateway", async () => {

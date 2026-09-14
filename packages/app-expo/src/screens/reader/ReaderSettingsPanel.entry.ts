@@ -5,7 +5,9 @@ type ReaderSettingsPanelType = typeof ReaderSettingsPanelComponent;
 const readerSettingsPanelModule =
   process.env.EXPO_OS === "ios"
     ? require("./ReaderSettingsPanel.ios")
-    : require("./ReaderSettingsPanel");
+    : process.env.EXPO_OS === "android"
+      ? require("./ReaderSettingsPanel.android")
+      : require("./ReaderSettingsPanel");
 
 export const ReaderSettingsPanel =
   readerSettingsPanelModule.ReaderSettingsPanel as ReaderSettingsPanelType;

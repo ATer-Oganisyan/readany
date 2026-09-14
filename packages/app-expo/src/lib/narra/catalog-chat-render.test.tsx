@@ -167,7 +167,7 @@ vi.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 vi.mock("react-native-gesture-handler", () => ({ GestureDetector: "GestureDetector" }));
 vi.mock("react-native-reanimated", () => ({ default: { View: "AnimatedView" } }));
 vi.mock("../../components/library/cover-press", () => ({
-  useCoverPress: () => ({ pressStyle: {}, gesture: {} }),
+  useCoverPress: () => ({ pressStyle: {}, gesture: {}, runAfterRelease: (action: () => void) => action() }),
 }));
 vi.mock("../../components/library/use-cover-foreground", () => ({
   useCoverForeground: runtime.foreground,
@@ -546,7 +546,9 @@ describe("Catalog card render and decode", () => {
         .find((item) => item.props.accessibilityLabel === "a")
         ?.props.onPress(),
     );
-    expect(onPress).toHaveBeenCalledWith(expect.objectContaining({ coverUri: "file:///a" }));
+    expect(onPress).toHaveBeenCalledWith(
+      expect.objectContaining({ coverUri: "file:///a" }),
+    );
     await act(() => view.unmount());
     renderer = undefined;
     expect(catalogCoverStore.getDiagnostics().listeners).toBe(0);

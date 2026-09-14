@@ -9,7 +9,7 @@ import type { WebView } from "react-native-webview";
 export interface RelocateEvent {
   loadId?: string;
   fraction?: number;
-  isFixedLayout?: boolean;
+  isPDF?: boolean;
   section?: { current: number; total: number };
   location?: { current: number; next: number; total: number };
   page?: { current: number; total: number };

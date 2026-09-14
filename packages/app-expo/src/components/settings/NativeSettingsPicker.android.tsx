@@ -1,7 +1,7 @@
-import { interfaceFontFamily } from "@deslop/primitives/native";
-import { Picker } from "@expo/ui";
-import { Host, Row, Text } from "@expo/ui/jetpack-compose";
-import { fillMaxWidth, padding } from "@expo/ui/jetpack-compose/modifiers";
+import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton.android";
+import { Text } from "@/components/ui/Typography";
+import { bodyTypography, useColors } from "@/styles/theme";
+import { Pressable, StyleSheet, View } from "react-native";
 import type { NativeSettingsPickerProps } from "./NativeSettingsPicker.types";
 
 export function NativeSettingsPicker({
@@ -9,30 +9,53 @@ export function NativeSettingsPicker({
   selectedValue,
   options,
   onValueChange,
-  colorScheme,
 }: NativeSettingsPickerProps) {
+  const colors = useColors();
+  const selectedLabel = options.find((option) => option.value === selectedValue)?.label ?? "";
+
   return (
-    <Host matchContents={{ vertical: true }} colorScheme={colorScheme} style={{ width: "100%" }}>
-      <Row
-        horizontalArrangement="spaceBetween"
-        verticalAlignment="center"
-        modifiers={[fillMaxWidth(), padding(16, 4, 8, 4)]}
-      >
-        <Text
-          maxLines={1}
-          overflow="ellipsis"
-          style={{ fontFamily: interfaceFontFamily.regular, fontSize: 16, lineHeight: 22 }}
-        >
-          {label}
-        </Text>
-        <Picker selectedValue={selectedValue} onValueChange={onValueChange}>
-          {options.map((option) => (
-            <Picker.Item key={option.value} label={option.label} value={option.value} />
-          ))}
-        </Picker>
-      </Row>
-    </Host>
+    <View style={styles.row}>
+      <Text style={[bodyTypography, styles.label, { color: colors.foreground }]}>{label}</Text>
+      <NativeContextMenuButton
+        accessibilityLabel={label}
+        items={options.map((option) => ({
+          key: option.value,
+          label: option.label,
+          icon: option.value === selectedValue ? "check" : null,
+          onPress: () => onValueChange(option.value),
+        }))}
+        renderTrigger={(openMenu) => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${label}: ${selectedLabel}`}
+            onPress={openMenu}
+            style={({ pressed }) => [styles.valueButton, pressed && styles.pressed]}
+          >
+            <Text style={[bodyTypography, styles.value, { color: colors.primary }]}>
+              {selectedLabel}
+            </Text>
+          </Pressable>
+        )}
+      />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  row: {
+    width: "100%",
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: 16,
+    paddingRight: 16,
+    gap: 12,
+  },
+  label: { flex: 1 },
+  valueButton: { minHeight: 48, justifyContent: "center", alignItems: "flex-end" },
+  value: { textAlign: "right" },
+  pressed: { opacity: 0.6 },
+});
 
 export type { NativeSettingsPickerProps } from "./NativeSettingsPicker.types";

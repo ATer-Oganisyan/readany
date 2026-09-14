@@ -60,6 +60,106 @@ export function createBookProgressRepository(pool, { staleWorkerSeconds = 60 } =
   }
 
   return {
+    /**
+     * Полный список книг, запущенных в конвейер карточек, по времени запуска.
+     *
+     * Снимок дашборда намеренно короткий: он отвечает на «что происходит
+     * сейчас» и держит два десятка книг. У перевода каталога вопрос другой —
+     * «что мы уже запустили и где оно стоит», и ответ на него нужен целиком,
+     * иначе книга, застрявшая три сотни строк назад, не видна вообще.
+     *
+     * Берётся последний прогон книги: перезапуск создаёт новый, и без этого
+     * одна книга давала бы столько строк, сколько раз её перезапускали.
+     */
+    async cardsRuns({ limit = 600 } = {}) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 2_000) {
+        throw new RangeError('limit must be between 1 and 2000')
+      }
+      const runs = await pool.query(
+        `SELECT latest.id AS run_id, latest.book_edition_id, latest.stage, latest.status,
+                latest.run_sequence, latest.created_at, latest.updated_at,
+                latest.pipeline_implementation_version,
+                edition.title, edition.author, edition.scope
+           FROM (
+             SELECT DISTINCT ON (run.book_edition_id) run.*
+               FROM book_analysis_runs AS run
+              WHERE run.pipeline_id = 'cards'
+              ORDER BY run.book_edition_id, run.created_at DESC, run.run_sequence DESC
+           ) AS latest
+           JOIN book_editions AS edition ON edition.id = latest.book_edition_id
+          ORDER BY latest.created_at DESC, latest.book_edition_id
+          LIMIT $1`,
+        [limit]
+      )
+      const runIds = runs.rows.map((row) => row.run_id)
+      const empty = { rows: [] }
+      // Счётчики собираются четырьмя проходами по списку прогонов, а не
+      // подзапросом на каждый. LATERAL здесь стоил 141 секунду: у
+      // `generation_jobs` нет индекса под «все задания прогона», и каждый из
+      // двухсот прогонов приводил свой seq scan по семидесяти тысячам строк.
+      const [windows, cards, publications, failures] = runIds.length
+        ? await Promise.all([
+          pool.query(
+            `SELECT run_id, count(*)::integer AS total,
+                    count(*) FILTER (WHERE status = 'ready')::integer AS ready
+               FROM book_card_windows WHERE run_id = ANY($1::uuid[]) GROUP BY run_id`,
+            [runIds]
+          ),
+          pool.query(
+            `SELECT run_id, count(*) FILTER (WHERE enabled)::integer AS published
+               FROM book_character_cards WHERE run_id = ANY($1::uuid[]) GROUP BY run_id`,
+            [runIds]
+          ),
+          pool.query(
+            `SELECT run_id, count(*)::integer AS count, max(published_at) AS last_at
+               FROM book_analysis_publications WHERE run_id = ANY($1::uuid[]) GROUP BY run_id`,
+            [runIds]
+          ),
+          pool.query(
+            `SELECT analysis_run_id AS run_id, count(*)::integer AS count,
+                    array_agg(DISTINCT last_error_code)
+                      FILTER (WHERE last_error_code IS NOT NULL) AS codes
+               FROM generation_jobs
+              WHERE analysis_run_id = ANY($1::uuid[]) AND status = 'failed'
+              GROUP BY analysis_run_id`,
+            [runIds]
+          )
+        ])
+        : [empty, empty, empty, empty]
+
+      const windowsByRun = new Map(windows.rows.map((row) => [row.run_id, row]))
+      const cardsByRun = new Map(cards.rows.map((row) => [row.run_id, row]))
+      const publicationsByRun = new Map(publications.rows.map((row) => [row.run_id, row]))
+      const failuresByRun = new Map(failures.rows.map((row) => [row.run_id, row]))
+
+      return {
+        generatedAt: new Date().toISOString(),
+        limit,
+        runs: runs.rows.map((row) => ({
+          runId: row.run_id,
+          bookEditionId: row.book_edition_id,
+          title: row.title,
+          author: row.author,
+          scope: row.scope,
+          stage: row.stage,
+          status: row.status,
+          runSequence: count(row.run_sequence),
+          implementationVersion: row.pipeline_implementation_version,
+          startedAt: row.created_at,
+          updatedAt: row.updated_at,
+          windows: {
+            total: count(windowsByRun.get(row.run_id)?.total),
+            ready: count(windowsByRun.get(row.run_id)?.ready)
+          },
+          cards: count(cardsByRun.get(row.run_id)?.published),
+          publications: count(publicationsByRun.get(row.run_id)?.count),
+          lastPublishedAt: publicationsByRun.get(row.run_id)?.last_at ?? null,
+          failedJobs: count(failuresByRun.get(row.run_id)?.count),
+          failedCodes: failuresByRun.get(row.run_id)?.codes ?? []
+        }))
+      }
+    },
+
     async snapshot({
       bookLimit = 25,
       recentHours = 24,

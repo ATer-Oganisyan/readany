@@ -22,6 +22,14 @@ class ReadAnyNativeControlsModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ReadAnyNativeControls")
 
+    AsyncFunction("averageTopImageColor") Coroutine {
+      uri: String,
+      fraction: Double ->
+      withContext(Dispatchers.IO) {
+        averageBottomImageColor(uri, fraction, fromTop = true)
+      }
+    }
+
     AsyncFunction("averageBottomImageColor") Coroutine {
       uri: String,
       bottomFraction: Double ->
@@ -92,18 +100,19 @@ class ReadAnyNativeControlsModule : Module() {
     }
   }
 
-  private fun averageBottomImageColor(uri: String, bottomFraction: Double): String {
+  private fun averageBottomImageColor(uri: String, bottomFraction: Double, fromTop: Boolean = false): String {
     val bitmap = openImageStream(uri).use { stream -> BitmapFactory.decodeStream(stream) }
       ?: throw CodedException("Не удалось декодировать изображение")
     try {
       val fraction = bottomFraction.coerceIn(0.05, 1.0)
-      val startY = (bitmap.height * (1.0 - fraction)).toInt().coerceIn(0, bitmap.height - 1)
+      val startY = if (fromTop) 0 else (bitmap.height * (1.0 - fraction)).toInt().coerceIn(0, bitmap.height - 1)
+      val endY = if (fromTop) (bitmap.height * fraction).toInt().coerceIn(1, bitmap.height) else bitmap.height
       var red = 0L
       var green = 0L
       var blue = 0L
       var alpha = 0L
 
-      for (y in startY until bitmap.height) {
+      for (y in startY until endY) {
         for (x in 0 until bitmap.width) {
           val pixel = bitmap.getPixel(x, y)
           val pixelAlpha = Color.alpha(pixel).toLong()

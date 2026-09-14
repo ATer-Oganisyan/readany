@@ -31,6 +31,7 @@ import {
   useBackendBookStatus,
 } from "@/lib/narra/backend-book-sync";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
+import { withCatalogCoversSuspended } from "@/lib/narra/catalog-cover-coordinator";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
 import { BackendSceneError, isBackendSceneReady } from "@/lib/narra/backend-scene";
 import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
@@ -48,6 +49,10 @@ import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import { DEFAULT_READER_FONT_FAMILY } from "@/lib/reader/bundled-reader-font";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
+import {
+  resolveReaderBookLocation,
+  resolveTrackableReaderLocation,
+} from "@/lib/reader/reader-relocation";
 import { isReaderTransportError } from "@/lib/reader/reader-recovery";
 import {
   READER_BUILD_ID,
@@ -66,7 +71,7 @@ import {
   useTTSStore,
 } from "@/stores";
 import { darkColors, lightColors, useTheme } from "@/styles/ThemeContext";
-import { useColors } from "@/styles/theme";
+import { useColors, withOpacity } from "@/styles/theme";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
@@ -157,7 +162,7 @@ type TTSSegment = VisibleTTSSegment;
 // ──────────────────────────── helpers ────────────────────────────
 
 function ReaderLoadingIndicator({ color }: { color: string }) {
-  return <AnimatedNarraFace width={56} height={58} color={color} />;
+  return <AnimatedNarraFace width={56} height={58} color={withOpacity(color, 0.2)} />;
 }
 
 const keepTTSInReader = (_visible: boolean) => undefined;
@@ -274,11 +279,29 @@ export function ReaderScreen(props: Props) {
         return existingBook.id;
       }
 
-      const importedBook = await importBackendCatalogBook(catalogBook, {
-        importBooks,
-        updateBook,
-        signal: controller.signal,
-      });
+      // Книга должна открыться, даже если обновить её не вышло. Загрузка
+      // каталога уже повторяется трижды сама, и если после этого она всё равно
+      // не удалась, а прежняя копия лежит на устройстве и читается, — читателю
+      // нужна она, а не возврат назад с «попробуйте ещё раз». Так книги из
+      // нижней части каталога открывались только с третьей-четвёртой попытки.
+      let importedBook: Book;
+      try {
+        importedBook = await withCatalogCoversSuspended(() =>
+          importBackendCatalogBook(catalogBook, {
+            importBooks,
+            updateBook,
+            signal: controller.signal,
+          }),
+        );
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        if (!existingBook || !(await isStoredBookFileAvailable(existingBook))) throw error;
+        console.warn(
+          `[Catalog] Opening the stored copy of ${catalogBook.catalogKey} after a failed refresh:`,
+          error,
+        );
+        return existingBook.id;
+      }
       if (existingBook && importedBook.id !== existingBook.id) {
         await updateBook(existingBook.id, { sourceKind: "local" });
         await updateBook(importedBook.id, {
@@ -411,7 +434,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
       style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: paperColors.background }}
     >
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ReaderLoadingIndicator color={colors.primary20} />
+        <ReaderLoadingIndicator color={paperColors.foreground} />
       </View>
       {process.env.EXPO_OS === "android" ? (
         <View
@@ -1162,19 +1185,14 @@ function ReaderContent({ route, navigation }: Props) {
         setProgress(absoluteFraction);
       }
 
-      // Fixed layouts expose physical pages; reflowable books retain estimated
-      // text locations. The header adds one to its zero-based current value.
-      setBookLocation(
-        detail.isFixedLayout && detail.page?.total
-          ? { current: detail.page.current - 1, total: detail.page.total }
-          : detail.location?.total
-            ? detail.location
-            : null,
-      );
+      // PDFs expose physical pages; all other formats retain their existing
+      // renderer/location semantics. The header adds one to current.
+      setBookLocation(resolveReaderBookLocation(detail));
 
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
+      const trackedLocation = resolveTrackableReaderLocation(detail);
 
-      if (!detail.isFixedLayout && detail.location?.total) {
+      if (trackedLocation) {
         const totalBookCharacters = totalBookCharactersRef.current;
         const fraction = absoluteFraction;
         if (totalBookCharacters && totalBookCharacters > 0) {
@@ -1219,16 +1237,16 @@ function ReaderContent({ route, navigation }: Props) {
           if (
             !trackingSuppressed &&
             previous?.mode === "location" &&
-            detail.location.current > previous.current
+            trackedLocation.current > previous.current
           ) {
-            const delta = detail.location.current - previous.current;
+            const delta = trackedLocation.current - previous.current;
             if (delta <= MAX_TRACKED_LOCATION_DELTA) {
               incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
             }
           }
           sessionProgressRef.current = {
             mode: "location",
-            current: detail.location.current,
+            current: trackedLocation.current,
             fraction,
           };
         }
@@ -2135,7 +2153,7 @@ function ReaderContent({ route, navigation }: Props) {
       >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
-            <ReaderLoadingIndicator color={colors.primary20} />
+            <ReaderLoadingIndicator color={readerThemeColors.foreground} />
           </View>
         </View>
         {readerTopBarDock}
@@ -2159,7 +2177,7 @@ function ReaderContent({ route, navigation }: Props) {
       >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
-            <ReaderLoadingIndicator color={colors.primary20} />
+            <ReaderLoadingIndicator color={readerThemeColors.foreground} />
           </View>
         </View>
         {readerTopBarDock}
@@ -2269,7 +2287,7 @@ function ReaderContent({ route, navigation }: Props) {
               style={[s.loadingOverlay, { backgroundColor: readerThemeColors.background }]}
               pointerEvents="none"
             >
-              <ReaderLoadingIndicator color={colors.primary20} />
+              <ReaderLoadingIndicator color={readerThemeColors.foreground} />
             </View>
           )}
 

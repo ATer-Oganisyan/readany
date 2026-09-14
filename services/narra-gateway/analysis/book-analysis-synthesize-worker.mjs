@@ -5,7 +5,6 @@ import {
   unexpectedErrorMessage
 } from './book-analysis-observability.mjs'
 import {
-  BOOK_ANALYSIS_PIPELINE_NARRA,
   bookAnalysisPipelineForRun
 } from './book-analysis-pipeline.mjs'
 import { createOperationalLogger } from '../platform/operational-log.mjs'
@@ -34,10 +33,7 @@ export function createBookAnalysisSynthesizeWorker({
 
   async function synthesize(job) {
     const input = await repository.getSynthesizeInput(job)
-    const strategy = bookAnalysisPipelineForRun({
-      ...input,
-      pipelineId: input.pipelineId ?? BOOK_ANALYSIS_PIPELINE_NARRA
-    })
+    const strategy = bookAnalysisPipelineForRun(input)
     if (input.mode === 'character_profile') {
       const synthesized = await strategy.synthesizeCharacter({
         input,

@@ -32,16 +32,16 @@ test('PostgreSQL persists two immutable pipeline lineages for one content hash',
       [bookEditionId, `pipelines/${bookEditionId}/source`, inputHash]
     )
     const repository = createPostgresBookAnalysisRepository(pool)
-    const narra = await repository.ensureAnalysisRun({ bookEditionId, inputHash })
+    const cards = await repository.ensureAnalysisRun({ bookEditionId, inputHash })
     const external = await repository.ensureAnalysisRun({
       bookEditionId,
       inputHash,
       pipelineId: 'external'
     })
-    assert.equal(narra.run.pipelineId, 'narra')
+    assert.equal(cards.run.pipelineId, 'cards')
     assert.equal(external.run.pipelineId, 'external')
-    assert.notEqual(narra.run.id, external.run.id)
-    assert.notEqual(narra.run.idempotencyKey, external.run.idempotencyKey)
+    assert.notEqual(cards.run.id, external.run.id)
+    assert.notEqual(cards.run.idempotencyKey, external.run.idempotencyKey)
     const rows = await pool.query(
       `SELECT run.pipeline_id, run.pipeline_implementation_version,
               job.pipeline_id AS job_pipeline_id,
@@ -60,28 +60,28 @@ test('PostgreSQL persists two immutable pipeline lineages for one content hash',
     await assert.rejects(
       pool.query(
         `UPDATE book_analysis_runs SET pipeline_id = 'external' WHERE id = $1`,
-        [narra.run.id]
+        [cards.run.id]
       ),
       /run lineage is immutable/
     )
     await assert.rejects(
       pool.query(
         `UPDATE book_analysis_runs SET prompt_version = 'changed-after-retry' WHERE id = $1`,
-        [narra.run.id]
+        [cards.run.id]
       ),
       /run lineage is immutable/
     )
 
-    const prepareNarra = await repository.claimAnalysisJob('prepare-narra', {
-      stages: ['prepare'], pipelineIds: ['narra'], leaseSeconds: 60
+    const prepareCards = await repository.claimAnalysisJob('prepare-cards', {
+      stages: ['prepare'], pipelineIds: ['cards'], leaseSeconds: 60
     })
     const prepareExternal = await repository.claimAnalysisJob('prepare-external', {
       stages: ['prepare'], pipelineIds: ['external'], leaseSeconds: 60
     })
-    assert.equal(prepareNarra.runId, narra.run.id)
+    assert.equal(prepareCards.runId, cards.run.id)
     assert.equal(prepareExternal.runId, external.run.id)
     for (const [prepared, pipelineId, ordinal] of [
-      [prepareNarra, 'narra', 1],
+      [prepareCards, 'cards', 1],
       [prepareExternal, 'external', 2]
     ]) {
       await repository.completePrepare(prepared, {
@@ -102,12 +102,14 @@ test('PostgreSQL persists two immutable pipeline lineages for one content hash',
       const scan = await repository.claimAnalysisJob(`scan-${pipelineId}`, {
         stages: ['scan'], pipelineIds: [pipelineId], leaseSeconds: 60
       })
-      assert.equal(scan.runId, prepared.runId)
-      assert.equal(scan.pipelineId, pipelineId)
-      assert.equal(
-        scan.shardKey,
-        pipelineId === 'narra' ? 'chunk:0' : 'pipeline:external'
-      )
+      // У карточек сканирующей стадии нет: Prepare уводит прогон сразу в
+      // synthesize, и заданию этой стадии взяться неоткуда.
+      if (pipelineId === 'cards') assert.equal(scan, null)
+      else {
+        assert.equal(scan.runId, prepared.runId)
+        assert.equal(scan.pipelineId, pipelineId)
+        assert.equal(scan.shardKey, 'pipeline:external')
+      }
     }
   } finally {
     await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
@@ -404,8 +406,15 @@ test('PostgreSQL stops a deterministic analysis failure without retrying identic
   }
 })
 
+/**
+ * Сквозной прогон по чанковым scan-заданиям остался от снятого конвейера narra:
+ * только он дробил книгу на чанки и закрывал их барьером. Задания с
+ * `pipeline_id = 'narra'` больше не выдаются воркерам, поэтому и проверять их
+ * прохождение нечем; методы `getScanInput`/`completeScan` под ними тоже
+ * остались только как код доступа к историческим строкам.
+ */
 test('PostgreSQL analysis workers claim different scan shards and reclaim an expired lease', {
-  skip: !connectionString
+  skip: 'сканирующая стадия принадлежала снятому конвейеру narra'
 }, async () => {
   const { default: pg } = await import('pg')
   const pool = new pg.Pool({ connectionString, ssl: false, max: 4 })
@@ -864,9 +873,11 @@ test('a named canary edition overrides the pipeline inherited from its previous 
       [bookEditionId, `books/${bookEditionId}.epub`, inputHash]
     )
 
-    const withoutList = createPostgresBookAnalysisRepository(pool)
-    const narra = await withoutList.ensureAnalysisRun({ bookEditionId, inputHash })
-    assert.equal(narra.run.pipelineId, 'narra')
+    const withoutList = createPostgresBookAnalysisRepository(pool, {
+      defaultPipelineId: 'external'
+    })
+    const previous = await withoutList.ensureAnalysisRun({ bookEditionId, inputHash })
+    assert.equal(previous.run.pipelineId, 'external')
 
     const assigned = createPostgresBookAnalysisRepository(pool, {
       pipelineForEdition: (id) => (id === bookEditionId ? 'cards' : null)
@@ -880,9 +891,9 @@ test('a named canary edition overrides the pipeline inherited from its previous 
     const explicit = await assigned.ensureAnalysisRun({
       bookEditionId,
       inputHash,
-      pipelineId: 'narra'
+      pipelineId: 'external'
     })
-    assert.equal(explicit.run.pipelineId, 'narra')
+    assert.equal(explicit.run.pipelineId, 'external')
   } finally {
     await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
     await pool.end()
@@ -946,9 +957,13 @@ test('the cards pipeline advances from prepare straight to synthesize', {
 
     // Остальные конвейеры по-прежнему обязаны идти по шагам: послабление
     // касается только карточек.
-    const narra = await repository.ensureAnalysisRun({ bookEditionId, inputHash })
+    const external = await repository.ensureAnalysisRun({
+      bookEditionId,
+      inputHash,
+      pipelineId: 'external'
+    })
     await assert.rejects(
-      advance(narra.run.id),
+      advance(external.run.id),
       /analysis stages must advance exactly one step/
     )
   } finally {

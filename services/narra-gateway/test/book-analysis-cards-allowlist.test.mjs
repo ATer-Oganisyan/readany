@@ -12,7 +12,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BOOK_ANALYSIS_PIPELINE_CARDS,
-  BOOK_ANALYSIS_PIPELINE_NARRA,
   bookAnalysisAssignedPipelineForEdition,
   bookAnalysisCardsEditionsFromEnv,
   bookAnalysisPipelineForEdition,
@@ -27,12 +26,20 @@ test('only the named editions get the cards pipeline', () => {
   const env = { BOOK_ANALYSIS_CARDS_EDITIONS: `${CRIME},${GRANT}` }
   assert.equal(bookAnalysisPipelineForEdition(CRIME, env), BOOK_ANALYSIS_PIPELINE_CARDS)
   assert.equal(bookAnalysisPipelineForEdition(GRANT, env), BOOK_ANALYSIS_PIPELINE_CARDS)
-  assert.equal(bookAnalysisPipelineForEdition(OTHER, env), BOOK_ANALYSIS_PIPELINE_NARRA)
-  assert.equal(bookAnalysisPipelineForEdition(null, env), BOOK_ANALYSIS_PIPELINE_NARRA)
+  // Умолчание — карточки; другой конвейер задаётся настройкой.
+  const externalDefault = { ...env, BOOK_ANALYSIS_PIPELINE: 'external' }
+  assert.equal(bookAnalysisPipelineForEdition(OTHER, externalDefault), 'external')
+  assert.equal(bookAnalysisPipelineForEdition(OTHER, env), BOOK_ANALYSIS_PIPELINE_CARDS)
+  assert.equal(bookAnalysisPipelineForEdition(null, env), BOOK_ANALYSIS_PIPELINE_CARDS)
 })
 
 test('an empty list changes nothing', () => {
-  assert.equal(bookAnalysisPipelineForEdition(CRIME, {}), BOOK_ANALYSIS_PIPELINE_NARRA)
+  // Пустой список ничего не назначает: книга идёт тем конвейером, который задан
+  // по умолчанию, — и это видно по настройке, а не по списку.
+  assert.equal(
+    bookAnalysisPipelineForEdition(CRIME, { BOOK_ANALYSIS_PIPELINE: 'external' }),
+    'external'
+  )
   assert.deepEqual([...bookAnalysisCardsEditionsFromEnv({})], [])
   assert.deepEqual([...bookAnalysisCardsEditionsFromEnv({ BOOK_ANALYSIS_CARDS_EDITIONS: '  ' })], [])
 })
@@ -61,7 +68,7 @@ test('the list cannot take a pipeline away, only assign cards', () => {
 })
 
 test('an assignment is distinguishable from the default pipeline', () => {
-  // Репозиторию мало ответа «narra»: при перезапуске он наследует конвейер
+  // Репозиторию мало ответа «external»: при перезапуске он наследует конвейер
   // предыдущего прогона, и ему нужно знать, названа книга поимённо или просто
   // не названа. Назначение сильнее наследования, настройка по умолчанию — нет.
   const env = { BOOK_ANALYSIS_CARDS_EDITIONS: CRIME }
@@ -97,10 +104,18 @@ test('приватные книги возвращаются к общей на�
   // Путь отката без выкладки кода: настройка сильнее умолчания в обе стороны.
   const off = { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'none' }
   assert.equal(bookAnalysisPipelineForScope('private', off), null)
-  assert.equal(bookAnalysisPipelineForEdition(OTHER, off), BOOK_ANALYSIS_PIPELINE_NARRA)
   assert.equal(
-    bookAnalysisPipelineForScope('private', { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'narra' }),
-    BOOK_ANALYSIS_PIPELINE_NARRA
+    bookAnalysisPipelineForEdition(OTHER, { ...off, BOOK_ANALYSIS_PIPELINE: 'external' }),
+    'external'
+  )
+  assert.equal(
+    bookAnalysisPipelineForScope('private', { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'external' }),
+    'external'
+  )
+  // Снятый конвейер настройкой не возвращается — ни общей, ни приватной.
+  assert.throws(
+    () => bookAnalysisPipelineForScope('private', { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'narra' }),
+    /снят/
   )
   assert.throws(
     () => bookAnalysisPipelineForScope('private', { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'выдумка' }),

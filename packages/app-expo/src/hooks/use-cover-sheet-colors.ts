@@ -1,12 +1,11 @@
-import ReadAnyNativeControls from "../../modules/native-controls";
 import { useEffect, useState } from "react";
-import { Platform } from "react-native";
+import ReadAnyNativeControls from "../../modules/native-controls";
 
 /** The same cover-derived palette for book details and the audiobook sheet. */
 export function useCoverSheetColors(artwork: string | undefined) {
   const [coverColor, setCoverColor] = useState<{ uri: string; color: string; accent: string }>();
   useEffect(() => {
-    if (Platform.OS !== "ios" || !artwork || !ReadAnyNativeControls.averageTopImageColor) {
+    if (!artwork || !ReadAnyNativeControls.averageTopImageColor) {
       return;
     }
     let cancelled = false;

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { downloadVerifiedBackendFile } from "./backend-file-download";
+import { COVER_DOWNLOAD_RETRY, downloadVerifiedBackendFile } from "./backend-file-download";
+import { NarraServiceError } from "./errors";
 
 const mocks = vi.hoisted(() => ({
   deleteAsync: vi.fn(),
@@ -58,6 +59,62 @@ describe("verified backend file download", () => {
       expect.objectContaining({ timeoutMs: 135_000 }),
     );
     expect(mocks.sha256BackendFile).toHaveBeenCalledWith("file:///cache/book.epub");
+  });
+
+  it("waits out the rate-limit window the gateway reported", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.requestBackendDownloadUrl
+        .mockRejectedValueOnce(
+          new NarraServiceError(
+            "RATE",
+            "Слишком много запросов",
+            undefined,
+            undefined,
+            "RATE",
+            9_000,
+          ),
+        )
+        .mockResolvedValueOnce("https://objects.example/after-window");
+      mocks.downloadFile.mockResolvedValue(undefined);
+
+      const download = downloadVerifiedBackendFile({
+        downloadPath: "/v2/books/book-1/source/download",
+        destinationPath: "file:///cache/book.epub",
+        expectedSha256: "a".repeat(64),
+        label: "Backend catalog source",
+      });
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(mocks.requestBackendDownloadUrl).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(8_000);
+      await download;
+      expect(mocks.requestBackendDownloadUrl).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a cover give up quickly instead of holding the queue", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.requestBackendDownloadUrl.mockRejectedValue(new Error("cover is unavailable"));
+
+      const download = downloadVerifiedBackendFile({
+        downloadPath: "/v2/books/book-1/cover/download",
+        destinationPath: "file:///cache/cover.jpg",
+        expectedSha256: "a".repeat(64),
+        label: "Backend catalog cover",
+        ...COVER_DOWNLOAD_RETRY,
+      });
+      const settled = download.catch((error) => error as Error);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await settled).toMatchObject({ message: expect.stringContaining("after 2 attempts") });
+      expect(mocks.requestBackendDownloadUrl).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("cancels the active native transfer without retrying", async () => {

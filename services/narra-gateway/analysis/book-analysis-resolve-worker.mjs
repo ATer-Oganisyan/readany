@@ -7,7 +7,6 @@ import {
   unexpectedErrorMessage
 } from './book-analysis-observability.mjs'
 import {
-  BOOK_ANALYSIS_PIPELINE_NARRA,
   bookAnalysisPipelineForRun
 } from './book-analysis-pipeline.mjs'
 import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
@@ -48,10 +47,7 @@ export function createBookAnalysisResolveWorker({
 
   async function resolve(job) {
     const input = await repository.getResolveInput(job)
-    const strategy = bookAnalysisPipelineForRun({
-      ...input,
-      pipelineId: input.pipelineId ?? BOOK_ANALYSIS_PIPELINE_NARRA
-    })
+    const strategy = bookAnalysisPipelineForRun(input)
     let entities = await resolveEntities({ observations: input.observations })
     const reconciled = await strategy.reconcileIdentities({
       input,

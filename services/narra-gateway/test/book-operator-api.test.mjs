@@ -339,7 +339,7 @@ test('operator cannot activate a correction without its reviewed SHA-256 hash', 
   assert.deepEqual(input.calls, [])
 })
 
-test('operator restart accepts only the explicit narra or external pipeline selector', async () => {
+test('operator restart accepts only an explicit selector of a live pipeline', async () => {
   const input = dependencies()
   await withServer(input, async (baseUrl) => {
     const selected = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
@@ -353,13 +353,15 @@ test('operator restart accepts only the explicit narra or external pipeline sele
       { bookEditionId: BOOK_ID, pipelineId: 'external', priority: 100 }
     ]])
 
-    const invalid = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
-      method: 'POST',
-      headers: { authorization: AUTH, 'content-type': 'application/json' },
-      body: JSON.stringify({ pipeline: 'fallback' })
-    })
-    assert.equal(invalid.status, 400)
-    assert.equal((await invalid.json()).code, 'INVALID_ARGUMENT')
+    for (const pipeline of ['fallback', 'narra']) {
+      const invalid = await fetch(`${baseUrl}/operator/api/books/${BOOK_ID}/restart`, {
+        method: 'POST',
+        headers: { authorization: AUTH, 'content-type': 'application/json' },
+        body: JSON.stringify({ pipeline })
+      })
+      assert.equal(invalid.status, 400)
+      assert.equal((await invalid.json()).code, 'INVALID_ARGUMENT')
+    }
   })
 })
 
@@ -427,6 +429,8 @@ test('the progress dashboard is served only when a progress repository is wired'
     assert.equal(api.status, 404)
     const page = await fetch(`${baseUrl}/operator/status`, { headers: { authorization: AUTH } })
     assert.equal(page.status, 404)
+    const cards = await fetch(`${baseUrl}/operator/cards`, { headers: { authorization: AUTH } })
+    assert.equal(cards.status, 404)
   })
 
   const snapshot = {
@@ -436,8 +440,12 @@ test('the progress dashboard is served only when a progress repository is wired'
     running: [],
     books: []
   }
+  const listing = { generatedAt: snapshot.generatedAt, limit: 600, runs: [] }
   const input = dependencies()
-  input.progressRepository = { async snapshot() { return snapshot } }
+  input.progressRepository = {
+    async snapshot() { return snapshot },
+    async cardsRuns() { return listing }
+  }
   await withServer(input, async (baseUrl) => {
     const unauthorized = await fetch(`${baseUrl}/operator/api/progress`)
     assert.equal(unauthorized.status, 401)
@@ -458,5 +466,24 @@ test('the progress dashboard is served only when a progress repository is wired'
     })
     assert.equal(script.status, 200)
     assert.match(page.headers.get('content-security-policy') ?? '', /script-src 'self'/)
+
+    // Список запусков карточками — отдельная страница и отдельный ответ:
+    // снимок дашборда короткий по устройству, а перевод каталога спрашивает
+    // «что мы уже запустили», и книга, вставшая триста запусков назад, в
+    // короткий снимок не попадает вообще.
+    const cardsApi = await fetch(`${baseUrl}/operator/api/cards-runs`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(cardsApi.status, 200)
+    assert.deepEqual(await cardsApi.json(), listing)
+    assert.equal((await fetch(`${baseUrl}/operator/api/cards-runs`)).status, 401)
+
+    const cardsPage = await fetch(`${baseUrl}/operator/cards`, { headers: { authorization: AUTH } })
+    assert.equal(cardsPage.status, 200)
+    assert.match(await cardsPage.text(), /assets\/cards\.js/)
+    const cardsScript = await fetch(`${baseUrl}/operator/assets/cards.js`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(cardsScript.status, 200)
   })
 })

@@ -15,7 +15,7 @@ function findNode(root: ts.Node, predicate: (node: ts.Node) => boolean): ts.Node
   return found;
 }
 
-function runRelocation(fixed: boolean) {
+function runRelocation({ fixed, pdf }: { fixed: boolean; pdf: boolean }) {
   const html = readFileSync(
     new URL("../../../assets/reader/reader.template.html", import.meta.url),
     "utf8",
@@ -34,7 +34,11 @@ function runRelocation(fixed: boolean) {
 
   const messages: Record<string, unknown>[] = [];
   const renderer = { index: 3, page: 2, pages: 10 };
-  const book = { sections: Array.from({ length: 127 }, () => ({ size: 1000 })) };
+  const book = {
+    isPDF: pdf,
+    physicalPageCount: pdf ? 127 : undefined,
+    sections: Array.from({ length: 127 }, () => ({ size: 1000 })),
+  };
   const context = vm.createContext({
     view: { isFixedLayout: fixed, renderer, book },
     currentSectionIndex: 0,
@@ -63,17 +67,26 @@ function runRelocation(fixed: boolean) {
 
 describe("fixed-layout page reporting", () => {
   it("reports physical PDF pages instead of byte-estimated locations", () => {
-    expect(runRelocation(true)).toMatchObject({
-      isFixedLayout: true,
+    expect(runRelocation({ fixed: true, pdf: true })).toMatchObject({
+      isPDF: true,
       section: { current: 3, total: 127 },
       page: { current: 4, total: 127 },
       location: undefined,
     });
   });
 
+  it("keeps non-PDF fixed-layout location reporting unchanged", () => {
+    expect(runRelocation({ fixed: true, pdf: false })).toMatchObject({
+      isPDF: false,
+      section: { current: 3, total: 85 },
+      page: { current: 2, total: 8 },
+      location: { current: 3, next: 4, total: 85 },
+    });
+  });
+
   it("keeps reflowable location reporting unchanged", () => {
-    expect(runRelocation(false)).toMatchObject({
-      isFixedLayout: false,
+    expect(runRelocation({ fixed: false, pdf: false })).toMatchObject({
+      isPDF: false,
       section: { current: 3, total: 85 },
       page: { current: 2, total: 8 },
       location: { current: 3, next: 4, total: 85 },

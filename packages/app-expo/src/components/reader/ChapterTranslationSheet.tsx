@@ -17,7 +17,15 @@ import type { TranslationTargetLang } from "@readany/core/types/translation";
 import { TRANSLATOR_LANGS } from "@readany/core/types/translation";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 
 interface ChapterTranslationSheetProps {
   visible: boolean;
@@ -339,6 +347,7 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: "flex-end",
     },
     sheet: {
+      ...(Platform.OS === "android" ? { maxHeight: "80%" as const } : {}),
       backgroundColor: colors.background,
       borderTopLeftRadius: 16,
       borderTopRightRadius: 16,

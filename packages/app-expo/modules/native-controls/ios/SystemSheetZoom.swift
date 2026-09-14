@@ -40,6 +40,9 @@ final class SystemSheetZoomSourceRepository: NSObject {
 
   @available(iOS 26.0, *)
   func transition(identifier: String) -> UIViewController.Transition {
+    if pendingIdentifier == identifier {
+      pendingIdentifier = nil
+    }
     if views.object(forKey: identifier as NSString) != nil {
       let options = UIViewController.Transition.ZoomOptions()
       options.alignmentRectProvider = { context in
@@ -97,12 +100,31 @@ final class SystemSheetZoomSourceRepository: NSObject {
   }
 
   @objc private func handleWillPresentFormSheet(_ notification: Notification) {
-    guard let identifier = pendingIdentifier else { return }
+    let identifier = pendingIdentifier
     pendingIdentifier = nil
+
+    guard let controller = notification.object as? UIViewController else { return }
+
+    if controller.modalPresentationStyle == .pageSheet,
+      let sheet = controller.sheetPresentationController
+    {
+      let preview = UISheetPresentationController.Detent.custom(identifier: .init("bookPreview")) {
+        [weak sheet] context in
+        let container = sheet?.containerView
+        let height = container?.bounds.height ?? context.maximumDetentValue
+        let bottomInset = container?.safeAreaInsets.bottom ?? 0
+        // Medium uses half the container; preserve its safe-area allowance when adding 10%.
+        return min(context.maximumDetentValue, (height * 0.5 + bottomInset) * 1.1 - bottomInset)
+      }
+      sheet.detents = [preview, .large()]
+      sheet.selectedDetentIdentifier = preview.identifier
+      sheet.prefersGrabberVisible = true
+      sheet.prefersScrollingExpandsWhenScrolledToEdge = true
+    }
 
     guard
       #available(iOS 26.0, *),
-      let controller = notification.object as? UIViewController,
+      let identifier,
       controller.preferredTransition == nil
     else {
       return
@@ -152,6 +174,10 @@ final class SystemSheetZoomDestinationView: ExpoView {
 
     guard superview != nil else { return }
     configureTransition()
+    // The containing RNSScreen may not be assigned during the initial mount.
+    DispatchQueue.main.async { [weak self] in
+      self?.configureTransition()
+    }
   }
 
   override func didMoveToWindow() {
@@ -224,15 +250,16 @@ final class SystemSheetZoomSourceView: ExpoView {
   var sourceIdentifier = "" {
     didSet {
       SystemSheetZoomSourceRepository.shared.unregister(identifier: oldValue, matching: self)
-      if window != nil {
+      if superview != nil {
         SystemSheetZoomSourceRepository.shared.register(identifier: sourceIdentifier, view: self)
       }
     }
   }
 
-  override func didMoveToWindow() {
-    super.didMoveToWindow()
-    if window != nil {
+  override func didMoveToSuperview() {
+    super.didMoveToSuperview()
+    // A pushed screen temporarily leaves the window but remains mounted.
+    if superview != nil {
       SystemSheetZoomSourceRepository.shared.register(identifier: sourceIdentifier, view: self)
     } else {
       SystemSheetZoomSourceRepository.shared.unregister(identifier: sourceIdentifier, matching: self)

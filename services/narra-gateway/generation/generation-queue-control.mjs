@@ -1,9 +1,12 @@
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const SAFE_CODE = /^[A-Z][A-Z0-9_]{1,63}$/
 const SAFE_CAMPAIGN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/
-// `character_card` — тип конвейера карточек. Без него оператор не мог
-// остановить именно карточки: пауза принимала только прежние типы, а карточки
-// продолжали идти и тратить вызовы модели.
+// `character_card` и `roster_confirm` — типы конвейера карточек. Без них
+// оператор не мог остановить именно карточки: пауза принимала только прежние
+// типы, а карточки продолжали идти и тратить вызовы модели. Отсутствие
+// `roster_confirm` было хуже молчания: команда падала с USAGE, и в цикле это
+// читалось как «останавливать нечего», пока подтверждение состава ставило всё
+// новые карточки.
 const JOB_TYPES = new Set([
   'book_markup',
   'book_identity',
@@ -11,6 +14,7 @@ const JOB_TYPES = new Set([
   'scene_image',
   'character_bundle',
   'character_card',
+  'roster_confirm',
   'character_portrait',
   'character_audio',
   'character_animation'

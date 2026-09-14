@@ -19,7 +19,12 @@ function keepOnlyFirstSentence(title: string): string {
 
 /** Shortens multi-sentence titles and keeps one- or two-character words with the following word. */
 export function formatBookCoverTitle(title: string): string {
-  const tokens = keepOnlyFirstSentence(title).split(/(\s+)/u);
+  return bindShortWords(keepOnlyFirstSentence(title));
+}
+
+/** Keeps short words with the following word without shortening the text. */
+export function bindShortWords(text: string): string {
+  const tokens = text.split(/(\s+)/u);
 
   for (let index = 0; index < tokens.length - 2; index += 1) {
     const token = tokens[index];

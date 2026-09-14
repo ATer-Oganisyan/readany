@@ -31,6 +31,12 @@ function runnerError(code, message) {
   return Object.assign(new Error(message), { code })
 }
 
+/**
+ * Ошибки, после которых карточку имеет смысл собрать в другом окне, а не
+ * похоронить: у персонажа просто нечем обосноваться здесь и сейчас.
+ */
+const DEFERRABLE_CARD_ERRORS = new Set(['CARD_BIO_MISSING', 'CARD_FRAGMENTS_MISSING'])
+
 export function createCharacterCardRunner({
   repository,
   storage,
@@ -84,13 +90,67 @@ export function createCharacterCardRunner({
       try {
         return await build(job, input, startedAt)
       } catch (error) {
+        // Нечем обосноваться — не всегда конец: персонаж попадает в окно
+        // первого упоминания, и там у него может быть один проходной абзац,
+        // тогда как дальше в книге их сотня. Пока такая карточка падала
+        // насовсем, персонаж терялся целиком — «Иван Матвеевич» из «Обломова»
+        // с 95 фрагментами не получил карточки вовсе.
+        const deferred = DEFERRABLE_CARD_ERRORS.has(error?.code)
+          ? await deferToLaterWindow(job, input, error)
+          : null
         // Своё задание исключаем из счёта незавершённых: воркер пометит его
         // провалившимся только после возврата отсюда, и без этого окно, где
         // оно было последним, осталось бы `running` навсегда — то самое, от
         // чего цепочку и стали двигать по завершению карточки.
         await advanceWindows(input, null, job.id).catch(() => {})
+        if (deferred) return deferred
         throw error
       }
+    }
+  }
+
+  /**
+   * Перенос карточки в окно, где персонажу есть чем обосноваться.
+   *
+   * Репозиторий сам выбирает ближайшее окно, где фрагментов станет больше, и
+   * отвечает «нет», если такого нет: тогда падение честное — больше про этого
+   * персонажа в книге не сказано.
+   */
+  async function deferToLaterWindow(job, input, cause) {
+    if (typeof repository.deferCharacterCard !== 'function') return null
+    try {
+      const moved = await repository.deferCharacterCard({
+        runId: input.runId,
+        bookEditionId: input.bookEditionId,
+        characterKey: input.characterKey,
+        windowIndex: input.windowIndex,
+        priority: job.priority ?? 50
+      })
+      if (!moved?.deferred) return null
+      log.info('card.deferred', 'Карточка перенесена в окно с цитатами', {
+        job: job.id,
+        run: input.runId,
+        edition: input.bookEditionId,
+        character_key: input.characterKey,
+        window_index: input.windowIndex,
+        next_window_index: moved.windowIndex,
+        next_fragment_count: moved.fragmentCount,
+        error_code: cause?.code ?? 'UNKNOWN'
+      })
+      return {
+        status: 'deferred',
+        characterKey: input.characterKey,
+        windowIndex: input.windowIndex,
+        deferredToWindow: moved.windowIndex
+      }
+    } catch (error) {
+      log.error('card.defer_failed', 'Не удалось перенести карточку в следующее окно', {
+        job: job.id,
+        run: input.runId,
+        character_key: input.characterKey,
+        error_code: error?.code ?? 'UNKNOWN'
+      })
+      return null
     }
   }
 

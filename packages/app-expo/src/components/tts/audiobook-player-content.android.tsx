@@ -1,178 +1,226 @@
-// Android rendering of the original expo-ui-examples mini-player layout.
-// iOS uses the source's SwiftUI implementation directly.
-import { type MishanaerIconName, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
+import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { useTheme } from "@/styles/ThemeContext";
+import { foregroundForBackground } from "@/styles/foreground-for-background";
 import {
-  Column,
-  DropdownMenu,
-  DropdownMenuItem,
-  Host,
-  Icon,
-  IconButton,
-  Row,
-  Slider,
-  Text,
-} from "@expo/ui/jetpack-compose";
-import { fillMaxWidth, padding, size, weight } from "@expo/ui/jetpack-compose/modifiers";
+  bodyTypography,
+  fontFamily,
+  fontSize,
+  largeTitleFontFamily,
+  title24Typography,
+} from "@/styles/theme";
+import { spacingPixels } from "@deslop/primitives";
+import { Host, RNHostView, Slider } from "@expo/ui/jetpack-compose";
+import { fillMaxWidth } from "@expo/ui/jetpack-compose/modifiers";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  AUDIOBOOK_SPEEDS,
-  AUDIOBOOK_TIMER_MINUTES,
-  type AudiobookPlayerContentProps,
-} from "./audiobook-player-content.types";
-
-function PlayerIcon({
-  name,
-  label,
-  size: iconSize = 24,
-}: { name: MishanaerIconName; label: string; size?: number }) {
-  return (
-    <Icon source={getStrokeIconImageSource(name)} size={iconSize} contentDescription={label} />
-  );
-}
+import { Pressable, ScrollView, Text, View } from "react-native";
+import PreviousSentenceIcon from "../../../assets/icons/sentence-backward.svg";
+import NextSentenceIcon from "../../../assets/icons/sentence-forward.svg";
+import { AnimatedPlayPause } from "./animated-play-pause";
+import { AudiobookCover } from "./audiobook-cover";
+import type { AudiobookPlayerContentProps } from "./audiobook-player-content.types";
 
 export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
   const { t } = useTranslation();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const foreground = foregroundForBackground(props.backgroundColor ?? colors.background);
+  const color = foreground.primary;
+  const layout = useResponsiveLayout();
+  const contentW = Math.min(layout.width - 66, 408);
+  const columns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 2;
+  const coverHeight =
+    Math.floor((layout.centeredContentWidth - spacingPixels[16] * (columns - 1)) / columns) *
+    (41 / 28) *
+    0.72;
   const { player } = props;
-  const menu = (
-    <DropdownMenu.Items>
-      {AUDIOBOOK_SPEEDS.map((rate) => (
-        <DropdownMenuItem key={rate} onClick={() => props.onRateChange(rate)}>
-          <DropdownMenuItem.Text>
-            <Text>{t("tts.speedValue", { value: rate })}</Text>
-          </DropdownMenuItem.Text>
-        </DropdownMenuItem>
-      ))}
-      {AUDIOBOOK_TIMER_MINUTES.map((minutes) => (
-        <DropdownMenuItem key={minutes} onClick={() => props.onSetTimer(minutes)}>
-          <DropdownMenuItem.Text>
-            <Text>{t("tts.sleepTimerPresetShort", { minutes })}</Text>
-          </DropdownMenuItem.Text>
-        </DropdownMenuItem>
-      ))}
-      <DropdownMenuItem onClick={props.onCustomTimer}>
-        <DropdownMenuItem.Text>
-          <Text>{t("tts.customTimer")}</Text>
-        </DropdownMenuItem.Text>
-      </DropdownMenuItem>
-      {props.timerActive && (
-        <DropdownMenuItem onClick={props.onClearTimer}>
-          <DropdownMenuItem.Text>
-            <Text>{t("tts.sleepTimerCancel")}</Text>
-          </DropdownMenuItem.Text>
-        </DropdownMenuItem>
-      )}
-      <DropdownMenuItem onClick={props.onStop}>
-        <DropdownMenuItem.Text>
-          <Text>{t("tts.stop")}</Text>
-        </DropdownMenuItem.Text>
-      </DropdownMenuItem>
-    </DropdownMenu.Items>
-  );
+  const [editing, setEditing] = useState(false);
+  const buttonColor = foreground.isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)";
+  const trackColor = props.accentColor ?? color;
+  const fraction = Math.max(0, Math.min(1, player.localPosition / Math.max(player.duration, 1)));
+  const actions = [
+    {
+      key: "previous",
+      Icon: PreviousSentenceIcon,
+      label: t("tts.prevSentence"),
+      enabled: props.canGoToPreviousSentence,
+      onPress: props.onPreviousSentence,
+    },
+    {
+      key: "play",
+      Icon: null,
+      label: t(player.isPlaying || player.isLoading ? "tts.pause" : "tts.playShort"),
+      enabled: true,
+      onPress: player.togglePlayback,
+    },
+    {
+      key: "next",
+      Icon: NextSentenceIcon,
+      label: t("tts.nextSentence"),
+      enabled: props.canGoToNextSentence,
+      onPress: props.onNextSentence,
+    },
+  ];
   return (
-    <Host colorScheme={isDark ? "dark" : "light"} style={{ flex: 1 }}>
-      <Column horizontalAlignment="center" modifiers={[fillMaxWidth(), padding(27, 24, 27, 21)]}>
-        <Row
-          horizontalArrangement="spaceBetween"
-          verticalAlignment="center"
-          modifiers={[fillMaxWidth(), padding(6, 10, 6, 0)]}
+    <ScrollView
+      style={{ flexGrow: 0 }}
+      nestedScrollEnabled
+      contentContainerStyle={{ alignItems: "center", paddingTop: 16, paddingBottom: 40 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <AudiobookCover height={coverHeight} />
+      <View
+        style={{
+          width: contentW,
+          height: 56,
+          marginTop: 24,
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={20 / 24}
+          style={{
+            fontFamily: largeTitleFontFamily,
+            fontSize: title24Typography.fontSize,
+            color,
+            textAlign: "center",
+          }}
         >
-          <Column modifiers={[weight(1)]}>
-            <Text
-              color={colors.foreground}
-              maxLines={1}
-              style={{ fontSize: 22, fontWeight: "bold" }}
-            >
-              {props.title}
-            </Text>
-            <Text color={colors.mutedForeground} maxLines={1} style={{ fontSize: 22 }}>
-              {props.chapter}
-            </Text>
-          </Column>
-          <DropdownMenu>
-            <DropdownMenu.Trigger>
-              <PlayerIcon name="dots-three-horizontal" label={t("tts.playerOptions")} />
-            </DropdownMenu.Trigger>
-            {menu}
-          </DropdownMenu>
-        </Row>
-        <Column modifiers={[fillMaxWidth(), padding(6, 20, 6, 0)]}>
-          <Slider
-            value={player.hasDuration ? player.localPosition : 0}
-            min={0}
-            max={Math.max(player.duration, 1)}
-            enabled={player.hasDuration}
-            onValueChange={(value) => {
-              player.beginSeeking();
-              player.setPosition(value);
+          {props.title}
+        </Text>
+        {props.author ? (
+          <Text
+            numberOfLines={1}
+            style={{
+              fontFamily: largeTitleFontFamily,
+              fontSize: bodyTypography.fontSize,
+              color: foreground.secondary,
+              textAlign: "center",
             }}
-            onValueChangeFinished={player.commitSeeking}
-            modifiers={[fillMaxWidth()]}
-          />
-          <Row horizontalArrangement="spaceBetween" modifiers={[fillMaxWidth()]}>
-            <Text color={colors.mutedForeground} style={{ fontSize: 13, fontFamily: "monospace" }}>
-              {player.progressLabel}
-            </Text>
-            <Text color={colors.mutedForeground} style={{ fontSize: 13, fontFamily: "monospace" }}>
-              {player.durationLabel}
-            </Text>
-          </Row>
-        </Column>
-        <Row
-          horizontalArrangement={{ spacedBy: 32 }}
-          verticalAlignment="center"
-          modifiers={[padding(0, 28, 0, 0)]}
-        >
-          <IconButton
-            onClick={props.onPreviousSentence}
-            enabled={props.canGoToPreviousSentence}
-            modifiers={[size(48, 48)]}
           >
-            <PlayerIcon name="skip-backward" label={t("tts.prevSentence")} size={34} />
-          </IconButton>
-          <IconButton onClick={player.togglePlayback} modifiers={[size(64, 64)]}>
-            <PlayerIcon
-              name={player.isPlaying || player.isLoading ? "pause" : "play"}
-              size={50}
-              label={t(player.isPlaying || player.isLoading ? "tts.pause" : "tts.playShort")}
-            />
-          </IconButton>
-          <IconButton
-            onClick={props.onNextSentence}
-            enabled={props.canGoToNextSentence}
-            modifiers={[size(48, 48)]}
-          >
-            <PlayerIcon name="skip-forward" label={t("tts.nextSentence")} size={34} />
-          </IconButton>
-        </Row>
-        <Row verticalAlignment="center" modifiers={[fillMaxWidth(), padding(0, 16, 0, 0)]}>
-          <PlayerIcon name="volume-2" size={13} label={t("tts.volume")} />
-          <Slider
-            value={props.volume}
-            min={0}
-            max={1}
-            onValueChange={props.onVolumeChange}
-            modifiers={[weight(1)]}
-          />
-          <PlayerIcon name="volume-2" size={18} label={t("tts.volume")} />
-        </Row>
-        <Row
-          horizontalArrangement="spaceBetween"
-          modifiers={[fillMaxWidth(), padding(6, 12, 6, 0)]}
+            {props.author}
+          </Text>
+        ) : null}
+      </View>
+      <Host
+        colorScheme={foreground.isDark ? "dark" : "light"}
+        // Material reserves half the thumb width at each end of the track.
+        style={{ width: contentW + 36, height: 32, marginTop: 24 }}
+      >
+        <Slider
+          value={player.localPosition}
+          min={0}
+          max={Math.max(player.duration, 1)}
+          enabled={player.hasDuration}
+          modifiers={[fillMaxWidth()]}
+          onValueChange={(value) => {
+            if (!editing) {
+              setEditing(true);
+              player.beginSeeking();
+            }
+            player.setPosition(value);
+          }}
+          onValueChangeFinished={() => {
+            setEditing(false);
+            player.commitSeeking();
+          }}
         >
-          <IconButton onClick={props.onRead}>
-            <PlayerIcon name="chat-bubble" size={21} label={t("tts.returnToBook")} />
-          </IconButton>
-          <PlayerIcon name="volume-2" size={21} label={t("tts.volume")} />
-          <DropdownMenu>
-            <DropdownMenu.Trigger>
-              <PlayerIcon name="list" size={21} label={t("tts.playerOptions")} />
-            </DropdownMenu.Trigger>
-            {menu}
-          </DropdownMenu>
-        </Row>
-      </Column>
-    </Host>
+          <Slider.Thumb>
+            <RNHostView matchContents>
+              <View
+                style={{
+                  width: 36,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: color,
+                  opacity: editing ? 1 : 0,
+                }}
+              />
+            </RNHostView>
+          </Slider.Thumb>
+          <Slider.Track>
+            <RNHostView matchContents>
+              <View
+                style={{
+                  width: contentW,
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: buttonColor,
+                  overflow: "hidden",
+                }}
+              >
+                <View
+                  style={{ width: `${fraction * 100}%`, height: 4, backgroundColor: trackColor }}
+                />
+              </View>
+            </RNHostView>
+          </Slider.Track>
+        </Slider>
+      </Host>
+      <View
+        style={{
+          width: contentW,
+          flexDirection: "row",
+          justifyContent: "space-between",
+          gap: 8,
+          marginTop: 4,
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            flex: 1,
+            fontFamily: fontFamily.regular,
+            fontSize: fontSize.xs,
+            color: foreground.secondary,
+          }}
+        >
+          {props.chapter}
+        </Text>
+        <Text
+          style={{
+            fontFamily: fontFamily.regular,
+            fontSize: fontSize.xs,
+            color: foreground.secondary,
+          }}
+        >
+          {player.progressLabel}
+        </Text>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 24, marginTop: 40 }}>
+        {actions.map(({ key, Icon, label, enabled, onPress }) => (
+          <Pressable
+            key={key}
+            accessibilityRole="button"
+            accessibilityLabel={label}
+            accessibilityState={{ disabled: !enabled }}
+            disabled={!enabled}
+            onPress={onPress}
+            style={{
+              width: Icon ? 56 : 80,
+              height: Icon ? 56 : 80,
+              borderRadius: 40,
+              backgroundColor: buttonColor,
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: enabled ? 1 : 0.35,
+            }}
+          >
+            {Icon ? (
+              <Icon width={24} height={24} color={color} />
+            ) : (
+              <AnimatedPlayPause
+                isPlaying={player.isPlaying}
+                isLoading={player.isLoading}
+                color={color}
+              />
+            )}
+          </Pressable>
+        ))}
+      </View>
+    </ScrollView>
   );
 }

@@ -1,3 +1,4 @@
+import { spacingPixels } from "@deslop/primitives";
 import { interfaceFontFamily } from "@deslop/primitives/native";
 import {
   Column,
@@ -55,7 +56,7 @@ export function NativeCharacterDetailsCells({
   cellBackgroundColor,
   items,
   isDark,
-  topSpacing = 0,
+  topSpacing = spacingPixels[24] + spacingPixels[16],
 }: NativeCharacterDetailsCellsProps) {
   const primaryColor = isDark ? "rgba(255,255,255,0.96)" : "rgba(0,0,0,0.9)";
   const secondaryColor = isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.6)";
@@ -64,20 +65,20 @@ export function NativeCharacterDetailsCells({
     <Host
       matchContents={{ vertical: true }}
       colorScheme={isDark ? "dark" : "light"}
-      style={{ width: "100%", marginTop: topSpacing }}
+      style={{ width: "100%" }}
     >
       <Surface
         color={cellBackgroundColor}
         contentColor={primaryColor}
         shape={detailsShape}
-        modifiers={[fillMaxWidth()]}
+        modifiers={[fillMaxWidth(), padding(20, topSpacing, 20, 0)]}
       >
         <Column modifiers={[fillMaxWidth()]}>
           {items.map((item, index) => (
             <Column key={item.key} modifiers={[fillMaxWidth()]}>
               {index > 0 ? (
                 <HorizontalDivider
-                  color="rgba(255,255,255,0.2)"
+                  color="rgba(255,255,255,0.1)"
                   thickness={1}
                   modifiers={[fillMaxWidth(), padding(16, 0, 16, 0)]}
                 />

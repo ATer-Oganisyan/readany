@@ -944,7 +944,7 @@
       if (!win) return;
       if (!isRangeVisibleInReader(range, renderer, win)) {
         try {
-          await renderer.scrollToAnchor(range, true);
+          await renderer.scrollToAnchor(range, false);
         } catch (e) {
           try {
             await view.goTo(cfi);
@@ -1889,10 +1889,10 @@
           } else if (typeof detail.index === 'number') {
             currentSectionIndex = detail.index;
           }
-          const isFixedLayout = !!(view && view.isFixedLayout);
-          // PDF/comic sections are physical pages. SectionProgress estimates
-          // text locations from section bytes, which would count image sizes.
-          if (isFixedLayout) {
+          const isPDF = !!(view && view.book && view.book.isPDF === true);
+          // PDF sections are physical pages. SectionProgress estimates text
+          // locations from section bytes, which would count PDF resource sizes.
+          if (isPDF) {
             const fixedIndex = view.renderer && view.renderer.index;
             if (Number.isInteger(fixedIndex) && fixedIndex >= 0) {
               currentSectionIndex = fixedIndex;
@@ -1910,7 +1910,7 @@
           const rendererPages = view && view.renderer && typeof view.renderer.pages === 'number'
             ? view.renderer.pages
             : null;
-          const actualPage = isFixedLayout && relocatedSectionTotal > 0
+          const actualPage = isPDF && relocatedSectionTotal > 0
             ? { current: currentSectionIndex + 1, total: relocatedSectionTotal }
             : rendererPage != null && rendererPages != null && rendererPages > 2
             ? {
@@ -1921,9 +1921,9 @@
           postToRN('relocate', {
             loadId: msg.loadId,
             fraction: detail.fraction,
-            isFixedLayout,
+            isPDF,
             section: { current: currentSectionIndex, total: relocatedSectionTotal },
-            location: isFixedLayout ? undefined : detail.location,
+            location: isPDF ? undefined : detail.location,
             page: actualPage,
             tocItem: detail.tocItem,
             pageItem: detail.pageItem,
@@ -5603,6 +5603,9 @@ a { color: ${primary} !important; }
           }
           var span = doc.createElement('span');
           span.className = CHARACTER_NAME_CLASS;
+          // Reader-wide span rules force body size; markup must keep the surrounding type.
+          span.style.setProperty('font-size', 'inherit', 'important');
+          span.style.setProperty('line-height', 'inherit', 'important');
           span.setAttribute(CHARACTER_NAME_ATTR, match.characterId);
           span.textContent = text.slice(match.start, match.end);
           fragment.appendChild(span);
@@ -6368,6 +6371,10 @@ a { color: ${primary} !important; }
           return;
         }
         if (doc.documentElement && doc.documentElement.hasAttribute('data-readany-pdf')) {
+          if (!_sceneSlotsEnabled) {
+            sceneSlotLog('skip: PDF scene generation is unavailable');
+            return;
+          }
           var pdfAnchor = pdfSceneAnchorForPage(content.index);
           if (
             _sceneRestoreAnchors.indexOf(pdfAnchor) >= 0 ||

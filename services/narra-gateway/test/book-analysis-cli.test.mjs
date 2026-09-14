@@ -132,19 +132,19 @@ test('start uses the verified stored source hash and remains idempotent', async 
 test('explicit pipeline selector is passed only when requested', async () => {
   let ensureInput
   await executeBookAnalysisCommand({
-    argv: ['start', '--book-edition-id', BOOK_ID, '--pipeline', 'narra'],
+    argv: ['start', '--book-edition-id', BOOK_ID, '--pipeline', 'external'],
     repository: operatorRepository({
       async ensureAnalysisRun(input) {
         ensureInput = input
         return {
           created: true,
-          run: { id: RUN_ID, pipelineId: 'narra', stage: 'prepare', status: 'queued' },
+          run: { id: RUN_ID, pipelineId: 'external', stage: 'prepare', status: 'queued' },
           prepareJob: { id: '33333333-3333-4333-8333-333333333333' }
         }
       }
     })
   })
-  assert.equal(ensureInput.pipelineId, 'narra')
+  assert.equal(ensureInput.pipelineId, 'external')
 })
 
 test('status returns per-stage progress without the large publication payload', async () => {

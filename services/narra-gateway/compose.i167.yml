@@ -162,8 +162,14 @@ services:
     security_opt:
       - no-new-privileges:true
     pids_limit: 256
-    mem_limit: 1g
-    cpus: 1.0
+    # Гигабайта перестало хватать вместе с ростом каталога: база держала 814 МБ
+    # в покое, и любой тяжёлый запрос — каскадное удаление приватной книги,
+    # выборка дашборда — добирал остаток. Процесс убивал cgroup-OOM, а Postgres
+    # на смерть backend'а уводит весь кластер в recovery: за два часа это
+    # случилось восемь раз. Значение вынесено в настройку, чтобы поднимать его
+    # без выкладки образа.
+    mem_limit: ${NARRA_POSTGRES_MEM_LIMIT:-4g}
+    cpus: ${NARRA_POSTGRES_CPUS:-2.0}
     logging:
       driver: json-file
       options:
@@ -391,7 +397,7 @@ services:
     environment:
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment, *book-analysis-scan-policy-environment]
       WORKER_TYPE: book-analysis-pool
-      BOOK_ANALYSIS_STAGES: ${BOOK_ANALYSIS_POOL_STAGES:-scan}
+      BOOK_ANALYSIS_STAGES: ${BOOK_ANALYSIS_POOL_STAGES:-prepare}
 
   book-media-worker:
     <<: *book-analysis-worker
@@ -439,6 +445,10 @@ services:
       # которым хранилище ни к чему.
       <<: [*book-analysis-database-environment, *book-analysis-storage-environment, *book-analysis-generator-environment]
       BOOK_MARKUP_WORKER_JOB_TYPES: character_card,roster_confirm
+      # Разметка каталога публикует карточки сотнями, и каждая тянет портрет и
+      # приветствие. Когда нужна только разметка, автоматика выключается: на
+      # запрос читателя медиа по-прежнему собирается.
+      BOOK_CARD_MEDIA_ENQUEUE: ${BOOK_CARD_MEDIA_ENQUEUE:-true}
       WORKER_TYPE: book-card
 
   generation-queue-operator:

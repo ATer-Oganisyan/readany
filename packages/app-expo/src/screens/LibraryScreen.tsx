@@ -299,14 +299,10 @@ function LibraryScreenContent() {
     if (importedCount > 0) libraryPagerRef.current?.selectPage(1);
   }, []);
 
-  const {
-    isPickingImport,
-    isUrlImporting,
-    handleLocalImport,
-    handleOpenImportSources,
-    handleOpenUrlImport,
-  } = useBookImportActions({ onImportComplete: revealImportedBooks });
-  const isBookImporting = isImporting || isPickingImport || isUrlImporting;
+  const { isPickingImport, handleLocalImport, handleOpenImportSources } = useBookImportActions({
+    onImportComplete: revealImportedBooks,
+  });
+  const isBookImporting = isImporting || isPickingImport;
 
   useEffect(() => {
     let cancelled = false;
@@ -714,15 +710,6 @@ function LibraryScreenContent() {
               items: [
                 {
                   type: "action" as const,
-                  label: t("library.importSourceUrl", "Найти по ссылке"),
-                  icon: {
-                    type: "image" as const,
-                    source: getStrokeIconImageSource("link"),
-                  },
-                  onPress: handleOpenUrlImport,
-                },
-                {
-                  type: "action" as const,
                   label: t("library.importSourceLocal", "Выбрать файл"),
                   icon: {
                     type: "image" as const,
@@ -748,11 +735,9 @@ function LibraryScreenContent() {
           ) : null}
           <ImportSourceHeaderMenuButton
             accessibilityLabel={t("library.importFirst", "Добавить книгу")}
-            urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
             localLabel={t("library.importSourceLocal", "Выбрать файл")}
             color={colors.primary}
             disabled={isBookImporting}
-            onUrlPress={handleOpenUrlImport}
             onLocalPress={() => void handleLocalImport()}
             onFallbackPress={handleOpenImportSources}
           />
@@ -764,7 +749,6 @@ function LibraryScreenContent() {
     colors.primary,
     handleLocalImport,
     handleOpenImportSources,
-    handleOpenUrlImport,
     handleSync,
     isBookImporting,
     isSyncBusy,
@@ -1082,10 +1066,8 @@ function LibraryScreenContent() {
     >
       <ImportSourceMenuButton
         label={t("library.emptyAction", "Добавить")}
-        urlLabel={t("library.importSourceUrl", "Найти по ссылке")}
         localLabel={t("library.importSourceLocal", "Выбрать файл")}
-        disabled={isPickingImport || isUrlImporting}
-        onUrlPress={handleOpenUrlImport}
+        disabled={isPickingImport}
         onLocalPress={() => void handleLocalImport()}
         onFallbackPress={handleOpenImportSources}
       />

@@ -8,6 +8,8 @@ import {
   useTheme,
 } from "@/styles/theme";
 import { radiusPixels, spacingPixels } from "@deslop/primitives";
+import { Host as ComposeHost, Icon, IconButton } from "@expo/ui/jetpack-compose";
+import { size } from "@expo/ui/jetpack-compose/modifiers";
 import { Host, Image } from "@expo/ui/swift-ui";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import type { ReactNode } from "react";
@@ -147,7 +149,21 @@ export function NarraChatHeader({
     >
       <View style={styles.row}>
         <View style={styles.side}>
-          {glassAvailable ? (
+          {Platform.OS === "android" && backIcon !== "xmark" ? (
+            <ComposeHost matchContents colorScheme={isDark ? "dark" : "light"}>
+              <IconButton
+                onClick={onBack}
+                colors={{ containerColor: colors.elevation1, contentColor: colors.foreground }}
+                modifiers={[size(spacingPixels[44], spacingPixels[44])]}
+              >
+                <Icon
+                  source={require("../../../assets/icons/arrow-back.xml")}
+                  size={24}
+                  contentDescription={backLabel}
+                />
+              </IconButton>
+            </ComposeHost>
+          ) : glassAvailable ? (
             <GlassView
               colorScheme={isDark ? "dark" : "light"}
               glassEffectStyle="regular"
