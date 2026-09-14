@@ -27,6 +27,7 @@ import {
   stemNameToken
 } from './character-name-matcher.mjs'
 import { buildBookTextIndex } from './book-text-index.mjs'
+import { bookNarrationPerson } from './book-narration.mjs'
 
 export const NAME_INVENTORY_VERSION = 'name-inventory-v1'
 
@@ -66,6 +67,25 @@ const SPEECH_WINDOW_WORDS = 3
  */
 const SALIENCE_FLOOR_MENTIONS = 12
 const SALIENCE_FLOOR_CHAPTERS = 3
+
+/**
+ * Пороги распознавания рассказчика. Оба измерены, а не выбраны: на одиннадцати
+ * живых книгах доля абзацев с «я» вне реплик у книг от первого лица — 0.62 и
+ * 0.71, у книг от третьего — от 0.014 до 0.22. Между ними пусто, и 0.45 лежит
+ * в этой пустоте.
+ *
+ * Нижняя граница по числу абзацев отсекает не книги, а плохую разбивку: у двух
+ * книг из замера повествовательных абзацев оказалось 36 и 56 на всю книгу, и
+ * доля по такой выборке ничего не значит — одна из них дала ложные 0.55.
+ *
+ * Доля реплик у самого рассказчика: его зовут по имени, только когда к нему
+ * обращаются, поэтому почти все упоминания его имени лежат внутри реплик. У
+ * «Алексея Ивановича» это 0.95, у «Криса» 0.95, у «Кельвина» 0.82 — а у всех
+ * остальных лиц тех же книг 0.29…0.63.
+ */
+const FIRST_PERSON_PARAGRAPH_SHARE = 0.45
+const FIRST_PERSON_MIN_PARAGRAPHS = 100
+const NARRATOR_DIALOGUE_SHARE = 0.75
 
 const WORD_PATTERN = /\p{L}+(?:[-'’ʼ]\p{L}+)*/gu
 
@@ -864,6 +884,35 @@ export function buildBookNameInventory({
   // «Quadrille» речи рядом не имеют, обращения не получают и притяжательной
   // формы не образуют; держать их в знаменателе значило бы растить ярус за счёт
   // строк, которые персонажами не станут. В backstop они остаются.
+  // Рассказчик книги от первого лица. Счётчик имён видит его редко и поздно:
+  // сам себя он называет «я», а по имени его зовут только собеседники. У
+  // «Игрока» первое «Алексей Иванович» — на 78 364-м знаке, на 28 % книги, и
+  // главный герой оказывался позади эпизодических лиц.
+  //
+  // Два условия сразу, потому что каждое по отдельности ошибается: книга должна
+  // вестись от первого лица, а имя — встречаться почти только в репликах.
+  //
+  // Рассказчик в книге один, поэтому берётся ровно один — самый частый из
+  // подходящих. Признак «зовут только в репликах» сам по себе не единственен:
+  // у «Игрока» под него попадают ещё бабушка и её приживалка, к которым тоже
+  // обращаются и о которых рассказчик говорит «она». Разница в частоте между
+  // ними и рассказчиком пятикратная.
+  const narration = bookNarrationPerson(source, textIndex)
+  const firstPersonBook = narration.narrativeParagraphs >= FIRST_PERSON_MIN_PARAGRAPHS &&
+    narration.firstPersonShare >= FIRST_PERSON_PARAGRAPH_SHARE
+  const narrator = firstPersonBook
+    ? candidates
+      .filter((candidate) =>
+        candidate.kindHint === 'person' &&
+        candidate.count >= SALIENCE_FLOOR_MENTIONS &&
+        candidate.dialogueDashRate >= NARRATOR_DIALOGUE_SHARE)
+      .reduce(
+        (best, candidate) => (!best || candidate.count > best.count ? candidate : best),
+        null
+      )
+    : null
+  if (narrator) narrator.narrator = true
+
   const named = candidates.filter(({ kindHint }) => kindHint === 'person')
   const namedMentions = named.reduce((sum, { count }) => sum + count, 0)
   const target = namedMentions * coverage
@@ -894,6 +943,9 @@ export function buildBookNameInventory({
       significantKeys.add(candidate.candidateKey)
     }
   }
+  // Рассказчик значим всегда: ярус считается по частоте имени, а у него имя и
+  // занижено самой формой повествования.
+  if (narrator && significantKeys.size < cap) significantKeys.add(narrator.candidateKey)
   significantCount = significantKeys.size
   for (const candidate of candidates) {
     candidate.tier = significantKeys.has(candidate.candidateKey) ? 'significant' : 'minor'
@@ -917,6 +969,7 @@ export function buildBookNameInventory({
     textLength: source.length,
     chapterCount: textIndex.chapters.length,
     totalMentions,
+    narration: { ...narration, firstPerson: firstPersonBook },
     candidates,
     thresholds: {
       coverage,

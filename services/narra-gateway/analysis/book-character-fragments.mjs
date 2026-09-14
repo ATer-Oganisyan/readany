@@ -18,6 +18,7 @@ import {
   lookupNameFormIds
 } from './character-name-matcher.mjs'
 import { buildBookTextIndex } from './book-text-index.mjs'
+import { firstPersonMentionAt, isDialogueParagraph } from './book-narration.mjs'
 import { NAME_HONORIFICS } from './book-name-inventory.mjs'
 
 export const CHARACTER_FRAGMENTS_VERSION = 'character-fragments-v1'
@@ -153,6 +154,11 @@ export function collectBookCharacterFragments({
   characters,
   navigation = null,
   window = null,
+  // Рассказчик книги от первого лица. Его имя встречается поздно и редко, но
+  // говорит он с первой строки — и то, что он говорит, и есть его
+  // свидетельства. Без них его карточку нечем подтвердить в начале книги, а
+  // персонаж без единой цитаты выпадает молча.
+  narratorKey = null,
   maxFragmentsPerCharacter = MAX_FRAGMENTS_PER_CHARACTER,
   maxQuoteChars = MAX_FRAGMENT_QUOTE_CHARS
 } = {}) {
@@ -253,6 +259,13 @@ export function collectBookCharacterFragments({
         if (!lookupNameFormIds(phrase.nameToken, item.baseSpec).length) continue
         matches.push({ start: phrase.start, end: phrase.end, characterId: item.characterKey })
       }
+    }
+    // Рассказчик говорит о себе «я». Берём первое такое слово абзаца: цитата
+    // строится вокруг упоминания, и ему она нужна вокруг его собственного
+    // слова. Реплики пропускаем — там «я» принадлежит тому, кто говорит.
+    if (narratorKey && byCharacter.has(narratorKey) && !isDialogueParagraph(source, paragraph)) {
+      const mention = firstPersonMentionAt(paragraphText)
+      if (mention >= 0) matches.push({ start: mention, end: mention, characterId: narratorKey })
     }
     if (!matches.length) continue
     const chapter = index.chapterAt(paragraph.startOffset)
