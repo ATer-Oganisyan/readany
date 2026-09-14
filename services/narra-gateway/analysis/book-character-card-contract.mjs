@@ -30,7 +30,11 @@ export function fragmentBelongsToWindow(fragment, window) {
 }
 
 export const CHARACTER_CARD_CONTRACT_VERSION = 'character-card-v1'
-export const CHARACTER_CARD_PROMPT_VERSION = 'character-card-prompt-v2'
+// v3: приветствие обращено к читателю, а не к герою книги. Промпт молчал о том,
+//     кто собеседник, и модель писала реплику внутри сюжета: Драко здоровался
+//     с читателем как с Грейнджер, Тонкс — как с Малфоем. Версия входит в ключ
+//     карточки, поэтому без её подъёма старые приветствия остались бы жить.
+export const CHARACTER_CARD_PROMPT_VERSION = 'character-card-prompt-v3'
 
 /**
  * Сколько черт просить у модели. Просим с запасом: аудит стабильности черт

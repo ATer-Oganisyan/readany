@@ -42,7 +42,13 @@ export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
 // v7: имя на «э» и трёхбуквенное имя больше не пропадают из инвентаря. Разбор
 //     даёт другой набор фрагментов, поэтому прогоны v6 переиспользовать нельзя:
 //     у книги, разобранной до правки, «Аомамэ» так и осталась бы без цитат.
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v7'
+// v8: у книги от первого лица есть рассказчик, и подтверждают его собственные
+//     слова, а не первое называние по имени.
+// v9: приветствие обращено к читателю, а не к герою книги.
+// v10: потолок состава выбирается по частоте, а не по типу кандидата.
+// v11: рассказчик появляется там, где заговорил, и его имя не вытесняется из
+//      выборки его же голосом.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v11'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'

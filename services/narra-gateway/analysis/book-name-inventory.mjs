@@ -27,6 +27,7 @@ import {
   stemNameToken
 } from './character-name-matcher.mjs'
 import { buildBookTextIndex } from './book-text-index.mjs'
+import { bookNarrationPerson } from './book-narration.mjs'
 
 export const NAME_INVENTORY_VERSION = 'name-inventory-v1'
 
@@ -66,6 +67,39 @@ const SPEECH_WINDOW_WORDS = 3
  */
 const SALIENCE_FLOOR_MENTIONS = 12
 const SALIENCE_FLOOR_CHAPTERS = 3
+
+/**
+ * Доля потолка, отданная страховке полноты.
+ *
+ * Потолок — бюджет одного вызова подтверждения состава, и делить его приходится
+ * между двумя нуждами. Отдать его целиком значимым — значит потерять частого
+ * кандидата, чей тип счётчик не смог определить: так пропал Ян ван Тох со 107
+ * упоминаниями, проиграв персонажам с двенадцатью. Отдать целиком частоте —
+ * значит потерять настоящих людей на книге, где места называют чаще героев.
+ *
+ * Поэтому резерв: значимые занимают потолок без него, а он достаётся самым
+ * частым из оставшихся, кем бы их ни счёл счётчик.
+ */
+const ROSTER_BACKSTOP_SHARE = 8
+
+/**
+ * Пороги распознавания рассказчика. Оба измерены, а не выбраны: на одиннадцати
+ * живых книгах доля абзацев с «я» вне реплик у книг от первого лица — 0.62 и
+ * 0.71, у книг от третьего — от 0.014 до 0.22. Между ними пусто, и 0.45 лежит
+ * в этой пустоте.
+ *
+ * Нижняя граница по числу абзацев отсекает не книги, а плохую разбивку: у двух
+ * книг из замера повествовательных абзацев оказалось 36 и 56 на всю книгу, и
+ * доля по такой выборке ничего не значит — одна из них дала ложные 0.55.
+ *
+ * Доля реплик у самого рассказчика: его зовут по имени, только когда к нему
+ * обращаются, поэтому почти все упоминания его имени лежат внутри реплик. У
+ * «Алексея Ивановича» это 0.95, у «Криса» 0.95, у «Кельвина» 0.82 — а у всех
+ * остальных лиц тех же книг 0.29…0.63.
+ */
+const FIRST_PERSON_PARAGRAPH_SHARE = 0.45
+const FIRST_PERSON_MIN_PARAGRAPHS = 100
+const NARRATOR_DIALOGUE_SHARE = 0.75
 
 const WORD_PATTERN = /\p{L}+(?:[-'’ʼ]\p{L}+)*/gu
 
@@ -864,29 +898,109 @@ export function buildBookNameInventory({
   // «Quadrille» речи рядом не имеют, обращения не получают и притяжательной
   // формы не образуют; держать их в знаменателе значило бы растить ярус за счёт
   // строк, которые персонажами не станут. В backstop они остаются.
+  // Рассказчик книги от первого лица. Счётчик имён видит его редко и поздно:
+  // сам себя он называет «я», а по имени его зовут только собеседники. У
+  // «Игрока» первое «Алексей Иванович» — на 78 364-м знаке, на 28 % книги, и
+  // главный герой оказывался позади эпизодических лиц.
+  //
+  // Два условия сразу, потому что каждое по отдельности ошибается: книга должна
+  // вестись от первого лица, а имя — встречаться почти только в репликах.
+  //
+  // Рассказчик в книге один, поэтому берётся ровно один — самый частый из
+  // подходящих. Признак «зовут только в репликах» сам по себе не единственен:
+  // у «Игрока» под него попадают ещё бабушка и её приживалка, к которым тоже
+  // обращаются и о которых рассказчик говорит «она». Разница в частоте между
+  // ними и рассказчиком пятикратная.
+  const narration = bookNarrationPerson(source, textIndex)
+  const firstPersonBook = narration.narrativeParagraphs >= FIRST_PERSON_MIN_PARAGRAPHS &&
+    narration.firstPersonShare >= FIRST_PERSON_PARAGRAPH_SHARE
+  const narrator = firstPersonBook
+    ? candidates
+      .filter((candidate) =>
+        candidate.kindHint === 'person' &&
+        candidate.count >= SALIENCE_FLOOR_MENTIONS &&
+        candidate.dialogueDashRate >= NARRATOR_DIALOGUE_SHARE)
+      .reduce(
+        (best, candidate) => (!best || candidate.count > best.count ? candidate : best),
+        null
+      )
+    : null
+  if (narrator) {
+    narrator.narrator = true
+    // Первое появление рассказчика — там, где он заговорил, а не там, где его
+    // впервые назвали по имени. Окно карточек набирает состав по этому полю, и
+    // замок читателя считается по нему же: пока оно указывало на первое
+    // называние, «Алексей Иванович» получал карточку на 28 % книги и до тех пор
+    // оставался читателю недоступен.
+    if (narration.firstPersonStartOffset >= 0) {
+      narrator.firstMentionTextOffset = Math.min(
+        narrator.firstMentionTextOffset,
+        narration.firstPersonStartOffset
+      )
+    }
+  }
+
+  // Кто безусловно значим: минимальный убывающий по частоте префикс по
+  // кандидатам-людям, покрывающий `coverage` их упоминаний, с учётом ничьих на
+  // границе. Это буквально тот протокол, которым в gold-фикстурах определён
+  // `significant`, поэтому отбор и метрика считаются по одному правилу.
+  //
+  // Знаменатель — только кандидаты с признаками человека. «Iping», «Gables» и
+  // «Quadrille» речи рядом не имеют, обращения не получают и притяжательной
+  // формы не образуют; держать их в знаменателе значило бы растить ярус за счёт
+  // строк, которые персонажами не станут. В backstop они остаются.
   const named = candidates.filter(({ kindHint }) => kindHint === 'person')
   const namedMentions = named.reduce((sum, { count }) => sum + count, 0)
   const target = namedMentions * coverage
+  // Значимые занимают потолок без резерва: остаток принадлежит страховке.
+  const significantCap = Math.max(1, cap - Math.max(1, Math.round(cap / ROSTER_BACKSTOP_SHARE)))
   let covered = 0
-  let significantCount = 0
+  let coreCount = 0
   for (const candidate of named) {
-    if (covered >= target || significantCount >= cap) break
+    if (covered >= target || coreCount >= significantCap) break
     covered += candidate.count
-    significantCount += 1
+    coreCount += 1
   }
-  const boundaryCount = named[significantCount - 1]?.count ?? 0
+  const boundaryCount = named[coreCount - 1]?.count ?? 0
   while (
-    significantCount < named.length && significantCount < cap &&
-    named[significantCount].count === boundaryCount
+    coreCount < named.length && coreCount < significantCap &&
+    named[coreCount].count === boundaryCount
   ) {
-    covered += named[significantCount].count
-    significantCount += 1
+    covered += named[coreCount].count
+    coreCount += 1
   }
   const significantKeys = new Set(
-    named.slice(0, significantCount).map(({ candidateKey }) => candidateKey)
+    named.slice(0, coreCount).map(({ candidateKey }) => candidateKey)
   )
+  // Рассказчик значим всегда: ярус считается по частоте имени, а у него имя и
+  // занижено самой формой повествования.
+  if (narrator) significantKeys.add(narrator.candidateKey)
+
+  // Потолок: сначала те, кто значим безусловно, затем самые частые из
+  // оставшихся — по частоте, а не по типу.
+  //
+  // Пока порядок был обратным, ярус `roster` набирался из остатка после
+  // значимых, и на книге со ста двадцатью восемью персонажами остатка не
+  // оставалось вовсе: кандидат с 94 упоминаниями, чей тип счётчик не смог
+  // определить, проигрывал персонажу с двенадцатью. Он не попадал в состав, не
+  // получал фрагментов и не получал карточки — так пропал Ян ван Тох, герой, с
+  // которого начинается «Война с саламандрами». Backstop полноты обязан считать
+  // частоту, а не тип.
+  //
+  // Но и одной частоты мало: если потолок забьют места, настоящие люди выпадут
+  // целиком. Поэтому частота решает только то, что остаётся после безусловно
+  // значимых, — они в потолке всегда.
+  const rosterKeys = new Set(significantKeys)
+  for (const candidate of candidates) {
+    if (rosterKeys.size >= cap) break
+    rosterKeys.add(candidate.candidateKey)
+  }
+
+  // Порог значимости поверх частотного префикса — но только среди тех, кто в
+  // потолок попал: значимым нельзя быть, не будучи в составе.
   for (const candidate of named) {
-    if (significantKeys.size >= cap) break
+    if (significantKeys.size >= significantCap) break
+    if (!rosterKeys.has(candidate.candidateKey)) continue
     if (
       candidate.count >= SALIENCE_FLOOR_MENTIONS &&
       candidate.chapterCount >= SALIENCE_FLOOR_CHAPTERS
@@ -894,22 +1008,17 @@ export function buildBookNameInventory({
       significantKeys.add(candidate.candidateKey)
     }
   }
-  significantCount = significantKeys.size
-  for (const candidate of candidates) {
-    candidate.tier = significantKeys.has(candidate.candidateKey) ? 'significant' : 'minor'
-  }
+  const significantCount = significantKeys.size
 
-  // Ярус `roster` — вход подтверждения roster: значимые плюс остальные
-  // кандидаты по частоте до потолка. Именно он и есть backstop полноты: место,
+  // Ярус `roster` — вход подтверждения состава и backstop полноты: место,
   // ошибочно помеченное как место, здесь ещё остаётся, и один LLM-вызов может
   // вернуть его в персонажи.
-  let rosterCount = significantCount
   for (const candidate of candidates) {
-    if (rosterCount >= cap) break
-    if (candidate.tier === 'significant') continue
-    candidate.tier = 'roster'
-    rosterCount += 1
+    candidate.tier = significantKeys.has(candidate.candidateKey)
+      ? 'significant'
+      : rosterKeys.has(candidate.candidateKey) ? 'roster' : 'minor'
   }
+  const rosterCount = rosterKeys.size
 
   return {
     inventoryVersion: NAME_INVENTORY_VERSION,
@@ -917,6 +1026,7 @@ export function buildBookNameInventory({
     textLength: source.length,
     chapterCount: textIndex.chapters.length,
     totalMentions,
+    narration: { ...narration, firstPerson: firstPersonBook },
     candidates,
     thresholds: {
       coverage,

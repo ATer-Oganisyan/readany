@@ -146,7 +146,7 @@ export function createBookProgressRepository(pool, { staleWorkerSeconds = 60 } =
       const runIds = runs.rows.map((row) => row.run_id)
       const editionIds = runs.rows.map((row) => row.book_edition_id)
       const empty = { rows: [] }
-      const [stages, runJobs, editionJobs, roster, cards] = runIds.length
+      const [stages, runJobs, editionJobs, roster, cards, windows, publications] = runIds.length
         ? await Promise.all([
           pool.query(
             `SELECT run_id, stage AS name, status, count(*)::integer AS count
@@ -188,15 +188,36 @@ export function createBookProgressRepository(pool, { staleWorkerSeconds = 60 } =
               WHERE run_id = ANY($1::uuid[])
               GROUP BY run_id`,
             [runIds]
+          ),
+          // Окна и публикации: у карточного прогона стадия всегда одна и та же,
+          // и по ней не видно ни движения, ни беды. Движется здесь число
+          // закрытых окон, а бедой оказывается ноль публикаций при готовых
+          // карточках — книга без разметки, которая выглядела работающей.
+          pool.query(
+            `SELECT run_id, count(*)::integer AS total,
+                    count(*) FILTER (WHERE status = 'ready')::integer AS ready
+               FROM book_card_windows
+              WHERE run_id = ANY($1::uuid[])
+              GROUP BY run_id`,
+            [runIds]
+          ),
+          pool.query(
+            `SELECT run_id, count(*)::integer AS count, max(published_at) AS last_at
+               FROM book_analysis_publications
+              WHERE run_id = ANY($1::uuid[])
+              GROUP BY run_id`,
+            [runIds]
           )
         ])
-        : [empty, empty, empty, empty, empty]
+        : [empty, empty, empty, empty, empty, empty, empty]
 
       const stagesByRun = groupBy(stages.rows, 'run_id')
       const runJobsByRun = groupBy(runJobs.rows, 'run_id')
       const editionJobsByEdition = groupBy(editionJobs.rows, 'book_edition_id')
       const rosterByRun = groupBy(roster.rows, 'run_id')
       const cardsByRun = new Map(cards.rows.map((row) => [row.run_id, row]))
+      const windowsByRun = new Map(windows.rows.map((row) => [row.run_id, row]))
+      const publicationsByRun = new Map(publications.rows.map((row) => [row.run_id, row]))
 
       return {
         generatedAt: new Date().toISOString(),
@@ -242,7 +263,13 @@ export function createBookProgressRepository(pool, { staleWorkerSeconds = 60 } =
             })),
             cards: {
               published: count(card?.published),
-              lastWindowIndex: card?.last_window == null ? null : count(card.last_window)
+              lastWindowIndex: card?.last_window == null ? null : count(card.last_window),
+              windows: {
+                total: count(windowsByRun.get(row.run_id)?.total),
+                ready: count(windowsByRun.get(row.run_id)?.ready)
+              },
+              publications: count(publicationsByRun.get(row.run_id)?.count),
+              lastPublishedAt: publicationsByRun.get(row.run_id)?.last_at ?? null
             }
           }
         })

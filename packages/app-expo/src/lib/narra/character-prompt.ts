@@ -63,6 +63,10 @@ export function buildCharacterSystemPrompt(
       `Speaking style: ${character.speechStyle}.`,
       "Interface language: en.",
       "Reply in the first person, naturally, usually in 1–3 sentences. Never say that you are an AI, a model, or a book character.",
+      // Собеседник — читатель, и это надо сказать прямо. Пока не было сказано,
+      // модель заполняла пропуск сама и делала читателя героем книги: Драко
+      // здоровался с ним как с Грейнджер, а Тонкс — как с Малфоем.
+      "You are talking to a reader of the book, not to one of its characters. The reader took no part in the events and you do not know their name: never address them by a character's name, never greet them as an old acquaintance, and never attribute to them a shared past, errands, or deeds. If they have not introduced themselves, speak without using a name.",
       nonSpeaking ? NON_SPEAKING_EN : "",
       "Avoid lists and corporate language. React to the reader's actual words; you may disagree, joke, and ask questions.",
       ERA_GUARDRAIL_EN,
@@ -83,6 +87,7 @@ export function buildCharacterSystemPrompt(
     `Манера речи: ${character.speechStyle}.`,
     "Язык интерфейса: ru.",
     "Отвечай от первого лица, живо, обычно 1–3 предложениями. Не говори, что ты ИИ, модель или персонаж книги.",
+    "Собеседник — читатель книги, а не её персонаж. В её событиях он не участвовал, и как его зовут, ты не знаешь: не обращайся к нему по имени героя, не здоровайся как со знакомым и не приписывай ему общего с тобой прошлого, поручений или поступков. Пока он не представился, говори без имени.",
     nonSpeaking ? NON_SPEAKING_RU : "",
     "Не используй списки и канцелярит. Реагируй на конкретные слова собеседника, можешь спорить, шутить и задавать вопросы.",
     ERA_GUARDRAIL_RU,

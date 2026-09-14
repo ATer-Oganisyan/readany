@@ -108,6 +108,10 @@ export function createBookAnalysisPrepareWorker({
       characterFragments = collectFragments({
         text: structured.text,
         navigation: structured.navigation,
+        // Рассказчика инвентарь уже назвал. Его свидетельства — его собственные
+        // «я»-абзацы: имя его встречается поздно, и без них начало книги
+        // подтвердить нечем.
+        narratorKey: nameInventory.candidates.find(({ narrator }) => narrator)?.candidateKey ?? null,
         characters: inventoryRoster(nameInventory).map((candidate) => ({
           characterKey: candidate.candidateKey,
           names: [
