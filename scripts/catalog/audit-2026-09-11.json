@@ -9,14 +9,16 @@
     "service_documents_excluded": 50,
     "xml_documents_repaired": 82,
     "image_floats_normalized": 10,
-    "chapter_headings_normalized": 92471,
+    "chapter_headings_normalized": 93053,
     "snapshot_sha256": "1ac1c5a5b1f3fea7123c9bea5127a1ea8eb56e83099b96e47fcec34a22d3fae1",
-    "review_sha256": "89ab5b6eb17f97d22e994495e9dff96a465341651bc96597b98ac1bce59a9e10"
+    "review_sha256": "2a8ec5984fe609b579c223fe8f692e5f70ffa0f1617d62f290c10c5a054af990",
+    "recovered_navigation_entries": 630,
+    "contents_column_labels_removed": 4
   },
   "independent_content_audit": {
     "books": 1503,
     "reading_documents": 24487,
-    "reading_characters": 680733572,
+    "reading_characters": 680733576,
     "external_navigation": 0,
     "visible_markup": 0,
     "site_credits": 0,
@@ -36,7 +38,7 @@
     "lxml": "6.1.1",
     "zlib": "1.2.12"
   },
-  "cleaner_sha256": "394cadb3e7d0a2aff47f868ebe49c927442b23bd0e796f0acc30d2422327c24d",
+  "cleaner_sha256": "54d3c8951975bde2c279426cf38aa803b23fc46477c85311f0e3d24611070399",
   "books": [
     {
       "id": "668a4f46-013c-49e0-94ca-74090148df83",
@@ -7532,14 +7534,13 @@
       "id": "30e7b00d-00f5-47d0-9d92-891512b0305a",
       "title": "That Which Hath Wings",
       "source_sha256": "57853700507795c04f41bec47438aa2ee35a8aa401f9a6b29ec9b02c15ce8444",
-      "cleaned_sha256": "7372e5206c6a221fb9c19cedf03761c19864a2229ee6f2381e01eb26ccaac783",
+      "cleaned_sha256": "ba1451392a5e2210429919ed777532536b713259ad93d5194e6c53917acd5585",
       "reading_documents": 26,
       "navigation_entries": 0,
-      "extracted_characters": 1077602,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 145
     },
     {
       "id": "244244fa-b612-40f9-9380-ade8d33bfc0e",
@@ -7938,16 +7939,15 @@
       "id": "c3f0c5ea-fbca-43b7-a5d2-6f0be640cc45",
       "title": "An Australian Girl",
       "source_sha256": "3f0bd6300318cc5f06200bf78753ef8b3ff1b45bc5bdbcf5cfad70a3342a0a37",
-      "cleaned_sha256": "c5e0efbe212f1a5c43376295eb8d181e99c725f671876c3fa1fcbb783cd3b73d",
+      "cleaned_sha256": "dfc92af40d31c924036ac5a06c0be40728613488456cd33990f1ea6af0c40f62",
       "reading_documents": 22,
       "navigation_entries": 0,
-      "extracted_characters": 1034697,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [
         "OEBPS/9056556653036489724_50832-rst-20.rst.html"
       ],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 57
     },
     {
       "id": "a2c91065-646e-45b2-86be-1dcf4432164e",
@@ -8162,16 +8162,15 @@
       "id": "0f221753-933d-4ac7-8f9d-e5016df30211",
       "title": "One of the Six Hundred: A Novel",
       "source_sha256": "3592af3fdaec98f3525e69ba6e2a597ba30235221484722faccf6ac586925600",
-      "cleaned_sha256": "17fb0c78d63dfe717cf103326469fa54effcd9efdc5763578e9cb285e6a58894",
+      "cleaned_sha256": "a17557a03b50e0b224925b0d2a192821e055535317d41cafd3498f538d9361b4",
       "reading_documents": 24,
       "navigation_entries": 0,
-      "extracted_characters": 930643,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [
         "OEBPS/1701532023595095237_55179-rst-22.rst.html"
       ],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 55
     },
     {
       "id": "913915f3-002e-4caf-9b3b-727a579b07c5",
@@ -8319,10 +8318,9 @@
       "id": "f791d768-3ebb-4556-850b-1a9d5868b184",
       "title": "The Autobiography of Benvenuto Cellini",
       "source_sha256": "d56f56fa4f4b2c4b05694f98002ab940b3434f24c1ce897036092d2055b8f923",
-      "cleaned_sha256": "a5fc5ecf3ed1a2e18c09003c56fe31333dfc3d932494e6a4fab78d912ce0d5c5",
+      "cleaned_sha256": "6742b6a4b9fe176fae17125817f81d02a653f244b62abf13dc070522023177f3",
       "reading_documents": 15,
       "navigation_entries": 0,
-      "extracted_characters": 1012521,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
@@ -12435,16 +12433,15 @@
       "id": "a624ff22-340b-4a91-805d-c8049643677c",
       "title": "Adventures of an Aide-de-Camp: Or, a Campaign in Calabria",
       "source_sha256": "39e2dc6996d0bc1470f5eae8582078c5001b853f34f2df16cbbcb7b908874bb4",
-      "cleaned_sha256": "c0d89035b7987a774968b055707b7e5927e35ea597e7acbc082b81ec79b2d5cd",
+      "cleaned_sha256": "76c741d08c78673b99be102159e62d3bf1acff309d4cd689c5040a7d1b58789c",
       "reading_documents": 10,
       "navigation_entries": 0,
-      "extracted_characters": 427503,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [
         "OEBPS/3507016970341563286_54593-rst-8.rst.html"
       ],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 43
     },
     {
       "id": "313ef84a-981c-483c-954d-6a558659017f",
@@ -12851,16 +12848,15 @@
       "id": "9b8f7ca3-b03d-40c3-a8ab-e7cfec611d24",
       "title": "Beau Brocade: A Romance",
       "source_sha256": "27f222dce27cf4cc25caf85fbba9d2f4162576dd0491c2b8d1798b41aae009b1",
-      "cleaned_sha256": "72e8110239cab829884936feae3d7a7ac5f16dbee848a4fd8024f027134f7cb6",
+      "cleaned_sha256": "992063fb0944b670f39dcddea6bfabcaa626c0a3c2a0062e7abfe7466feb8461",
       "reading_documents": 12,
       "navigation_entries": 0,
-      "extracted_characters": 422841,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [
         "OEBPS/4207399239049670820_39786-rst-10.rst.html"
       ],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 77
     },
     {
       "id": "516bf3c0-bd3a-4e46-bffe-47d8bbf2f998",
@@ -13091,14 +13087,13 @@
       "id": "aa0aad4f-34d4-4e17-b31c-3961c6fd6817",
       "title": "Anne Severn and the Fieldings",
       "source_sha256": "922e2872683bf484ba73fa8084f104b51fc815c44fda7fe0b2de94e125f7d1cb",
-      "cleaned_sha256": "1f4a0a23cbf873b4689621da02ec6dc88af74b525ef608860c74068ce57cbc7b",
+      "cleaned_sha256": "77fb8573154ee31adafbfa448e67cb6a214a2376c0e8c5178146ddb37e79a6a1",
       "reading_documents": 9,
       "navigation_entries": 43,
-      "extracted_characters": 425336,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 52
+      "normalized_chapter_labels": 50
     },
     {
       "id": "d38ec226-c4e0-4145-9e31-2656e829fe02",
@@ -13117,16 +13112,15 @@
       "id": "370a2524-d7f7-4d6b-afca-bc2facd3cb22",
       "title": "Adventures of an Aide-de-Camp: Or, A Campaign in Calabria",
       "source_sha256": "88c1b320fd23cfd16f822c6435e2d7d7b8df1e56c89ef8fdc7e738b6b6057b0a",
-      "cleaned_sha256": "2d1385688f87f8e43732c48915ad612775786226f9a16332149d10147d5bfc97",
+      "cleaned_sha256": "f87a82b39ed217f43f10f79827a598f5beda9a4369f91fdde89c801b9b0b4946",
       "reading_documents": 9,
       "navigation_entries": 0,
-      "extracted_characters": 391497,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [
         "OEBPS/4168397358462239239_54594-rst-7.rst.html"
       ],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 47
     },
     {
       "id": "23af25c4-58b0-49d4-9dda-e37a8f5568db",
@@ -13681,14 +13675,13 @@
       "id": "b3abee4e-8b21-416a-9395-2265f0ff8151",
       "title": "Warwick the Kingmaker",
       "source_sha256": "16f2affe23c213e531cbb3c10a7e77d579e1eb3758699146d84b4f7bf15c9a6c",
-      "cleaned_sha256": "31d8c90ac8a5d7263a0f9c953e1a618e122febc1fabec0f8d575e7da384119d6",
+      "cleaned_sha256": "a21b2030f698ba982b5f4a77cc1d4d86625e12e6b7844829a7ab012e44a0b39d",
       "reading_documents": 8,
       "navigation_entries": 0,
-      "extracted_characters": 394034,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 35
     },
     {
       "id": "735aadb5-598b-4d29-ae1b-4b4b76839fad",
@@ -13954,14 +13947,13 @@
       "id": "58b8be42-5d70-4186-8e9d-39aab798ba1d",
       "title": "Abaft the Funnel",
       "source_sha256": "f79981464703dd3e0bf0de9f3ebfef60b41b1abf617261c53048521107169d58",
-      "cleaned_sha256": "34d6a1d24eeca9feef87ac97005eb93dc3150b23485d9f25ea0c34ccbb2db610",
+      "cleaned_sha256": "2f31bb1d3b495363fd6ba624e108062d4761acbec0a9a38fd831182dea73153b",
       "reading_documents": 9,
       "navigation_entries": 0,
-      "extracted_characters": 337979,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 32
     },
     {
       "id": "7c38bbb9-dd25-4af4-9261-223e442c89a5",
@@ -14209,16 +14201,15 @@
       "id": "a42b8b9b-0c5e-47d0-8235-4555ba7bb4dc",
       "title": "Adventures of an Aide-de-Camp: Or, a Campaign in Calabria",
       "source_sha256": "4ed2bb159c8c21791b1a9372d3126a8a0b0b37230fe94055b985358bc0702ac5",
-      "cleaned_sha256": "5049ed1082956ae2bb3cf433301e59fe68c4b07f3c99194b4afb8ae0eabf3ecb",
+      "cleaned_sha256": "1c6e8aa7060ec964ae0f0ea52cfe8cdb3d4624900a0da7014a5f8e295b442c05",
       "reading_documents": 8,
       "navigation_entries": 0,
-      "extracted_characters": 327830,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [
         "OEBPS/3308084089784960705_54595-rst-6.rst.html"
       ],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 47
     },
     {
       "id": "83cce22b-172f-4212-902a-fa3999c67f29",
@@ -15329,14 +15320,13 @@
       "id": "7b7187e4-5662-4218-8eb0-7937d1dd5c5f",
       "title": "Aunt Jane's Nieces",
       "source_sha256": "b4b375cdb06535247f785d577f4dd8300bee10f9530ca42608d18874551618f1",
-      "cleaned_sha256": "6657ce8728407a9676e1f1f1523a41e245bf558581ac7103fd288272e3711361",
+      "cleaned_sha256": "680192fc540fc161beaa32545f90ccffe4e6422a86a8cf7cb8f0b047f288aebe",
       "reading_documents": 7,
       "navigation_entries": 31,
-      "extracted_characters": 286558,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 124
+      "normalized_chapter_labels": 122
     },
     {
       "id": "26b6f937-e433-465b-907d-eee10d2e833b",
@@ -15699,14 +15689,13 @@
       "id": "392866a9-57cc-431f-98fb-c58e22c44dca",
       "title": "Affairs of State: Being an Account of Certain Surprising Adventures Which Befell an American Family in the Land of Windmills",
       "source_sha256": "28e408c757f9e557b2a33e3e474bb9b1982ec1dabe05b0048f7d02c2e1e6e432",
-      "cleaned_sha256": "fd6ef33208c654f62031735650b27d2af83484575b161859e6f256e345d7112d",
+      "cleaned_sha256": "dbbd0b44eaac00157c30c69cb6bd72d5c367934cc47c25418b22a7f37abfaef0",
       "reading_documents": 6,
       "navigation_entries": 25,
-      "extracted_characters": 268742,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 81
+      "normalized_chapter_labels": 79
     },
     {
       "id": "0fc57fe0-2640-4561-bcce-10dfbfff4a9e",
@@ -16321,14 +16310,13 @@
       "id": "f69d7424-e116-4a85-a9cf-759bc0d6475d",
       "title": "Aunt Jane's Nieces and Uncle John",
       "source_sha256": "984dd817e40ff3dba6731564c4692fa4bde94919be52dfe17453b879ce651285",
-      "cleaned_sha256": "93463a8bfacf9c596592ec451dd1138757668ede4a415ac9235d1f8c17f1e4e6",
+      "cleaned_sha256": "e73111846c72a659b72abc59426bffb951f3c7790bdd392e26bbb428d6d269b5",
       "reading_documents": 6,
       "navigation_entries": 23,
-      "extracted_characters": 242042,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 74
+      "normalized_chapter_labels": 72
     },
     {
       "id": "bef57c2a-b998-47ea-b0a7-10381f17bb91",
@@ -17652,16 +17640,15 @@
       "id": "6316512d-0b9d-4d44-bd7f-040f79c59a1e",
       "title": "Billy Whiskers' Travels",
       "source_sha256": "9fc2617ca6495bb21c4e1f395c70818207b1ed1fe41ac32c89d539811ff032c2",
-      "cleaned_sha256": "cb8322d4cdf457488559d86f3ad82e6445cf661ce6abbc7e50dea618a4dad07f",
+      "cleaned_sha256": "009d284b78b01e59092965103d28648a593b32703b381f908a4610869ff9e4c4",
       "reading_documents": 6,
       "navigation_entries": 0,
-      "extracted_characters": 180428,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [
         "OEBPS/6717605342229099684_43872-rst-4.rst.html"
       ],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 27
     },
     {
       "id": "b449a5de-8e20-41d6-908f-c2c2a3d91d17",
@@ -17976,14 +17963,13 @@
       "id": "2ff2ac6b-dd11-4d2c-9772-1fa5c3417a81",
       "title": "Antony and Cleopatra",
       "source_sha256": "c81d79580d795a0edb1242f89e391884320635f066e6dad5ce5ca8b46dff3c01",
-      "cleaned_sha256": "aac0eaf4663da3d0ec32bb12cf0cee03b1ddf6c509f0f998c4b28416b673c70f",
+      "cleaned_sha256": "eab793d9276f1dc3d4a6e1859a32b2942a35fd78ffdfa1693a02542a59c4d62b",
       "reading_documents": 4,
       "navigation_entries": 0,
-      "extracted_characters": 149472,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 2
+      "normalized_chapter_labels": 3
     },
     {
       "id": "26845fc4-46be-427d-ac0f-3ec64390b467",
@@ -18238,14 +18224,13 @@
       "id": "a632888c-afdc-45b8-a007-da0139c37b54",
       "title": "All's Well That Ends Well",
       "source_sha256": "1fc43aca5dd555bc078a4a461a85406cdf97cf7236ca3d69d49ffec206a1a6e5",
-      "cleaned_sha256": "818995a4f640f838a618de2e080656fc60248d40f18ed523141b448302fba0d4",
+      "cleaned_sha256": "c0d252103a78eb34f3e1de19831ba3639380030ac387cb35725b93fd7fd740a6",
       "reading_documents": 4,
       "navigation_entries": 0,
-      "extracted_characters": 134120,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 2
+      "normalized_chapter_labels": 7
     },
     {
       "id": "dbd56586-d6b9-41a0-8e2a-fcc44627cf32",
@@ -19236,14 +19221,13 @@
       "id": "ddf0234a-a053-4e79-93bd-4bb29c2fa77b",
       "title": "A Legend of Old Persia and Other Poems",
       "source_sha256": "015294c4ce31081cfa13b2ef134c3929488f0dd1ef52506f7fba854f9a9540ba",
-      "cleaned_sha256": "8f004f7791af583c552d938f1f7c8d5188ec3a774ce47601bb456a1d6d33b1fd",
+      "cleaned_sha256": "31368b853a5a11d89fbc16fecf76c4ceb1b64c78bbdc93fd2a54292ac62e7c1f",
       "reading_documents": 4,
       "navigation_entries": 0,
-      "extracted_characters": 79738,
       "removed_external_links": 0,
       "removed_editorial_sections": [],
       "repaired_xml": [],
-      "normalized_chapter_labels": 1
+      "normalized_chapter_labels": 30
     },
     {
       "id": "f59bb019-fd4c-4087-87d1-f6ca180b6a19",
@@ -20063,9 +20047,92 @@
   ],
   "chapter_heading_audit": {
     "books": 1503,
-    "headings": 67535,
-    "toc_labels": 55037,
-    "topology_checks": 79623
+    "headings": 68132,
+    "toc_labels": 55663,
+    "topology_checks": 0
   },
-  "heading_normalizer_sha256": "51c41299cad50062be8dd6471209aaaa070308e8caecbf2d669fb79d2826d314"
+  "heading_normalizer_sha256": "c3a15907206b68db8f525281de1b93072c32bf9f1439bd2cd8cdeaa2f9ab0009",
+  "server_toc_audit": {
+    "checked": 1503,
+    "items": 51009,
+    "recoveredBooks": 14,
+    "failures": []
+  },
+  "reader_toc_tests": {
+    "passed": 95,
+    "catalog_books": 1503
+  },
+  "browser_toc_audit": [
+    {
+      "id": "30e7b00d-00f5-47d0-9d92-891512b0305a",
+      "resolved": 72,
+      "navigated": 3
+    },
+    {
+      "id": "c3f0c5ea-fbca-43b7-a5d2-6f0be640cc45",
+      "resolved": 56,
+      "navigated": 3
+    },
+    {
+      "id": "0f221753-933d-4ac7-8f9d-e5016df30211",
+      "resolved": 54,
+      "navigated": 3
+    },
+    {
+      "id": "f791d768-3ebb-4556-850b-1a9d5868b184",
+      "resolved": 240,
+      "navigated": 3
+    },
+    {
+      "id": "a624ff22-340b-4a91-805d-c8049643677c",
+      "resolved": 21,
+      "navigated": 3
+    },
+    {
+      "id": "9b8f7ca3-b03d-40c3-a8ab-e7cfec611d24",
+      "resolved": 38,
+      "navigated": 3
+    },
+    {
+      "id": "370a2524-d7f7-4d6b-afca-bc2facd3cb22",
+      "resolved": 23,
+      "navigated": 3
+    },
+    {
+      "id": "b3abee4e-8b21-416a-9395-2265f0ff8151",
+      "resolved": 17,
+      "navigated": 3
+    },
+    {
+      "id": "58b8be42-5d70-4186-8e9d-39aab798ba1d",
+      "resolved": 31,
+      "navigated": 3
+    },
+    {
+      "id": "a42b8b9b-0c5e-47d0-8235-4555ba7bb4dc",
+      "resolved": 23,
+      "navigated": 3
+    },
+    {
+      "id": "6316512d-0b9d-4d44-bd7f-040f79c59a1e",
+      "resolved": 13,
+      "navigated": 3
+    },
+    {
+      "id": "2ff2ac6b-dd11-4d2c-9772-1fa5c3417a81",
+      "resolved": 1,
+      "navigated": 1
+    },
+    {
+      "id": "a632888c-afdc-45b8-a007-da0139c37b54",
+      "resolved": 5,
+      "navigated": 3
+    },
+    {
+      "id": "ddf0234a-a053-4e79-93bd-4bb29c2fa77b",
+      "resolved": 36,
+      "navigated": 3
+    }
+  ],
+  "navigation_repair_sha256": "b3fb1e36517a6b61dcdbb0ec13cd7e81b6d66b6e8a182169347e8c2a62f7493b"
 }

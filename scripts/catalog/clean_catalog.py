@@ -22,6 +22,7 @@ def clean_one(task):
                       editorial_headings=review.get('editorial_headings', []),
                       reviewed_sections=review.get('sections', []),
                       text_replacements=review.get('text_replacements'),
+                      navigation_repair=review.get('navigation_repair'),
                       normalize_image_floats=review.get('normalize_image_floats', False))
 
 
@@ -77,6 +78,8 @@ def clean_catalog(snapshot, sources, output, reviews, workers=2):
         'xml_documents_repaired': sum(len(r.get('repaired_xml', [])) for r in reports),
         'image_floats_normalized': sum(r.get('image_floats_normalized', 0) for r in reports),
         'chapter_headings_normalized': sum(len(r.get('chapter_heading_changes', [])) for r in reports),
+        'recovered_navigation_entries': sum(r.get('recovered_navigation_entries', 0) for r in reports),
+        'contents_column_labels_removed': sum(r.get('contents_column_labels_removed', 0) for r in reports),
         'snapshot_sha256': sha256(snapshot), 'review_sha256': sha256(Path(reviews)),
     }
     (output / 'report.json').write_text(json.dumps(reports, ensure_ascii=False, indent=2)+'\n')

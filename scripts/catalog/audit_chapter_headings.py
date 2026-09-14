@@ -39,7 +39,7 @@ def audit(directory, baseline=None):
                     doc = ET.fromstring(z.read(name))
                     labels = []
                     for el in doc.iter():
-                        if tag(el) in {'h1','h2','h3','h4','h5','h6'}:
+                        if tag(el) in {'h1','h2','h3','h4','h5','h6'} or el.get('data-narra-heading') == 'true':
                             labels.append((el,'headings'))
                         if tag(el) == 'navPoint':
                             labels.extend((child,'toc_labels') for label in el if tag(label)=='navLabel' for child in label if tag(child)=='text')

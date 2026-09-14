@@ -1619,5 +1619,117 @@
     "editorial_headings": [],
     "normalize_image_floats": true,
     "layout_reason": "Иллюстрации Билибина с float:right сжимали стихотворные строки до одного слова на мобильной странице; изображения оставлены между строками без обтекания."
+  },
+  "30e7b00d-00f5-47d0-9d92-891512b0305a": {
+    "title": "That Which Hath Wings",
+    "source_sha256": "57853700507795c04f41bec47438aa2ee35a8aa401f9a6b29ec9b02c15ce8444",
+    "navigation_repair": {
+      "strategy": "rst",
+      "expected_entries": 72
+    }
+  },
+  "c3f0c5ea-fbca-43b7-a5d2-6f0be640cc45": {
+    "title": "An Australian Girl",
+    "source_sha256": "3f0bd6300318cc5f06200bf78753ef8b3ff1b45bc5bdbcf5cfad70a3342a0a37",
+    "navigation_repair": {
+      "strategy": "rst",
+      "expected_entries": 56
+    }
+  },
+  "0f221753-933d-4ac7-8f9d-e5016df30211": {
+    "title": "One of the Six Hundred: A Novel",
+    "source_sha256": "3592af3fdaec98f3525e69ba6e2a597ba30235221484722faccf6ac586925600",
+    "navigation_repair": {
+      "strategy": "rst",
+      "expected_entries": 54
+    }
+  },
+  "f791d768-3ebb-4556-850b-1a9d5868b184": {
+    "title": "The Autobiography of Benvenuto Cellini",
+    "source_sha256": "d56f56fa4f4b2c4b05694f98002ab940b3434f24c1ce897036092d2055b8f923",
+    "navigation_repair": {
+      "strategy": "cellini",
+      "expected_entries": 240
+    }
+  },
+  "a624ff22-340b-4a91-805d-c8049643677c": {
+    "title": "Adventures of an Aide-de-Camp: Or, a Campaign in Calabria",
+    "source_sha256": "39e2dc6996d0bc1470f5eae8582078c5001b853f34f2df16cbbcb7b908874bb4",
+    "navigation_repair": {
+      "strategy": "rst",
+      "expected_entries": 21
+    }
+  },
+  "9b8f7ca3-b03d-40c3-a8ab-e7cfec611d24": {
+    "title": "Beau Brocade: A Romance",
+    "source_sha256": "27f222dce27cf4cc25caf85fbba9d2f4162576dd0491c2b8d1798b41aae009b1",
+    "navigation_repair": {
+      "strategy": "rst",
+      "expected_entries": 38
+    }
+  },
+  "370a2524-d7f7-4d6b-afca-bc2facd3cb22": {
+    "title": "Adventures of an Aide-de-Camp: Or, A Campaign in Calabria",
+    "source_sha256": "88c1b320fd23cfd16f822c6435e2d7d7b8df1e56c89ef8fdc7e738b6b6057b0a",
+    "navigation_repair": {
+      "strategy": "rst",
+      "expected_entries": 23
+    }
+  },
+  "b3abee4e-8b21-416a-9395-2265f0ff8151": {
+    "title": "Warwick the Kingmaker",
+    "source_sha256": "16f2affe23c213e531cbb3c10a7e77d579e1eb3758699146d84b4f7bf15c9a6c",
+    "navigation_repair": {
+      "strategy": "warwick",
+      "expected_entries": 17
+    }
+  },
+  "58b8be42-5d70-4186-8e9d-39aab798ba1d": {
+    "title": "Abaft the Funnel",
+    "source_sha256": "f79981464703dd3e0bf0de9f3ebfef60b41b1abf617261c53048521107169d58",
+    "navigation_repair": {
+      "strategy": "abaft",
+      "expected_entries": 31
+    }
+  },
+  "a42b8b9b-0c5e-47d0-8235-4555ba7bb4dc": {
+    "title": "Adventures of an Aide-de-Camp: Or, a Campaign in Calabria",
+    "source_sha256": "4ed2bb159c8c21791b1a9372d3126a8a0b0b37230fe94055b985358bc0702ac5",
+    "navigation_repair": {
+      "strategy": "rst",
+      "expected_entries": 23
+    }
+  },
+  "6316512d-0b9d-4d44-bd7f-040f79c59a1e": {
+    "title": "Billy Whiskers' Travels",
+    "source_sha256": "9fc2617ca6495bb21c4e1f395c70818207b1ed1fe41ac32c89d539811ff032c2",
+    "navigation_repair": {
+      "strategy": "rst",
+      "expected_entries": 13
+    }
+  },
+  "2ff2ac6b-dd11-4d2c-9772-1fa5c3417a81": {
+    "title": "Antony and Cleopatra",
+    "source_sha256": "c81d79580d795a0edb1242f89e391884320635f066e6dad5ce5ca8b46dff3c01",
+    "navigation_repair": {
+      "strategy": "shakespeare",
+      "expected_entries": 1
+    }
+  },
+  "a632888c-afdc-45b8-a007-da0139c37b54": {
+    "title": "All's Well That Ends Well",
+    "source_sha256": "1fc43aca5dd555bc078a4a461a85406cdf97cf7236ca3d69d49ffec206a1a6e5",
+    "navigation_repair": {
+      "strategy": "shakespeare",
+      "expected_entries": 5
+    }
+  },
+  "ddf0234a-a053-4e79-93bd-4bb29c2fa77b": {
+    "title": "A Legend of Old Persia and Other Poems",
+    "source_sha256": "015294c4ce31081cfa13b2ef134c3929488f0dd1ef52506f7fba854f9a9540ba",
+    "navigation_repair": {
+      "strategy": "poems",
+      "expected_entries": 36
+    }
   }
 }

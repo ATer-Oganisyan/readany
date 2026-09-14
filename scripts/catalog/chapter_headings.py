@@ -98,5 +98,5 @@ def normalize_chapters(docs, ncxs, manifest, excluded, report, member_path, text
     for name, doc in docs.items():
         if name in excluded or name == 'Narra/source-notices.xhtml': continue
         # Some valid XML exports omit <body>; browsers still render their headings.
-        for heading in doc.xpath('//*[local-name()="h1" or local-name()="h2" or local-name()="h3" or local-name()="h4" or local-name()="h5" or local-name()="h6"]'):
+        for heading in doc.xpath('//*[local-name()="h1" or local-name()="h2" or local-name()="h3" or local-name()="h4" or local-name()="h5" or local-name()="h6" or @data-narra-heading="true"]'):
             change(name, heading)

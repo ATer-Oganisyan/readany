@@ -68,6 +68,7 @@ def verify_one(task):
                        editorial_headings=review.get('editorial_headings', []),
                        reviewed_sections=review.get('sections', []),
                        text_replacements=review.get('text_replacements'),
+                       navigation_repair=review.get('navigation_repair'),
                       normalize_image_floats=review.get('normalize_image_floats', False))
             if source.read_bytes() != target.read_bytes(): raise ValueError('Cleanup is not idempotent')
         result['sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
