@@ -22,11 +22,9 @@ const bodyTextStyle = {
 
 export function ImportSourceHeaderMenuButton({
   accessibilityLabel,
-  urlLabel,
   localLabel,
   color,
   disabled = false,
-  onUrlPress,
   onLocalPress,
 }: ImportSourceHeaderMenuButtonProps) {
   const [expanded, setExpanded] = useState(false);
@@ -57,13 +55,6 @@ export function ImportSourceHeaderMenuButton({
             <DropdownMenuItem.Text>
               <Text maxLines={1} style={bodyTextStyle}>
                 {localLabel}
-              </Text>
-            </DropdownMenuItem.Text>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleSelect(onUrlPress)}>
-            <DropdownMenuItem.Text>
-              <Text maxLines={1} style={bodyTextStyle}>
-                {urlLabel}
               </Text>
             </DropdownMenuItem.Text>
           </DropdownMenuItem>

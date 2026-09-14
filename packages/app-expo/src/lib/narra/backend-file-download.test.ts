@@ -110,7 +110,7 @@ describe("verified backend file download", () => {
       const settled = download.catch((error) => error as Error);
 
       await vi.advanceTimersByTimeAsync(1_000);
-      expect((await settled).message).toContain("after 2 attempts");
+      expect(await settled).toMatchObject({ message: expect.stringContaining("after 2 attempts") });
       expect(mocks.requestBackendDownloadUrl).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();

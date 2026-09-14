@@ -944,7 +944,7 @@
       if (!win) return;
       if (!isRangeVisibleInReader(range, renderer, win)) {
         try {
-          await renderer.scrollToAnchor(range, true);
+          await renderer.scrollToAnchor(range, false);
         } catch (e) {
           try {
             await view.goTo(cfi);
@@ -5575,6 +5575,9 @@ a { color: ${primary} !important; }
           }
           var span = doc.createElement('span');
           span.className = CHARACTER_NAME_CLASS;
+          // Reader-wide span rules force body size; markup must keep the surrounding type.
+          span.style.setProperty('font-size', 'inherit', 'important');
+          span.style.setProperty('line-height', 'inherit', 'important');
           span.setAttribute(CHARACTER_NAME_ATTR, match.characterId);
           span.textContent = text.slice(match.start, match.end);
           fragment.appendChild(span);

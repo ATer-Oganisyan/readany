@@ -83,6 +83,7 @@
       }
     },
     "production-apk": {
+      "environment": "production",
       "autoIncrement": true,
       "distribution": "store",
       "channel": "production",

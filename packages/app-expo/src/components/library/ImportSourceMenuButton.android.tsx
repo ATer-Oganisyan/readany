@@ -12,10 +12,8 @@ const bodyLineHeight = Number.parseFloat(String(bodyTypography?.lineHeight));
 
 export function ImportSourceMenuButton({
   label,
-  urlLabel,
   localLabel,
   disabled = false,
-  onUrlPress,
   onLocalPress,
 }: ImportSourceMenuButtonProps) {
   const { colors } = useTheme();
@@ -47,13 +45,6 @@ export function ImportSourceMenuButton({
             <DropdownMenuItem.Text>
               <Text maxLines={1} style={bodyTextStyle}>
                 {localLabel}
-              </Text>
-            </DropdownMenuItem.Text>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleSelect(onUrlPress)}>
-            <DropdownMenuItem.Text>
-              <Text maxLines={1} style={bodyTextStyle}>
-                {urlLabel}
               </Text>
             </DropdownMenuItem.Text>
           </DropdownMenuItem>

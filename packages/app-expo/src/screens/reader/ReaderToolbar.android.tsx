@@ -1,4 +1,5 @@
 import { getFilledIconImageSource } from "@/components/ui/MishanaerIcon";
+import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
 import {
   CircularProgressIndicator,
   HorizontalFloatingToolbar,
@@ -15,8 +16,13 @@ export const TOOLBAR_HEIGHT = 64;
 
 export function ReaderToolbar(props: ReaderToolbarProps) {
   const { t } = useTranslation();
-  const speechLabel =
-    props.speechState === "playing" ? t("tts.stopShort", "Стоп") : t("reader.listen", "Слушать");
+  const speechActive = !AUDIOBOOK_PLAYER_ENABLED && props.speechState === "playing";
+  const speechLoading = !AUDIOBOOK_PLAYER_ENABLED && props.speechState === "loading";
+  const speechLabel = AUDIOBOOK_PLAYER_ENABLED
+    ? t("reader.audio", "Аудио")
+    : speechActive
+      ? t("tts.stopShort", "Стоп")
+      : t("reader.listen", "Слушать");
 
   return (
     <View style={styles.container}>
@@ -25,8 +31,8 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
           colors={{ toolbarContentColor: props.tintColor }}
           variant="standard"
         >
-          <IconButton onClick={props.onSpeechPress} enabled={props.speechState !== "loading"}>
-            {props.speechState === "loading" ? (
+          <IconButton onClick={props.onSpeechPress} enabled={!speechLoading}>
+            {speechLoading ? (
               <CircularProgressIndicator
                 color={props.tintColor}
                 strokeWidth={2}
@@ -35,7 +41,7 @@ export function ReaderToolbar(props: ReaderToolbarProps) {
             ) : (
               <Icon
                 source={
-                  props.speechState === "playing"
+                  speechActive
                     ? getFilledIconImageSource("stop")
                     : getFilledIconImageSource("headphones")
                 }

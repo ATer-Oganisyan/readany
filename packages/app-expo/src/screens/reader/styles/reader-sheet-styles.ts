@@ -10,7 +10,7 @@ import { spacingPixels } from "@deslop/primitives";
 /**
  * Bottom sheet + settings panel styles for ReaderScreen.
  */
-import { Dimensions, StyleSheet } from "react-native";
+import { Dimensions, Platform, StyleSheet } from "react-native";
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 
@@ -19,6 +19,7 @@ export const makeSheetStyles = (colors: ThemeColors) =>
     // ── Generic bottom sheet ──────────────────────────────────────────────────
     modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)" },
     bottomSheet: {
+      ...(Platform.OS === "android" ? { maxHeight: "80%" as const } : {}),
       backgroundColor: colors.card,
       borderTopLeftRadius: radius.xxl,
       borderTopRightRadius: radius.xxl,

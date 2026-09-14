@@ -67,7 +67,7 @@ import {
   useTTSStore,
 } from "@/stores";
 import { darkColors, lightColors, useTheme } from "@/styles/ThemeContext";
-import { useColors } from "@/styles/theme";
+import { useColors, withOpacity } from "@/styles/theme";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
@@ -158,7 +158,7 @@ type TTSSegment = VisibleTTSSegment;
 // ──────────────────────────── helpers ────────────────────────────
 
 function ReaderLoadingIndicator({ color }: { color: string }) {
-  return <AnimatedNarraFace width={56} height={58} color={color} />;
+  return <AnimatedNarraFace width={56} height={58} color={withOpacity(color, 0.2)} />;
 }
 
 const keepTTSInReader = (_visible: boolean) => undefined;
@@ -430,7 +430,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
       style={{ flex: 1, paddingBottom: insets.bottom, backgroundColor: paperColors.background }}
     >
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ReaderLoadingIndicator color={colors.primary20} />
+        <ReaderLoadingIndicator color={paperColors.foreground} />
       </View>
       {process.env.EXPO_OS === "android" ? (
         <View
@@ -2147,7 +2147,7 @@ function ReaderContent({ route, navigation }: Props) {
       >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
-            <ReaderLoadingIndicator color={colors.primary20} />
+            <ReaderLoadingIndicator color={readerThemeColors.foreground} />
           </View>
         </View>
         {readerTopBarDock}
@@ -2171,7 +2171,7 @@ function ReaderContent({ route, navigation }: Props) {
       >
         <View style={s.readerStage}>
           <View style={s.loadingWrap}>
-            <ReaderLoadingIndicator color={colors.primary20} />
+            <ReaderLoadingIndicator color={readerThemeColors.foreground} />
           </View>
         </View>
         {readerTopBarDock}
@@ -2281,7 +2281,7 @@ function ReaderContent({ route, navigation }: Props) {
               style={[s.loadingOverlay, { backgroundColor: readerThemeColors.background }]}
               pointerEvents="none"
             >
-              <ReaderLoadingIndicator color={colors.primary20} />
+              <ReaderLoadingIndicator color={readerThemeColors.foreground} />
             </View>
           )}
 

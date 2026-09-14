@@ -30,7 +30,6 @@ export const CatalogBookCard = memo(function CatalogBookCard({
   hasCover,
   coverLoadFailed,
   cardWidth,
-  isInLibrary,
   onPress,
   onRetryCover,
 }: CatalogBookCardProps) {
@@ -39,6 +38,8 @@ export const CatalogBookCard = memo(function CatalogBookCard({
   const { t } = useTranslation();
   const swipePressGuard = useSwipePressGuard();
   const cardHeight = cardWidth * (41 / 28);
+  const coverWidth = Math.max(cardWidth, 180);
+  const coverScale = cardWidth / coverWidth;
   const cardSize = useMemo(
     () => ({ width: cardWidth, height: cardHeight }),
     [cardWidth, cardHeight],
@@ -93,44 +94,52 @@ export const CatalogBookCard = memo(function CatalogBookCard({
         importantForAccessibility={isCoverReady ? "auto" : "no-hide-descendants"}
         style={[StyleSheet.absoluteFill, !isCoverReady && styles.hidden]}
       >
-        <PerspectiveBook
-          width={cardWidth}
-          height={cardHeight}
-          coverEffects={isCoverReady}
-          showShadow={isCoverReady}
-          disabled={!isCoverReady}
-          accessibilityLabel={title}
-          accessibilityHint={
-            isInLibrary
-              ? t("notes.openBook", "Открыть книгу")
-              : t("library.catalogAdd", "Добавить в библиотеку")
-          }
-          onPress={handlePress}
-          cover={
-            <View style={styles.coverCanvas}>
-              {showImage ? (
-                <Image
-                  key={coverUri}
-                  source={coverSource}
-                  style={styles.coverImage}
-                  resizeMode="cover"
-                  onLoad={handleLoad}
-                  onError={handleError}
-                />
-              ) : null}
-              {/* Keep contrast preparation and the Image mounted, but create
+        <View style={cardSize}>
+          <PerspectiveBook
+            width={cardWidth}
+            height={cardHeight}
+            coverEffects={isCoverReady}
+            showShadow={isCoverReady}
+            disabled={!isCoverReady}
+            accessibilityLabel={title}
+            accessibilityHint={t("notes.openBook", "Открыть книгу")}
+            onPress={handlePress}
+            cover={
+              <View
+                style={[
+                  styles.coverCanvas,
+                  {
+                    width: coverWidth,
+                    height: coverWidth * (41 / 28),
+                    transformOrigin: "top left",
+                    transform: [{ scale: coverScale }],
+                  },
+                ]}
+                >
+                {showImage ? (
+                  <Image
+                    key={coverUri}
+                    source={coverSource}
+                    style={styles.coverImage}
+                    resizeMode="cover"
+                    onLoad={handleLoad}
+                    onError={handleError}
+                  />
+                ) : null}
+                {/* Keep contrast preparation and the Image mounted, but create
                   no native text or surface effects behind the skeleton. */}
-              <BookCoverTypography
-                title={title}
-                author={author}
-                width={cardWidth}
-                showText={isCoverReady}
-                textTone={showImage ? generatedCoverTextTone({ title, author }) : "light"}
-                coverUri={showImage ? coverUri : undefined}
-              />
-            </View>
-          }
-        />
+                <BookCoverTypography
+                  title={title}
+                  author={author}
+                  width={coverWidth}
+                  showText={isCoverReady}
+                  textTone={showImage ? generatedCoverTextTone({ title, author }) : "light"}
+                  coverUri={showImage ? coverUri : undefined}
+                />
+              </View>
+            }
+          />
+        </View>
       </View>
       {display === "error" ? (
         <View style={styles.retry}>

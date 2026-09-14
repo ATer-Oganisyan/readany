@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { formatBookCoverTitle } from "./format-book-cover-title";
+import { bindShortWords, formatBookCoverTitle } from "./format-book-cover-title";
+
+describe("bindShortWords", () => {
+  it("binds the conjunction in the full sheet title", () => {
+    expect(bindShortWords("Преступление и наказание")).toBe("Преступление и\u00A0наказание");
+  });
+
+  it("preserves all sentences in the full title", () => {
+    expect(bindShortWords("Любовь и море. В пути")).toBe("Любовь и\u00A0море. В\u00A0пути");
+  });
+});
 
 describe("formatBookCoverTitle", () => {
   it.each(["а", "в", "и", "к", "о", "с", "у", "до", "из", "на", "of", "to"])(

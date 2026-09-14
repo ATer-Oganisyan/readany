@@ -2,15 +2,15 @@ import {
   SystemSheetZoomSource,
   prepareSheetZoom,
 } from "@/components/navigation/SystemSheetZoomSource";
-import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { useTTSBuffering } from "@/components/reader/tts/useTTSNativePlayer";
-import { AnimatedPlayPause } from "./animated-play-pause";
+import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { navigate } from "@/lib/navigationRef";
 import { useTTSStore } from "@/stores/tts-store";
-import { useColors } from "@/styles/theme";
+import { subtitleTypography, useColors } from "@/styles/theme";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { Platform, PlatformColor, Pressable, StyleSheet, Text, View } from "react-native";
+import { AnimatedPlayPause } from "./animated-play-pause";
 import { AudiobookCover } from "./audiobook-cover";
 // Source: expo-ui-examples/mini-player/mini-player-accessory.tsx (MIT).
 
@@ -153,8 +153,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   artist: {
-    fontSize: 13,
-    mixBlendMode: "multiply",
+    ...subtitleTypography,
   },
   closeButton: {
     width: 32,

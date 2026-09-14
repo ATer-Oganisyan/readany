@@ -13,13 +13,7 @@ import {
 } from "@/styles/theme";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Modal, Platform, Pressable, StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const PRESET_MINUTES = [15, 30, 45, 60] as const;
@@ -78,6 +72,7 @@ export function TTSSleepTimerSheet({ visible, onClose }: TTSSleepTimerSheetProps
           justifyContent: "flex-end",
         },
         sheet: {
+          ...(Platform.OS === "android" ? { maxHeight: "80%" as const } : {}),
           backgroundColor: colors.background,
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
@@ -293,7 +288,11 @@ export function TTSSleepTimerSheet({ visible, onClose }: TTSSleepTimerSheetProps
                 }}
               />
             ) : null}
-            <NativeButton label={t("common.cancel", "Отмена")} onPress={onClose} variant="tertiary" />
+            <NativeButton
+              label={t("common.cancel", "Отмена")}
+              onPress={onClose}
+              variant="tertiary"
+            />
           </View>
         </Pressable>
       </Pressable>

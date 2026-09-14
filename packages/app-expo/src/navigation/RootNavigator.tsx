@@ -30,7 +30,7 @@ import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
 import { useSettingsStore } from "@/stores";
-import { ElevatedSurfaceTheme, titleFontFamily, useTheme } from "@/styles/theme";
+import { ElevatedSurfaceTheme, radius, titleFontFamily, useTheme } from "@/styles/theme";
 /**
  * RootNavigator — top-level stack matching Tauri mobile App.tsx routes exactly.
  */
@@ -131,6 +131,9 @@ export function RootNavigator() {
     <>
       <Stack.Navigator
         screenOptions={{
+          ...(Platform.OS === "android"
+            ? { sheetCornerRadius: radius.card, sheetAllowedDetents: [0.8] }
+            : {}),
           headerShown: true,
           headerTransparent: Platform.OS === "ios",
           headerStyle: {
@@ -199,14 +202,16 @@ export function RootNavigator() {
           name="ReaderTOC"
           component={ReaderTOCSheetScreen}
           options={{
-            presentation: "formSheet",
-            animation: "slide_from_bottom",
-            headerShown: true,
+            presentation: Platform.OS === "android" ? "transparentModal" : "formSheet",
+            animation: Platform.OS === "android" ? "none" : "slide_from_bottom",
+            contentStyle:
+              Platform.OS === "android" ? { backgroundColor: "transparent" } : undefined,
+            headerShown: Platform.OS !== "android",
             headerBackVisible: false,
             headerTransparent: false,
             headerTitle: t("reader.toc", "Оглавление"),
             headerShadowVisible: false,
-            sheetAllowedDetents: [0.5, 1],
+            sheetAllowedDetents: Platform.OS === "android" ? [0.5, 0.8] : [0.5, 1],
             sheetInitialDetentIndex: 0,
             sheetGrabberVisible: true,
             sheetExpandsWhenScrolledToEdge: true,
@@ -217,9 +222,10 @@ export function RootNavigator() {
           name="AudiobookPlayer"
           component={AudiobookPlayerScreen}
           options={{
-            presentation: "formSheet",
+            presentation: Platform.OS === "android" ? "transparentModal" : "formSheet",
+            animation: Platform.OS === "android" ? "none" : "slide_from_bottom",
             headerShown: false,
-            sheetAllowedDetents: Platform.OS === "ios" ? "fitToContents" : [0.5],
+            sheetAllowedDetents: "fitToContents",
             sheetGrabberVisible: true,
             contentStyle: {
               backgroundColor:
@@ -227,7 +233,7 @@ export function RootNavigator() {
                   ? isDark
                     ? colors.elevation2
                     : colors.background
-                  : colors.card,
+                  : "transparent",
             },
             statusBarHidden: false,
             statusBarStyle: isDark ? "light" : "dark",
@@ -303,30 +309,20 @@ export function RootNavigator() {
         <Stack.Screen
           name="NarraCharacterProfile"
           component={NarraCharacterProfileScreen}
-          options={
-            Platform.OS === "android"
-              ? {
-                  presentation: "card",
-                  animation: "slide_from_right",
-                  headerShown: true,
-                  title: t("narra.characterProfile", "Персонаж"),
-                  statusBarHidden: false,
-                  statusBarStyle: isDark ? "light" : "dark",
-                  contentStyle: { backgroundColor: colors.card },
-                }
-              : {
-                  presentation: "formSheet",
-                  animation: "slide_from_bottom",
-                  headerShown: false,
-                  contentStyle: {
-                    backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
-                  },
-                  sheetAllowedDetents: [0.78, 1],
-                  sheetInitialDetentIndex: 0,
-                  sheetGrabberVisible: true,
-                  sheetExpandsWhenScrolledToEdge: true,
-                }
-          }
+          options={{
+            presentation: Platform.OS === "android" ? "transparentModal" : "formSheet",
+            animation: Platform.OS === "android" ? "none" : "slide_from_bottom",
+            headerShown: false,
+            contentStyle: {
+              backgroundColor: "transparent",
+            },
+            statusBarHidden: false,
+            statusBarStyle: isDark ? "light" : "dark",
+            sheetAllowedDetents: [0.78, 1],
+            sheetInitialDetentIndex: 0,
+            sheetGrabberVisible: true,
+            sheetExpandsWhenScrolledToEdge: true,
+          }}
         />
         <Stack.Screen
           name="NarraScene"

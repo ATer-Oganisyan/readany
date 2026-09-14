@@ -95,6 +95,7 @@ const largeTitleTypography = primitiveTypography("Title 40");
 export const largeTitleFontSize = largeTitleTypography.fontSize;
 export const largeTitleLineHeight = largeTitleTypography.lineHeight;
 export const title24Typography = primitiveTypography("Title 24");
+export const title32Typography = primitiveTypography("Title 32");
 export const title20Typography = primitiveTypography("Title 20");
 
 /** Семантические текстовые стили mishanaer/deslop/primitives для React Native. */

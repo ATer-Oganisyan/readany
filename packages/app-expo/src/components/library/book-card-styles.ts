@@ -26,13 +26,8 @@ export const makeStyles = (colors: ThemeColors, cardWidth: number) => {
       position: "relative",
       isolation: "isolate",
     },
+    fallbackCover: { flex: 1, overflow: "hidden", padding: 16, backgroundColor: colors.bookCoverSurface },
     coverImage: { width: "100%", height: "100%" },
-    fallbackCover: {
-      flex: 1,
-      overflow: "hidden",
-      padding: 16,
-      backgroundColor: colors.bookCoverSurface,
-    },
     fallbackTitle: {
       fontFamily: headingFontFamily,
       textAlign: "left",
