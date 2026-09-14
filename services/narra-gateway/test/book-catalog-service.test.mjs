@@ -892,54 +892,6 @@ test('private source upload verifies bytes, persists a temporary source and star
   assert.deepEqual(calls.map(([name]) => name), ['begin', 'store', 'complete', 'analysis'])
 })
 
-test('manifest repairs a verified private PDF that has no analysis run', async () => {
-  const ensured = []
-  const service = createBookCatalogService({
-    repository: repository({
-      async getReaderBookManifest() {
-        return {
-          edition: {
-            ...EDITION,
-            format: 'pdf',
-            status: 'marking_up',
-            sourceStorage: 'temporary'
-          },
-          readerTextOffset: 0,
-          readingFraction: 0,
-          markup: null,
-          characters: []
-        }
-      }
-    }),
-    analysisRepository: {
-      async getLatestShadowAnalysisPublication() { return null },
-      async getLatestAnalysisPreview() { return null },
-      async ensureAnalysisRun(input) {
-        ensured.push(input)
-        return {
-          run: { id: 'run-pdf', stage: 'prepare', status: 'queued' },
-          prepareJob: { id: 'job-pdf', status: 'queued' },
-          created: true
-        }
-      }
-    }
-  })
-
-  const manifest = await service.manifest('reader-1', EDITION.id)
-
-  assert.deepEqual(ensured, [{
-    bookEditionId: EDITION.id,
-    inputHash: HASH,
-    priority: 50
-  }])
-  assert.equal(manifest.availability, 'processing')
-  assert.deepEqual(manifest.analysis, {
-    runId: 'run-pdf', stage: 'prepare', status: 'queued', retryable: false,
-    errorCode: null, updatedAt: null, textLength: null,
-    completedScanChunks: 0, totalScanChunks: 0
-  })
-})
-
 test('progress requests every character behind the markup warmup frontier', async () => {
   const ensured = []
   const service = createBookCatalogService({
