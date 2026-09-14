@@ -34,6 +34,28 @@ const statusLabels = {
 }
 const statusTone = { ready: 'ok', running: '', queued: '', failed: 'bad', cancelled: 'warn' }
 
+/**
+ * Что показать про карточную книгу вместо вечной «Публикации».
+ *
+ * Ноль публикаций при готовых карточках — это книга без разметки: читатель
+ * видит «обрабатывается», и так будет всегда. Раньше она выглядела на дашборде
+ * ровно как работающая, и «Маленький принц» простоял так незамеченным.
+ */
+function cardsSummary(book) {
+  const { publications, windows, published } = book.cards
+  if (book.status === 'failed') {
+    return { tone: 'bad', text: `Прогон упал на стадии «${label(stageLabels, book.stage)}»` }
+  }
+  if (!published) return { tone: '', text: 'Карточек ещё нет' }
+  if (!publications) return { tone: 'bad', text: 'Не опубликована' }
+  return {
+    tone: 'ok',
+    text: windows.total
+      ? `Опубликована · окон ${windows.ready} из ${windows.total}`
+      : 'Опубликована'
+  }
+}
+
 const elements = Object.fromEntries([
   'worker-grid', 'workers-note', 'running-list', 'running-note',
   'book-grid', 'books-note', 'live-label', 'auto-refresh'
@@ -137,15 +159,24 @@ function renderBooks(snapshot) {
     const failed = [...book.stages, ...book.runJobs].some((entry) => entry.status === 'failed')
     const tone = book.status === 'failed' || failed ? 'broken' : active.includes(book) ? 'active' : ''
     const rosterTotal = book.roster.reduce((sum, entry) => sum + entry.count, 0)
+    // Стадия карточного прогона всегда `Публикация · в работе`: он доходит до
+    // публикации и остаётся там навсегда, потому что окна открываются за
+    // читателем и каждое закрытое публикует разметку заново. Один и тот же
+    // ярлык у всех книг не сообщает ничего — и, что хуже, одинаково выглядят
+    // книга, которая работает, и книга, которая не опубликовалась вовсе.
+    const cardsState = book.pipelineId === 'cards'
+      ? cardsSummary(book)
+      : {
+          tone: statusTone[book.status] ?? '',
+          text: `${label(stageLabels, book.stage)} · ${label(statusLabels, book.status)}`
+        }
     const cardsBlock = book.pipelineId === 'cards'
       ? `<div class="book-block">
            <h4>Карточки</h4>
            <div class="chip-row">
              <span class="chip ${rosterTotal ? 'ok' : ''}">Состав <span class="n">${rosterTotal}</span></span>
-             <span class="chip ${book.cards.published ? 'ok' : ''}">Опубликовано <span class="n">${book.cards.published}</span></span>
-             ${book.cards.lastWindowIndex == null
-               ? ''
-               : `<span class="chip">Окно <span class="n">${book.cards.lastWindowIndex}</span></span>`}
+             <span class="chip ${book.cards.published ? 'ok' : ''}">Карточек <span class="n">${book.cards.published}</span></span>
+             <span class="chip ${book.cards.windows.ready ? 'ok' : ''}">Окон <span class="n">${book.cards.windows.ready}</span> из <span class="n">${book.cards.windows.total}</span></span>
            </div>
          </div>`
       : ''
@@ -156,7 +187,7 @@ function renderBooks(snapshot) {
       </div>
       <div class="chip-row">
         <span class="chip pipeline-${escapeHtml(book.pipelineId)}">${escapeHtml(book.pipelineId)}</span>
-        <span class="chip ${statusTone[book.status] ?? ''}">${escapeHtml(label(stageLabels, book.stage))} · ${escapeHtml(label(statusLabels, book.status))}</span>
+        <span class="chip ${cardsState.tone}">${escapeHtml(cardsState.text)}</span>
       </div>
       <div class="book-block">
         <h4>Стадии</h4>

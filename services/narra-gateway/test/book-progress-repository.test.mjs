@@ -76,7 +76,11 @@ test('per-run counters are attached to their own book', async () => {
       { book_edition_id: EDITION, name: 'scene_image', status: 'ready', count: 9 }
     ]],
     [/FROM book_character_roster/, [{ run_id: RUN, tier: 'significant', count: 4 }]],
-    [/FROM book_character_cards/, [{ run_id: RUN, published: 2, last_window: 0 }]]
+    [/FROM book_character_cards/, [{ run_id: RUN, published: 2, last_window: 0 }]],
+    [/FROM book_card_windows/, [{ run_id: RUN, total: 9, ready: 3 }]],
+    [/FROM book_analysis_publications/, [
+      { run_id: RUN, count: 2, last_at: '2026-09-10T18:19:00.000Z' }
+    ]]
   ])
   const snapshot = await createBookProgressRepository(database).snapshot()
   const [book] = snapshot.books
@@ -89,7 +93,15 @@ test('per-run counters are attached to their own book', async () => {
   ])
   assert.deepEqual(book.editionJobs, [{ name: 'scene_image', status: 'ready', count: 9 }])
   assert.deepEqual(book.roster, [{ tier: 'significant', count: 4 }])
-  assert.deepEqual(book.cards, { published: 2, lastWindowIndex: 0 })
+  // Стадия у карточного прогона всегда одна и та же; различают книги окна и
+  // факт публикации, поэтому дашборд читает именно их.
+  assert.deepEqual(book.cards, {
+    published: 2,
+    lastWindowIndex: 0,
+    windows: { total: 9, ready: 3 },
+    publications: 2,
+    lastPublishedAt: '2026-09-10T18:19:00.000Z'
+  })
 })
 
 test('running jobs are read from job leases, not from worker heartbeats', async () => {
