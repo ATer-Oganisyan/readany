@@ -95,9 +95,11 @@ export function NativeContextMenuButton({
                     {item.label}
                   </Text>
                 </DropdownMenuItem.Text>
-                <DropdownMenuItem.LeadingIcon>
-                  <Icon source={getStrokeIconImageSource(itemIcon)} size={20} tint={itemColor} />
-                </DropdownMenuItem.LeadingIcon>
+                {item.icon !== null ? (
+                  <DropdownMenuItem.LeadingIcon>
+                    <Icon source={getStrokeIconImageSource(itemIcon)} size={20} tint={itemColor} />
+                  </DropdownMenuItem.LeadingIcon>
+                ) : null}
               </DropdownMenuItem>
             );
           })}

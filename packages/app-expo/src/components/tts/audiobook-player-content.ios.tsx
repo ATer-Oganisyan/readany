@@ -167,6 +167,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
         </VStack>
 
         <Slider
+          hideThumbUnlessEditing
           value={player.localPosition}
           min={0}
           max={Math.max(player.duration, 1)}

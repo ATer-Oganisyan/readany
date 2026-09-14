@@ -1,13 +1,14 @@
 diff --git a/ios/RNSScreenStack.mm b/ios/RNSScreenStack.mm
-index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..bde730d5ecacb3a16b62fdcbee519f3f404c5d7e 100644
+index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..f6a19cf0d95ed8768972797e6cfd2ff251617644 100644
 --- a/ios/RNSScreenStack.mm
 +++ b/ios/RNSScreenStack.mm
-@@ -494,6 +494,13 @@ - (void)setModalViewControllers:(NSArray<UIViewController *> *)controllers
+@@ -494,6 +494,14 @@ - (void)setModalViewControllers:(NSArray<UIViewController *> *)controllers
          return;
        }
  
 +      if ([next isKindOfClass:[RNSScreen class]] &&
-+          ((RNSScreen *)next).screenView.stackPresentation == RNSScreenStackPresentationFormSheet) {
++          (((RNSScreen *)next).screenView.stackPresentation == RNSScreenStackPresentationFormSheet ||
++           ((RNSScreen *)next).screenView.stackPresentation == RNSScreenStackPresentationPageSheet)) {
 +        [[NSNotificationCenter defaultCenter]
 +            postNotificationName:@"ReadAnyRNSScreenWillPresentFormSheet"
 +                          object:next];
@@ -16,7 +17,7 @@ index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..bde730d5ecacb3a16b62fdcbee519f3f
        [previous presentViewController:next
                               animated:shouldAnimate
                             completion:^{
-@@ -1099,7 +1106,7 @@ - (BOOL)isScrollViewPanGestureRecognizer:(UIGestureRecognizer *)gestureRecognize
+@@ -1099,7 +1107,7 @@ - (BOOL)isScrollViewPanGestureRecognizer:(UIGestureRecognizer *)gestureRecognize
  // https://github.com/facebook/react-native/blob/69b131c2b1627f64f34a534dac4cf48a542e6ea6/packages/react-native/React/Views/ScrollView/RCTScrollView.m#L557
  - (BOOL)scrollViewHasHorizontalPart:(UIScrollView *)scrollView
  {
@@ -25,7 +26,7 @@ index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..bde730d5ecacb3a16b62fdcbee519f3f
  }
  
  // Custom method for compatibility with iOS < 13.4
-@@ -1203,6 +1210,12 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+@@ -1203,6 +1211,12 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
    if (@available(iOS 26, *)) {
      if (gestureRecognizer == _controller.interactiveContentPopGestureRecognizer &&
          [self isScrollViewPanGestureRecognizer:otherGestureRecognizer]) {
@@ -38,7 +39,7 @@ index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..bde730d5ecacb3a16b62fdcbee519f3f
        // ScrollView should take precedence when scrolling horizontally (it should be required to fail).
        // However, if it does not allow for horizontal scrolling, there should be no such restriction,
        // and swiping horizontally should dismiss the screen.
-@@ -1224,8 +1237,11 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+@@ -1224,8 +1238,11 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
      // as `RNSScreenEdgeGestureRecognizer` but we don't want ScrollView being recognized on condition that the former
      // fails, but rather the opposite & that the ScrollView recognizer has a higher priority See also
      // gestureRecognizer:shouldRequireFailureOfGestureRecognizer
@@ -253,3 +254,24 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..66b55f2ff7c73f894024c7a33542cc80
      RCTAssert([viewController isKindOfClass:RNSTabsScreenViewController.class],
                @"[RNScreens] Unexpected type of controller: %@",
                viewController.class);
+diff --git a/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt b/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
+--- a/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
++++ b/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
+@@ -2,6 +2,7 @@
+ 
+ import android.annotation.SuppressLint
+ import android.content.Context
++import android.graphics.Bitmap
+ import android.graphics.drawable.Drawable
+ import android.net.Uri
+ import android.os.Handler
+@@ -56,7 +57,8 @@
+ 
+                 if (closeableImage is CloseableStaticBitmap) {
+                     val bitmap = closeableImage.underlyingBitmap
+-                    val drawable = bitmap.toDrawable(context.resources)
++                    // The drawable outlives the Fresco reference closed below. Own its pixels.
++                    val drawable = bitmap.copy(Bitmap.Config.ARGB_8888, false).toDrawable(context.resources)
+                     onLoaded(drawable)
+                 }
+ 

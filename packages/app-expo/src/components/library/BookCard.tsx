@@ -89,51 +89,51 @@ export const BookCard = memo(function BookCard({
         style={s.container}
         accessibilityRole="button"
         accessibilityLabel={book.meta.title}
-        accessibilityHint={t("notes.openBook", "Открыть")}
+        accessibilityHint={t("notes.openBook", "Открыть книгу")}
       >
         <Animated.View style={pressStyle}>
           {/* Cover — 28:41 aspect ratio */}
           <View style={s.coverWrap}>
-            {hasUsableSavedCover && resolvedCoverUrl ? (
-              <Image
-                source={{ uri: resolvedCoverUrl }}
-                style={s.coverImage}
-                resizeMode="cover"
-                onError={() => setFailedCoverUrl(resolvedCoverUrl)}
-              />
-            ) : bundledCoverUri ? (
-              <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
-            ) : (
-              <View
-                style={[
-                  s.fallbackCover,
-                  {
-                    backgroundColor: loadingCoverColorForTitleAuthor({
-                      title: book.meta.title,
-                      author: book.meta.author,
-                    }),
-                  },
-                ]}
-              />
-            )}
+            <View
+              style={[
+                s.coverCanvas,
+                {
+                  backgroundColor: loadingCoverColorForTitleAuthor({
+                    title: book.meta.title,
+                    author: book.meta.author,
+                  }),
+                },
+              ]}
+            >
+              {hasUsableSavedCover && resolvedCoverUrl ? (
+                <Image
+                  source={{ uri: resolvedCoverUrl }}
+                  style={s.coverImage}
+                  resizeMode="cover"
+                  onError={() => setFailedCoverUrl(resolvedCoverUrl)}
+                />
+              ) : bundledCoverUri ? (
+                <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
+              ) : null}
 
-            {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
-            <BookSpineOverlay coverWidth={cardWidth} />
+              {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
+              <BookSpineOverlay coverWidth={cardWidth} />
 
-            <BookCoverTypography
-              title={book.meta.title}
-              author={book.meta.author}
-              width={cardWidth}
-              showText={showCoverTypography}
-              textTone={coverTextTone}
-              coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
-            />
-            {/* Remote status overlay (on-demand download) */}
-            {book.syncStatus === "remote" && (
-              <View style={s.remoteOverlay}>
-                <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
-              </View>
-            )}
+              <BookCoverTypography
+                title={book.meta.title}
+                author={book.meta.author}
+                width={cardWidth}
+                showText={showCoverTypography}
+                textTone={coverTextTone}
+                coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
+              />
+              {/* Remote status overlay (on-demand download) */}
+              {book.syncStatus === "remote" && (
+                <View style={s.remoteOverlay}>
+                  <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
+                </View>
+              )}
+            </View>
           </View>
         </Animated.View>
       </Pressable>

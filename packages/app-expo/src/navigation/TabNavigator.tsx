@@ -1,8 +1,8 @@
-import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
 import { AudiobookPlayerAccessory } from "@/components/tts/audiobook-player-accessory";
 import { getFilledIconImageSource, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { SyncButton } from "@/components/ui/SyncButton";
+import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
 import { ChatsScreen } from "@/screens/ChatsScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
@@ -53,6 +53,12 @@ const LibraryStack = createNativeStackNavigator<LibraryTabStackParamList>();
 const ChatsStack = createNativeStackNavigator<ChatsTabStackParamList>();
 const SearchStack = createNativeStackNavigator<SearchTabStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileTabStackParamList>();
+
+// Android native tabs overlay their content. Reserve the measured native bar
+// height before laying out the nested stacks, including their scroll views.
+const TabContent = Platform.OS === "android" ? SafeAreaView : View;
+const tabContentInsets =
+  Platform.OS === "android" ? { edges: { bottom: true }, insetType: "interface" as const } : {};
 
 const TAB_ICONS = {
   Library: getFilledIconImageSource("book"),
@@ -264,7 +270,8 @@ export function TabNavigator() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const hasPlayer = useTTSStore(
-    (state) => AUDIOBOOK_PLAYER_ENABLED && state.playState !== "stopped" && Boolean(state.currentBookId),
+    (state) =>
+      AUDIOBOOK_PLAYER_ENABLED && state.playState !== "stopped" && Boolean(state.currentBookId),
   );
   const nativeAccessory =
     Platform.OS === "ios" && Number.parseInt(String(Platform.Version), 10) >= 26;
@@ -275,19 +282,22 @@ export function TabNavigator() {
         nativeAccessory
           ? undefined
           : ({ children }) => (
-              <View style={{ flex: 1 }}>
+              <TabContent {...tabContentInsets} style={{ flex: 1 }}>
                 <View style={{ flex: 1 }}>{children}</View>
                 {hasPlayer && (
                   <SafeAreaView
-                    edges={{ bottom: true, top: false, left: true, right: true }}
-                    style={{ backgroundColor: colors.card }}
+                    edges={{ bottom: Platform.OS === "ios", top: false, left: true, right: true }}
+                    style={{
+                      flex: 0,
+                      backgroundColor: Platform.OS === "android" ? colors.background : colors.card,
+                    }}
                   >
                     <View style={{ height: 60 }}>
                       <AudiobookPlayerAccessory />
                     </View>
                   </SafeAreaView>
                 )}
-              </View>
+              </TabContent>
             )
       }
       screenOptions={{

@@ -52,6 +52,7 @@ vi.mock("@/lib/narra/backend-book-sync", () => ({
     select({ books: { book: runtime.backendStatus } }),
   retryBackendBookSync: vi.fn(),
 }));
+vi.mock("@/lib/narra/backend-character-media", () => ({ loadBackendCharacterMedia: vi.fn() }));
 vi.mock("@/hooks/use-backend-book", () => ({ useBackendBook: vi.fn() }));
 vi.mock("@/lib/library/open-mobile-book", () => ({ openMobileBook: vi.fn() }));
 vi.mock("@/lib/narra/character-portrait", () => ({

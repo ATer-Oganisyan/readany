@@ -4,7 +4,7 @@ import type { MishanaerIconName } from "./MishanaerIcon";
 export type NativeContextMenuItem = {
   key: string;
   label: string;
-  icon?: MishanaerIconName;
+  icon?: MishanaerIconName | null;
   sfSymbol?: SFSymbol;
   destructive?: boolean;
   disabled?: boolean;

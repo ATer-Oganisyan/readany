@@ -30,6 +30,7 @@ import {
   serifCondensedFontFamily,
   serifTextFontFamily,
 } from "@deslop/primitives/native";
+import { BlurTargetView } from "expo-blur";
 import {
   forwardRef,
   useEffect,
@@ -57,7 +58,10 @@ import {
 import ReadAnyNativeControls from "../../../modules/native-controls";
 import { ReaderCharacterActions } from "./ReaderCharacterActions";
 
+const PortraitBlurTarget = Platform.OS === "android" ? BlurTargetView : View;
+
 interface ReaderCharacterCardProps {
+  onBackgroundColorChange?: (color: string) => void;
   visible: boolean;
   character: NarraCharacter | null;
   bookId: string;
@@ -205,6 +209,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       showActions = true,
       portraitLoadingPreview = false,
       staticPortraitOnly = false,
+      onBackgroundColorChange,
     },
     ref,
   ) {
@@ -226,6 +231,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     const unlocked = liveCharacter ? isCharacterUnlocked(bookProgress, liveCharacter) : true;
     const [portraitLoading, setPortraitLoading] = useState(false);
     const portraitBusy = portraitLoadingPreview || portraitLoading;
+    const portraitBlurTarget = useRef<View | null>(null);
     const portraitAttemptsRef = useRef(new Map<string, number>());
     const [voiceState, setVoiceState] = useState<VoiceSampleState>("idle");
     const [nameFit, setNameFit] = useState<{
@@ -245,6 +251,10 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           ? colors.card
           : colors.background,
     );
+    useEffect(() => {
+      onBackgroundColorChange?.(portraitBackgroundColor);
+    }, [onBackgroundColorChange, portraitBackgroundColor]);
+
     const portraitForeground = useMemo(
       () => foregroundForBackground(portraitBackgroundColor),
       [portraitBackgroundColor],
@@ -453,7 +463,27 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
         );
 
     const portraitContent = (
-      <View style={[styles.portraitFrame, embedded && styles.embeddedPortraitFrame]}>
+      <PortraitBlurTarget
+        ref={portraitBlurTarget}
+        style={[
+          styles.portraitFrame,
+          embedded && styles.embeddedPortraitFrame,
+          Platform.OS === "android" &&
+            embedded && {
+              // Buttons overlap the portrait edge; include the solid background below it in the blur target.
+              paddingBottom: 68,
+              marginBottom: -68,
+            },
+        ]}
+      >
+        {Platform.OS === "android" && embedded ? (
+          <View
+            // Expo captures the target's children, not its outer background.
+            collapsable={false}
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: portraitBackgroundColor }]}
+          />
+        ) : null}
         <View style={[styles.portrait, embedded && styles.embeddedPortrait]}>
           <CharacterPortraitImage
             character={liveCharacter}
@@ -512,7 +542,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
             </View>
           ) : null}
         </View>
-      </View>
+      </PortraitBlurTarget>
     );
 
     const characterDetails = (
@@ -572,6 +602,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
             <View style={styles.embeddedActionsBlock}>
               <View style={styles.nativeActionsContainer}>
                 <ReaderCharacterActions
+                  blurTarget={
+                    Platform.OS === "android" && !portraitPending ? portraitBlurTarget : undefined
+                  }
                   talkLabel={t("narra.writeToCharacter", "Написать")}
                   listenLabel={t("narra.voiceCharacter", "Озвучить")}
                   stopLabel={t("narra.stopVoiceSample", "Остановить озвучку")}
@@ -585,7 +618,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
                   voiceState={voiceState}
                   isDark={portraitForeground.isDark}
                   foregroundColor={portraitForeground.primary}
-                  primaryForegroundColor={colors.primary5}
+                  primaryForegroundColor={
+                    Platform.OS === "android" ? colors.primary20 : colors.primary5
+                  }
                 />
               </View>
             </View>
@@ -593,7 +628,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           {embedded ? (
             <View style={styles.embeddedDetailsBlock}>
               <NativeCharacterDetailsCells
-                cellBackgroundColor={colors.primary10}
+                cellBackgroundColor={
+                  Platform.OS === "android" ? colors.primary20 : colors.primary10
+                }
                 items={profileItems}
                 isDark={portraitForeground.isDark}
               />
@@ -677,9 +714,13 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
             ) : embedded ? (
               <ScrollView
                 style={styles.embeddedDetailsScroll}
+                nestedScrollEnabled
                 contentInsetAdjustmentBehavior="never"
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.embeddedDetailsScrollContent}
+                contentContainerStyle={[
+                  styles.embeddedDetailsScrollContent,
+                  Platform.OS === "android" && { paddingBottom: insets.bottom + spacing.xxl },
+                ]}
               >
                 {portraitContent}
                 {characterDetails}
@@ -917,11 +958,11 @@ const makeStyles = (colors: ThemeColors) =>
     },
     embeddedPendingCharacterSection: {
       minHeight: 0,
-      // Reserve the native grabber area and keep the compact title comfortably below it.
       paddingTop: spacing.xxl + spacing.md + spacing.sm,
       paddingBottom: spacing.xl,
     },
     embeddedCharacterInfo: {
+      paddingHorizontal: 0,
       zIndex: 1,
       gap: 0,
       overflow: "visible",

@@ -61,6 +61,8 @@ export function AnimatedNarraFace({
   const scaleY = height / VIEWBOX_HEIGHT;
 
   useEffect(() => {
+    // Each focus cycle must repeat the full timeline, not its remaining tail.
+    progress.value = 0;
     if (!animated) return;
     progress.value = withRepeat(
       withTiming(1, { duration: LOOP_DURATION_MS, easing: Easing.linear }),

@@ -1,7 +1,9 @@
+import { CharacterProfileSheet } from "@/components/narra/CharacterProfileSheet";
 import { EmptyStateActionButton } from "@/components/ui/empty-state-action-button";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { retryBackendBookSync, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
+import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
 import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -9,7 +11,7 @@ import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import { type ThemeColors, useTheme } from "@/styles/theme";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useLayoutEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
 
@@ -18,6 +20,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "NarraCharacterProfile">
 export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   const { bookId, characterId, openedFromChat = false } = route.params;
   const { colors } = useTheme();
+  const [sheetBackgroundColor, setSheetBackgroundColor] = useState(colors.card);
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t } = useTranslation();
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
@@ -26,25 +29,24 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   const character = useNarraStore((state) =>
     state.books[bookId]?.characters.find((item) => item.id === characterId),
   );
-  const androidTitle =
-    Platform.OS === "android"
-      ? character?.fullName || character?.name || t("narra.characterProfile", "Персонаж")
-      : undefined;
   const portraitReady = Boolean(
     character?.backendManaged &&
       isCharacterUnlocked(book?.progress ?? 0, character) &&
       hasCharacterPortrait(character),
   );
+  const hasPortraitAsset = character?.backendAssets?.some(
+    (asset) => asset.type === "primary_portrait",
+  );
+  const unlocked = character && isCharacterUnlocked(book?.progress ?? 0, character);
+  useEffect(() => {
+    if (portraitReady || !hasPortraitAsset || !unlocked) return;
+    const controller = new AbortController();
+    void loadBackendCharacterMedia(bookId, book?.progress ?? 0, controller.signal);
+    return () => controller.abort();
+  }, [bookId, book?.progress, hasPortraitAsset, portraitReady, unlocked]);
 
   useLayoutEffect(() => {
-    if (Platform.OS === "android") {
-      navigation.setOptions({
-        title: androidTitle,
-        contentStyle: { backgroundColor: colors.card },
-      });
-      return;
-    }
-
+    if (Platform.OS === "android") return;
     navigation.setOptions({
       contentStyle: {
         backgroundColor: Platform.OS === "ios" ? "transparent" : colors.card,
@@ -54,7 +56,7 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
       sheetExpandsWhenScrolledToEdge: portraitReady,
       sheetResizeAnimationEnabled: true,
     });
-  }, [androidTitle, colors.card, navigation, portraitReady]);
+  }, [colors.card, navigation, portraitReady]);
   const openChat = () => {
     if (openedFromChat) {
       navigation.goBack();
@@ -68,25 +70,22 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
     setTimeout(() => void openMobileBook({ bookId, navigation, t }), 0);
   };
 
-  if (!character?.backendManaged) {
-    return (
-      <View collapsable={false} style={[styles.compactContainer, styles.pending]}>
-        {backendStatus?.error || backendStatus?.manifest?.availability === "ready" ? (
-          <EmptyStateActionButton
-            label={t("common.retry", "Повторить")}
-            onPress={() => retryBackendBookSync(bookId)}
-          />
-        ) : (
-          <ActivityIndicator color={colors.mutedForeground} />
-        )}
-      </View>
-    );
-  }
-
-  return (
+  const content = !character?.backendManaged ? (
+    <View collapsable={false} style={[styles.compactContainer, styles.pending]}>
+      {backendStatus?.error || backendStatus?.manifest?.availability === "ready" ? (
+        <EmptyStateActionButton
+          label={t("common.retry", "Повторить")}
+          onPress={() => retryBackendBookSync(bookId)}
+        />
+      ) : (
+        <ActivityIndicator color={colors.mutedForeground} />
+      )}
+    </View>
+  ) : (
     <View collapsable={false} style={[styles.container, !portraitReady && styles.compactContainer]}>
       <ReaderCharacterCard
         embedded
+        onBackgroundColorChange={Platform.OS === "android" ? setSheetBackgroundColor : undefined}
         staticPortraitOnly
         visible
         character={character}
@@ -96,6 +95,16 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
         onContinueReading={continueReading}
       />
     </View>
+  );
+
+  return (
+    <CharacterProfileSheet
+      portraitReady={portraitReady}
+      backgroundColor={sheetBackgroundColor}
+      onDismiss={() => navigation.goBack()}
+    >
+      {content}
+    </CharacterProfileSheet>
   );
 }
 

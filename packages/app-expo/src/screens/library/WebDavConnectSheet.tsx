@@ -106,7 +106,7 @@ export function WebDavConnectSheet({ visible, onClose, onSubmit }: WebDavConnect
           paddingTop: 12,
           paddingBottom: Math.max(insets.bottom, 16) + 14,
           gap: 14,
-          maxHeight: "92%",
+          maxHeight: Platform.OS === "android" ? "80%" : "92%",
         },
         keyboardWrap: {
           width: "100%",

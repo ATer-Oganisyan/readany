@@ -247,7 +247,7 @@ vi.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 vi.mock("react-native-gesture-handler", () => ({ GestureDetector: "GestureDetector" }));
 vi.mock("react-native-reanimated", () => ({ default: { View: "AnimatedView" } }));
 vi.mock("../../components/library/cover-press", () => ({
-  useCoverPress: () => ({ pressStyle: {}, gesture: {} }),
+  useCoverPress: () => ({ pressStyle: {}, gesture: {}, runAfterRelease: (action: () => void) => action() }),
 }));
 vi.mock("../../components/library/use-cover-foreground", () => ({
   useCoverForeground: () => ({ primary: "#fff", secondary: "#ddd" }),

@@ -1,9 +1,5 @@
+import { BookOpenIcon, ChevronRightIcon } from "@/components/ui/Icon";
 import { Text } from "@/components/ui/Typography";
-import {
-  BookOpenIcon,
-  ChevronRightIcon,
-  LinkIcon,
-} from "@/components/ui/Icon";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import {
   fontSize,
@@ -15,14 +11,7 @@ import {
 } from "@/styles/theme";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 
 type PopoverAnchor = {
   x: number;
@@ -37,7 +26,6 @@ interface WebDavImportSourceSheetProps {
   localImportBusy?: boolean;
   onClose: () => void;
   onDismiss?: () => void;
-  onPickUrl: () => void;
   onPickLocal: () => void;
 }
 
@@ -47,7 +35,6 @@ export function WebDavImportSourceSheet({
   localImportBusy = false,
   onClose,
   onDismiss,
-  onPickUrl,
   onPickLocal,
 }: WebDavImportSourceSheetProps) {
   const { t } = useTranslation();
@@ -67,8 +54,7 @@ export function WebDavImportSourceSheet({
     Math.max(screenPadding, preferredLeft),
     layout.width - popoverWidth - screenPadding,
   );
-  const showBelow =
-    activeAnchor.y + activeAnchor.height + 12 + 230 < layout.height - screenPadding;
+  const showBelow = activeAnchor.y + activeAnchor.height + 12 + 230 < layout.height - screenPadding;
   const popoverTop = showBelow
     ? activeAnchor.y + activeAnchor.height + 10
     : Math.max(screenPadding, activeAnchor.y - 230);
@@ -134,7 +120,7 @@ export function WebDavImportSourceSheet({
           marginHorizontal: 14,
         },
       }),
-    [colors, layout.height, popoverLeft, popoverTop, popoverWidth],
+    [colors, popoverLeft, popoverTop, popoverWidth],
   );
 
   return (
@@ -146,29 +132,9 @@ export function WebDavImportSourceSheet({
       onDismiss={onDismiss}
     >
       <Pressable style={s.overlay} onPress={onClose}>
-        <Pressable
-          style={s.sheetWrap}
-          onPress={(event) => event.stopPropagation()}
-        >
+        <Pressable style={s.sheetWrap} onPress={(event) => event.stopPropagation()}>
           <View style={s.sheet}>
             <ScrollView style={s.options} bounces={false}>
-              <TouchableOpacity
-                style={s.optionCard}
-                onPress={onPickUrl}
-                activeOpacity={0.85}
-              >
-                <View style={s.iconWrap}>
-                  <LinkIcon size={18} color={colors.primary} />
-                </View>
-                <View style={s.optionText}>
-                  <Text style={s.optionTitle}>
-                    {t("library.importSourceUrl", "Найти по ссылке")}
-                  </Text>
-                </View>
-                <ChevronRightIcon size={16} color={colors.mutedForeground} />
-              </TouchableOpacity>
-              <View style={s.separator} />
-
               <TouchableOpacity
                 style={[s.optionCard, localImportBusy && s.optionDisabled]}
                 onPress={onPickLocal}
