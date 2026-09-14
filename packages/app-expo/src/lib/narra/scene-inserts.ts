@@ -2,10 +2,10 @@
  * Врезки сцен внутри текста книги — чистая логика якорей и восстановления.
  *
  * Сцена, сгенерированная из врезки, персистится в narra-store с ключом
- * `page:<anchor>`, где anchor — CFI блока, после которого врезка вставлена
- * в DOM секции (считает WebView, см. reader.template.html). При повторном
- * открытии секции RN отдаёт список якорей в WebView, тот вставляет карточки
- * обратно и запрашивает картинки событием sceneSlotRestored.
+ * `page:<anchor>`, где anchor — CFI блока для reflowable-книги либо стабильный
+ * номер физической страницы PDF (считает WebView, см. reader.template.html).
+ * При повторном открытии RN отдаёт список якорей в WebView, тот вставляет
+ * карточки обратно и запрашивает картинки событием sceneSlotRestored.
  */
 
 import type { NarraBookState, NarraSceneImage } from "./types";
@@ -13,7 +13,7 @@ import type { NarraBookState, NarraSceneImage } from "./types";
 /** Префикс sourceKey сцен, привязанных к позиции страницы (как в P6). */
 export const SCENE_PAGE_SOURCE_PREFIX = "page:";
 
-/** sourceKey сцены-врезки по CFI-якорю вставки. */
+/** sourceKey сцены-врезки по стабильному якорю вставки. */
 export function sceneSourceKeyForAnchor(anchor: string): string {
   return `${SCENE_PAGE_SOURCE_PREFIX}${anchor}`;
 }

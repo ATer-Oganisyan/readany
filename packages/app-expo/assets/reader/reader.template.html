@@ -1821,6 +1821,9 @@
 
         const book = (file && file.sections) ? file : await makeBook(file);
         currentBook = book;
+        _pdfSceneProposals = [];
+        _pdfSceneProgress = Object.create(null);
+        _pdfSceneEntries = Object.create(null);
         attachBookTransformHandler(book);
 
         const el = document.createElement('foliate-view');
@@ -1886,13 +1889,30 @@
           } else if (typeof detail.index === 'number') {
             currentSectionIndex = detail.index;
           }
+          const isPDF = !!(view && view.book && view.book.isPDF === true);
+          // PDF sections are physical pages. SectionProgress estimates text
+          // locations from section bytes, which would count PDF resource sizes.
+          if (isPDF) {
+            const fixedIndex = view.renderer && view.renderer.index;
+            if (Number.isInteger(fixedIndex) && fixedIndex >= 0) {
+              currentSectionIndex = fixedIndex;
+            }
+            const physicalPageCount = Number(view.book && view.book.physicalPageCount);
+            if (Number.isInteger(physicalPageCount) && physicalPageCount > 0) {
+              relocatedSectionTotal = physicalPageCount;
+            } else if (view.book && view.book.sections && view.book.sections.length) {
+              relocatedSectionTotal = view.book.sections.length;
+            }
+          }
           const rendererPage = view && view.renderer && typeof view.renderer.page === 'number'
             ? view.renderer.page
             : null;
           const rendererPages = view && view.renderer && typeof view.renderer.pages === 'number'
             ? view.renderer.pages
             : null;
-          const actualPage = rendererPage != null && rendererPages != null && rendererPages > 2
+          const actualPage = isPDF && relocatedSectionTotal > 0
+            ? { current: currentSectionIndex + 1, total: relocatedSectionTotal }
+            : rendererPage != null && rendererPages != null && rendererPages > 2
             ? {
                 current: Math.max(1, Math.min(rendererPage, rendererPages - 2)),
                 total: Math.max(1, rendererPages - 2),
@@ -1901,8 +1921,9 @@
           postToRN('relocate', {
             loadId: msg.loadId,
             fraction: detail.fraction,
+            isPDF,
             section: { current: currentSectionIndex, total: relocatedSectionTotal },
-            location: detail.location,
+            location: isPDF ? undefined : detail.location,
             page: actualPage,
             tocItem: detail.tocItem,
             pageItem: detail.pageItem,
@@ -2030,6 +2051,7 @@
         await waitForBundledReaderFontWarmup();
 
         await el.open(book);
+        syncPDFScenePages();
 
         if (book.sections) {
           totalSections = book.sections.length;
@@ -2441,6 +2463,12 @@
       if (!doc || !doc.head) return;
       const styleId = '__readany_reader_overrides__';
       let el = doc.getElementById(styleId);
+      // PDF.js positions selectable text against its canvas. Reflow font-size,
+      // family and line-height overrides would detach that text from the page.
+      if (doc.documentElement?.hasAttribute?.('data-readany-pdf')) {
+        if (el) el.remove();
+        return;
+      }
       if (!el) {
         el = doc.createElement('style');
         el.id = styleId;
@@ -5667,9 +5695,14 @@ a { color: ${primary} !important; }
     var SCENE_ANCHOR_ATTR = 'data-readany-scene-anchor';
     var SCENE_PROGRESS_ATTR = 'data-readany-scene-progress';
     var SCENE_STATE_ATTR = 'data-readany-scene-state';
+    var PDF_SCENE_PAGE_ATTR = 'data-readany-scene-page';
+    var PDF_SCENE_ANCHOR_PREFIX = 'readany-pdf-page-v1:';
     var SCENE_BLOCK_SELECTOR =
       'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, .__readany_br_paragraph';
     var _sceneRestoreAnchors = [];
+    var _pdfSceneProposals = [];
+    var _pdfSceneProgress = Object.create(null);
+    var _pdfSceneEntries = Object.create(null);
     var _sceneSlotLabels = {
       idle: 'Сгенерировать сцену',
       loading: 'Рисуем сцену…',
@@ -6077,6 +6110,70 @@ a { color: ${primary} !important; }
       return el;
     }
 
+    function pdfSceneAnchorForPage(index) {
+      return PDF_SCENE_ANCHOR_PREFIX + String(index);
+    }
+
+    function pdfScenePageIndex(anchor) {
+      if (typeof anchor !== 'string' || anchor.indexOf(PDF_SCENE_ANCHOR_PREFIX) !== 0) return -1;
+      var value = Number(anchor.slice(PDF_SCENE_ANCHOR_PREFIX.length));
+      return Number.isInteger(value) && value >= 0 ? value : -1;
+    }
+
+    function createPDFScenePageSource(anchor) {
+      var viewport = currentBook && currentBook.rendition && currentBook.rendition.viewport;
+      var width = Math.max(1, Number(viewport && viewport.width) || 600);
+      var height = Math.max(1, Number(viewport && viewport.height) || 900);
+      var contentWidth = Math.max(1, width - 48);
+      var contentHeight = Math.max(1, height - 48);
+      var html = '<!DOCTYPE html><html lang="ru" ' + PDF_SCENE_PAGE_ATTR + '="' + anchor + '">' +
+        '<head><meta charset="utf-8"><meta name="viewport" content="width=' + width + ', height=' + height + '">' +
+        '<style>html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden}' +
+        'html{--page-content-width:' + contentWidth + 'px;--page-content-height:' + contentHeight + 'px}' +
+        'body{display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding:24px}' +
+        '#readany-pdf-scene-host{width:100%}</style></head>' +
+        '<body><main id="readany-pdf-scene-host"></main></body></html>';
+      return URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    }
+
+    function pdfSceneEntry(anchor, afterIndex) {
+      var entry = _pdfSceneEntries[anchor];
+      if (entry) return entry;
+      entry = {
+        key: anchor,
+        afterIndex: afterIndex,
+        source: null,
+        load: function () {
+          if (!entry.source) entry.source = createPDFScenePageSource(anchor);
+          return entry.source;
+        },
+      };
+      _pdfSceneEntries[anchor] = entry;
+      return entry;
+    }
+
+    function syncPDFScenePages() {
+      if (!currentBook || currentBook.isPDF !== true || !view || !view.renderer) return;
+      if (typeof view.renderer.setInterstitials !== 'function') return;
+      var anchors = _sceneRestoreAnchors.concat(_pdfSceneProposals);
+      var seen = Object.create(null);
+      var entries = [];
+      for (var i = 0; i < anchors.length; i++) {
+        var anchor = anchors[i];
+        var pageIndex = pdfScenePageIndex(anchor);
+        if (
+          pageIndex < 0 ||
+          pageIndex >= currentBook.sections.length ||
+          seen[anchor]
+        ) continue;
+        seen[anchor] = true;
+        entries.push(pdfSceneEntry(anchor, pageIndex));
+      }
+      Promise.resolve(view.renderer.setInterstitials(entries)).catch(function (error) {
+        console.error('[SceneSlots] Failed to update PDF scene pages:', error);
+      });
+    }
+
     // Поиск по значению атрибута вручную: CFI содержит спецсимволы селекторов
     function findSceneInsertInDoc(doc, anchor) {
       if (!doc || !doc.querySelectorAll) return null;
@@ -6203,7 +6300,23 @@ a { color: ${primary} !important; }
     // Восстановление врезок в секции: сначала резолвим все якоря, потом
     // вставляем — свои вставки не сдвигают адресацию соседних якорей.
     function applySceneInserts(doc, index) {
-      if (!doc || !view || !_sceneRestoreAnchors.length) return;
+      if (!doc || !view) return;
+      var pdfAnchor = doc.documentElement && doc.documentElement.getAttribute(PDF_SCENE_PAGE_ATTR);
+      if (pdfAnchor) {
+        if (findSceneInsertInDoc(doc, pdfAnchor)) return;
+        var pdfHost = doc.getElementById('readany-pdf-scene-host') || doc.body;
+        if (!pdfHost) return;
+        var restored = _sceneRestoreAnchors.indexOf(pdfAnchor) >= 0;
+        var pdfInsert = createSceneInsert(doc, pdfAnchor, restored ? 'loading' : 'idle');
+        var progressValue = _pdfSceneProgress[pdfAnchor];
+        if (Number.isFinite(progressValue)) {
+          pdfInsert.setAttribute(SCENE_PROGRESS_ATTR, String(progressValue));
+        }
+        pdfHost.appendChild(pdfInsert);
+        if (restored) postToRN('sceneSlotRestored', { anchor: pdfAnchor });
+        return;
+      }
+      if (!_sceneRestoreAnchors.length) return;
       var resolvedEntries = [];
       for (var i = 0; i < _sceneRestoreAnchors.length; i++) {
         var anchor = _sceneRestoreAnchors[i];
@@ -6255,6 +6368,25 @@ a { color: ${primary} !important; }
         var win = doc.defaultView;
         if (!win) {
           sceneSlotLog('insert failed: primary doc has no window');
+          return;
+        }
+        if (doc.documentElement && doc.documentElement.hasAttribute('data-readany-pdf')) {
+          if (!_sceneSlotsEnabled) {
+            sceneSlotLog('skip: PDF scene generation is unavailable');
+            return;
+          }
+          var pdfAnchor = pdfSceneAnchorForPage(content.index);
+          if (
+            _sceneRestoreAnchors.indexOf(pdfAnchor) >= 0 ||
+            _pdfSceneProposals.indexOf(pdfAnchor) >= 0
+          ) {
+            sceneSlotLog('skip: PDF scene page already exists at ' + pdfAnchor);
+            return;
+          }
+          _pdfSceneProposals.push(pdfAnchor);
+          if (Number.isFinite(progressFraction)) _pdfSceneProgress[pdfAnchor] = progressFraction;
+          syncPDFScenePages();
+          sceneSlotLog('inserted PDF scene page at ' + pdfAnchor);
           return;
         }
         var block = findLastVisibleSceneBlock(doc, win);
@@ -6311,6 +6443,7 @@ a { color: ${primary} !important; }
       for (var i = 0; i < contents.length; i++) {
         if (contents[i].doc) applySceneInserts(contents[i].doc, contents[i].index);
       }
+      syncPDFScenePages();
     };
 
     // Локализованные подписи врезок — из RN при готовности WebView
@@ -6362,6 +6495,13 @@ a { color: ${primary} !important; }
       if (box && box.__readanyBorderObserver) box.__readanyBorderObserver.disconnect();
       if (box && box.__readanyDisposeLoader) box.__readanyDisposeLoader();
       if (el && el.parentNode) el.parentNode.removeChild(el);
+      if (pdfScenePageIndex(anchor) >= 0) {
+        _pdfSceneProposals = _pdfSceneProposals.filter(function (item) { return item !== anchor; });
+        _sceneRestoreAnchors = _sceneRestoreAnchors.filter(function (item) { return item !== anchor; });
+        delete _pdfSceneProgress[anchor];
+        delete _pdfSceneEntries[anchor];
+        syncPDFScenePages();
+      }
     };
   </script>
 

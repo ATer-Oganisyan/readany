@@ -38,6 +38,11 @@ describe("local book import toast contract", () => {
     );
   });
 
+  it("keeps the picker-reported size for iOS document-provider imports", () => {
+    expect(importActions).toContain("size: asset.size");
+    expect(libraryStore).toContain("getMobileFileStat(filePath, fileInfo.size)");
+  });
+
   it("renders toast text with the regular interface font", () => {
     const toastOptions = app.slice(app.indexOf("toastOptions={{"));
     expect(toastOptions).toContain("fontFamily: interfaceFontFamily.regular");

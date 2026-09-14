@@ -49,6 +49,10 @@ import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import { DEFAULT_READER_FONT_FAMILY } from "@/lib/reader/bundled-reader-font";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
+import {
+  resolveReaderBookLocation,
+  resolveTrackableReaderLocation,
+} from "@/lib/reader/reader-relocation";
 import { isReaderTransportError } from "@/lib/reader/reader-recovery";
 import {
   READER_BUILD_ID,
@@ -1181,12 +1185,14 @@ function ReaderContent({ route, navigation }: Props) {
         setProgress(absoluteFraction);
       }
 
-      // «стр. N из M» по всей книге — из foliate location (нет в scrolled/fixed)
-      setBookLocation(detail.location?.total ? detail.location : null);
+      // PDFs expose physical pages; all other formats retain their existing
+      // renderer/location semantics. The header adds one to current.
+      setBookLocation(resolveReaderBookLocation(detail));
 
       const trackingSuppressed = Date.now() < progressTrackingGuardUntilRef.current;
+      const trackedLocation = resolveTrackableReaderLocation(detail);
 
-      if (detail.location?.total) {
+      if (trackedLocation) {
         const totalBookCharacters = totalBookCharactersRef.current;
         const fraction = absoluteFraction;
         if (totalBookCharacters && totalBookCharacters > 0) {
@@ -1231,16 +1237,16 @@ function ReaderContent({ route, navigation }: Props) {
           if (
             !trackingSuppressed &&
             previous?.mode === "location" &&
-            detail.location.current > previous.current
+            trackedLocation.current > previous.current
           ) {
-            const delta = detail.location.current - previous.current;
+            const delta = trackedLocation.current - previous.current;
             if (delta <= MAX_TRACKED_LOCATION_DELTA) {
               incrementCharactersRead(delta * REFLOWABLE_CHARACTERS_PER_LOCATION);
             }
           }
           sessionProgressRef.current = {
             mode: "location",
-            current: detail.location.current,
+            current: trackedLocation.current,
             fraction,
           };
         }

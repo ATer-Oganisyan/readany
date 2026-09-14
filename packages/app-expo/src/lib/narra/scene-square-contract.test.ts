@@ -55,6 +55,23 @@ describe("square scene contract", () => {
     expect(template).toContain("el.cfiFilter = sceneCfiFilter");
   });
 
+  it("uses a stable interstitial page anchor for PDF scenes", () => {
+    const template = readFileSync(
+      fileURLToPath(new URL("../../../assets/reader/reader.template.html", import.meta.url)),
+      "utf8",
+    );
+    const pdfAdapter = readFileSync(
+      fileURLToPath(new URL("../../../../foliate-js/pdf.js", import.meta.url)),
+      "utf8",
+    );
+    expect(pdfAdapter).toContain("isPDF: true");
+    expect(pdfAdapter).toContain("physicalPageCount: numPages");
+    expect(template).toContain("PDF_SCENE_ANCHOR_PREFIX = 'readany-pdf-page-v1:'");
+    expect(template).toContain("view.renderer.setInterstitials(entries)");
+    expect(template).toContain("doc.documentElement.hasAttribute('data-readany-pdf')");
+    expect(template).toContain("inserted PDF scene page at");
+  });
+
   it("uses the approved scene action copy and wand icon", () => {
     const template = readFileSync(
       fileURLToPath(new URL("../../../assets/reader/reader.template.html", import.meta.url)),

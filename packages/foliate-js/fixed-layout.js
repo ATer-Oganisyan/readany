@@ -31,6 +31,8 @@ const getViewport = (doc, viewport) => {
 export class FixedLayout extends HTMLElement {
   static observedAttributes = ["zoom", "zoom-factor", "spread"];
   #root = this.attachShadow({ mode: "closed" });
+  #frameIndexes = new WeakMap();
+  #interstitials = new Map();
   #observer = new ResizeObserver(() => this.#render());
   #spreads;
   #index = -1;
@@ -59,7 +61,10 @@ export class FixedLayout extends HTMLElement {
 
     this.#observer.observe(this);
   }
-  attributeChangedCallback(name, _, value) {
+  attributeChangedCallback(name, oldValue, value) {
+    // Reader settings are reapplied from the iframe load event. Reopening the
+    // same spread here removes the frame that has just loaded and loops forever.
+    if (oldValue === value) return;
     switch (name) {
       case "zoom":
         this.#zoom =
@@ -82,9 +87,15 @@ export class FixedLayout extends HTMLElement {
     const { rendition } = book;
     const rtl = book.dir === "rtl";
     const ltr = !rtl;
-    if (rendition?.spread === "none") return book.sections.map((section) => ({ center: section }));
+    const sections = book.sections.flatMap((section, index) => [
+      section,
+      ...Array.from(this.#interstitials.values())
+        .filter((item) => item.afterIndex === index)
+        .map((item) => item.section),
+    ]);
+    if (rendition?.spread === "none") return sections.map((section) => ({ center: section }));
 
-    return book.sections.reduce(
+    return sections.reduce(
       (arr, section, i) => {
         const last = arr[arr.length - 1];
         const { pageSpread } = section;
@@ -116,12 +127,29 @@ export class FixedLayout extends HTMLElement {
       [{}],
     );
   }
+  #currentSection() {
+    const spread = this.#spreads?.[this.#index];
+    if (!spread) return null;
+    return (
+      spread.center ??
+      (this.#side === "left" ? (spread.left ?? spread.right) : (spread.right ?? spread.left))
+    );
+  }
+  #sectionIndex(section) {
+    if (!section) return -1;
+    if (section.__readanyInterstitial === true) return section.afterIndex;
+    return this.book.sections.indexOf(section);
+  }
   async #applySpreadChange(value) {
     if (!this.book?.sections?.length) return;
     if (this.book.rendition) this.book.rendition.spread = value;
 
-    const currentSection = this.book.sections[this.index] ?? this.book.sections[0];
+    const currentSection = this.#currentSection();
     this.#spreads = this.#buildSpreads(this.book);
+    // Startup settings configure the spreads; view.init owns the first page.
+    // Starting a navigation here makes its initial next() skip the cover and
+    // lets two asynchronous #showSpread calls replace each other's iframes.
+    if (!currentSection) return;
     const target = currentSection ? this.getSpreadOf(currentSection) : null;
     this.#index = -1;
     await this.goToSpread(
@@ -150,6 +178,7 @@ export class FixedLayout extends HTMLElement {
     iframe.setAttribute("part", "filter");
     this.#root.append(element);
     if (!src) return { blank: true, element, iframe };
+    this.#frameIndexes.set(iframe, index);
     return new Promise((resolve) => {
       iframe.addEventListener(
         "load",
@@ -279,12 +308,10 @@ export class FixedLayout extends HTMLElement {
     this.#spreads = this.#buildSpreads(book);
   }
   get index() {
-    const spread = this.#spreads[this.#index];
-    if (!spread) return -1;
-    const section =
-      spread?.center ??
-      (this.#side === "left" ? (spread.left ?? spread.right) : (spread.right ?? spread.left));
-    return this.book.sections.indexOf(section);
+    return this.#sectionIndex(this.#currentSection());
+  }
+  get primaryIndex() {
+    return this.index;
   }
   #reportLocation(reason) {
     this.dispatchEvent(
@@ -305,18 +332,20 @@ export class FixedLayout extends HTMLElement {
   async goToSpread(index, side, reason) {
     if (index < 0 || index > this.#spreads.length - 1) return;
     if (index === this.#index) {
-      this.#render(side);
+      this.#side = side ?? this.#side;
+      this.#render();
+      this.#reportLocation(reason);
       return;
     }
     this.#index = index;
     const spread = this.#spreads[index];
     if (spread.center) {
-      const index = this.book.sections.indexOf(spread.center);
+      const index = this.#sectionIndex(spread.center);
       const src = await spread.center?.load?.();
       await this.#showSpread({ center: { index, src } });
     } else {
-      const indexL = this.book.sections.indexOf(spread.left);
-      const indexR = this.book.sections.indexOf(spread.right);
+      const indexL = this.#sectionIndex(spread.left);
+      const indexR = this.#sectionIndex(spread.right);
       const srcL = await spread.left?.load?.();
       const srcR = await spread.right?.load?.();
       const left = { index: indexL, src: srcL };
@@ -348,11 +377,62 @@ export class FixedLayout extends HTMLElement {
     const s = this.rtl ? this.#goRight() : this.#goLeft();
     if (!s) return this.goToSpread(this.#index - 1, this.rtl ? "left" : "right", "page");
   }
+  async setInterstitials(items = []) {
+    if (!this.book?.sections?.length) return;
+    const next = new Map();
+    for (const item of items) {
+      const key = typeof item?.key === "string" ? item.key : "";
+      const afterIndex = Number(item?.afterIndex);
+      if (
+        !key ||
+        !Number.isInteger(afterIndex) ||
+        afterIndex < 0 ||
+        afterIndex >= this.book.sections.length ||
+        typeof item?.load !== "function"
+      )
+        continue;
+      const previous = this.#interstitials.get(key);
+      const section = previous?.section ?? {
+        __readanyInterstitial: true,
+        pageSpread: "center",
+      };
+      section.afterIndex = afterIndex;
+      section.load = item.load;
+      next.set(key, { key, afterIndex, section });
+    }
+
+    const unchanged =
+      next.size === this.#interstitials.size &&
+      Array.from(next, ([key, item]) => {
+        const previous = this.#interstitials.get(key);
+        return previous?.afterIndex === item.afterIndex && previous.section === item.section;
+      }).every(Boolean);
+    if (unchanged) return;
+
+    const currentSection = this.#currentSection();
+    const fallbackIndex =
+      currentSection?.__readanyInterstitial === true
+        ? currentSection.afterIndex
+        : this.#sectionIndex(currentSection);
+    this.#interstitials = next;
+    this.#spreads = this.#buildSpreads(this.book);
+
+    const targetSection =
+      currentSection && this.getSpreadOf(currentSection)
+        ? currentSection
+        : this.book.sections[fallbackIndex];
+    if (!targetSection) return;
+    const target = this.getSpreadOf(targetSection);
+    if (!target) return;
+    this.#index = -1;
+    await this.goToSpread(target.index, target.side, "layout");
+  }
   getContents() {
     return Array.from(this.#root.querySelectorAll("iframe"), (frame) => ({
       doc: frame.contentDocument,
-      // TODO: index, overlayer
-    }));
+      index: this.#frameIndexes.get(frame),
+      // Fixed-layout pages do not currently expose a text annotation overlayer.
+    })).filter(({ doc, index }) => doc && Number.isInteger(index) && index >= 0);
   }
   destroy() {
     this.#observer.unobserve(this);
