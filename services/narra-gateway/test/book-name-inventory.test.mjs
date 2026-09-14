@@ -227,6 +227,25 @@ test('частый кандидат неясного типа не проигр�
   assert.ok(rosterMin >= minorMax, `в составе ${rosterMin}, за бортом ${minorMax}`)
 })
 
+test('места не вытесняют людей из значимого яруса, как бы часто их ни называли', () => {
+  // Обратная сторона отбора по частоте: если потолок забьют места, настоящие
+  // люди выпадут целиком и книга останется вовсе без персонажей. Значимые
+  // занимают потолок без резерва, поэтому частота решает только остаток.
+  const places = ['Гейблс', 'Кадриль', 'Лонгборн', 'Незерфилд']
+    .flatMap((name) => Array.from({ length: 20 }, (_, index) =>
+      `Дорога вела в ${name}, и в ${name} было тихо, ${index}.`))
+  const people = ['Базаров', 'Кирсанов']
+    .flatMap((name) => Array.from({ length: 5 }, () =>
+      `— Здравствуйте, — сказал ${name}. — ${name} слушает.`))
+  const inventory = buildBookNameInventory({ text: paragraphs(...places, ...people), cap: 4 })
+
+  for (const name of ['Базаров', 'Кирсанов']) {
+    const person = inventory.candidates.find(({ displayName }) => displayName === name)
+    assert.ok(person, `${name} исчез из инвентаря`)
+    assert.equal(person.tier, 'significant', `${name} проиграл потолок местам`)
+  }
+})
+
 test('candidate keys are unique ASCII identifiers even for Cyrillic names', () => {
   const inventory = buildBookNameInventory({
     text: paragraphs(

@@ -15,6 +15,7 @@ import {
   normalizeBookMarkupV3,
   normalizeBookAnalysisResolvedEntity
 } from './book-analysis-contracts.mjs'
+import { BOOK_ANALYSIS_PIPELINE_CARDS } from './book-analysis-pipeline.mjs'
 import { materializeMarkupVersion } from './book-markup-materialization.mjs'
 import { assessBookAnalysisCoverage } from './book-analysis-quality.mjs'
 import { resolveBookAnalysisEntities } from './book-analysis-resolver.mjs'
@@ -1158,11 +1159,12 @@ export function createPostgresBookAnalysisRepository(pool, {
       validateIdentifier(bookEditionId, 'bookEditionId')
       return transaction(pool, async (client) => {
         const publication = await client.query(
-          `SELECT publication.*
+          `SELECT publication.*, run.pipeline_id
            FROM book_analysis_publications AS publication
+           JOIN book_analysis_runs AS run ON run.id = publication.run_id
            WHERE publication.book_edition_id = $1 AND publication.channel = 'shadow'
            ORDER BY publication.published_at DESC, publication.id DESC
-           LIMIT 1 FOR SHARE`,
+           LIMIT 1 FOR SHARE OF publication`,
           [bookEditionId]
         )
         const row = publication.rows[0]
@@ -1172,7 +1174,15 @@ export function createPostgresBookAnalysisRepository(pool, {
           contentHash: row.content_hash,
           markup: row.data.markup,
           publishedAt: row.published_at,
-          retryFailedBundles
+          retryFailedBundles,
+          // Карточная книга публикуется заново на каждом закрытом окне, и у
+          // публикации всякий раз новый хэш. Общий заказ медиа принимает его за
+          // изменившийся источник, бумает ревизию бандла, удаляет артефакты и
+          // перерисовывает портреты всем персонажам — у ван Тоха их набралось
+          // шесть, у Бонди десять, при одной-единственной ревизии карточки.
+          // Медиа карточной книге ставит её собственный путь, по ревизии
+          // карточки, и трогать его проекции нечего.
+          enqueueMedia: row.pipeline_id !== BOOK_ANALYSIS_PIPELINE_CARDS
         })
       })
     },

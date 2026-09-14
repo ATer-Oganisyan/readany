@@ -69,6 +69,20 @@ const SALIENCE_FLOOR_MENTIONS = 12
 const SALIENCE_FLOOR_CHAPTERS = 3
 
 /**
+ * Доля потолка, отданная страховке полноты.
+ *
+ * Потолок — бюджет одного вызова подтверждения состава, и делить его приходится
+ * между двумя нуждами. Отдать его целиком значимым — значит потерять частого
+ * кандидата, чей тип счётчик не смог определить: так пропал Ян ван Тох со 107
+ * упоминаниями, проиграв персонажам с двенадцатью. Отдать целиком частоте —
+ * значит потерять настоящих людей на книге, где места называют чаще героев.
+ *
+ * Поэтому резерв: значимые занимают потолок без него, а он достаётся самым
+ * частым из оставшихся, кем бы их ни счёл счётчик.
+ */
+const ROSTER_BACKSTOP_SHARE = 8
+
+/**
  * Пороги распознавания рассказчика. Оба измерены, а не выбраны: на одиннадцати
  * живых книгах доля абзацев с «я» вне реплик у книг от первого лица — 0.62 и
  * 0.71, у книг от третьего — от 0.014 до 0.22. Между ними пусто, и 0.45 лежит
@@ -913,43 +927,67 @@ export function buildBookNameInventory({
     : null
   if (narrator) narrator.narrator = true
 
-  // Потолок выбирается по частоте и до всего остального. Пока его забирали
-  // значимые, а ярус `roster` набирался из остатка, на книге со ста двадцатью
-  // восемью персонажами остатка не оставалось вовсе — и кандидат с 94
-  // упоминаниями, чей тип счётчик не смог определить, проигрывал персонажу с
-  // двенадцатью. Он не попадал в состав, не получал фрагментов и не получал
-  // карточки: так пропал Ян ван Тох, герой, с которого начинается «Война с
-  // саламандрами». Backstop полноты обязан считать частоту, а не тип.
-  const rosterKeys = new Set()
+  // Кто безусловно значим: минимальный убывающий по частоте префикс по
+  // кандидатам-людям, покрывающий `coverage` их упоминаний, с учётом ничьих на
+  // границе. Это буквально тот протокол, которым в gold-фикстурах определён
+  // `significant`, поэтому отбор и метрика считаются по одному правилу.
+  //
+  // Знаменатель — только кандидаты с признаками человека. «Iping», «Gables» и
+  // «Quadrille» речи рядом не имеют, обращения не получают и притяжательной
+  // формы не образуют; держать их в знаменателе значило бы растить ярус за счёт
+  // строк, которые персонажами не станут. В backstop они остаются.
+  const named = candidates.filter(({ kindHint }) => kindHint === 'person')
+  const namedMentions = named.reduce((sum, { count }) => sum + count, 0)
+  const target = namedMentions * coverage
+  // Значимые занимают потолок без резерва: остаток принадлежит страховке.
+  const significantCap = Math.max(1, cap - Math.max(1, Math.round(cap / ROSTER_BACKSTOP_SHARE)))
+  let covered = 0
+  let coreCount = 0
+  for (const candidate of named) {
+    if (covered >= target || coreCount >= significantCap) break
+    covered += candidate.count
+    coreCount += 1
+  }
+  const boundaryCount = named[coreCount - 1]?.count ?? 0
+  while (
+    coreCount < named.length && coreCount < significantCap &&
+    named[coreCount].count === boundaryCount
+  ) {
+    covered += named[coreCount].count
+    coreCount += 1
+  }
+  const significantKeys = new Set(
+    named.slice(0, coreCount).map(({ candidateKey }) => candidateKey)
+  )
+  // Рассказчик значим всегда: ярус считается по частоте имени, а у него имя и
+  // занижено самой формой повествования.
+  if (narrator) significantKeys.add(narrator.candidateKey)
+
+  // Потолок: сначала те, кто значим безусловно, затем самые частые из
+  // оставшихся — по частоте, а не по типу.
+  //
+  // Пока порядок был обратным, ярус `roster` набирался из остатка после
+  // значимых, и на книге со ста двадцатью восемью персонажами остатка не
+  // оставалось вовсе: кандидат с 94 упоминаниями, чей тип счётчик не смог
+  // определить, проигрывал персонажу с двенадцатью. Он не попадал в состав, не
+  // получал фрагментов и не получал карточки — так пропал Ян ван Тох, герой, с
+  // которого начинается «Война с саламандрами». Backstop полноты обязан считать
+  // частоту, а не тип.
+  //
+  // Но и одной частоты мало: если потолок забьют места, настоящие люди выпадут
+  // целиком. Поэтому частота решает только то, что остаётся после безусловно
+  // значимых, — они в потолке всегда.
+  const rosterKeys = new Set(significantKeys)
   for (const candidate of candidates) {
     if (rosterKeys.size >= cap) break
     rosterKeys.add(candidate.candidateKey)
   }
 
-  const named = candidates.filter(({ candidateKey, kindHint }) =>
-    kindHint === 'person' && rosterKeys.has(candidateKey))
-  const namedMentions = named.reduce((sum, { count }) => sum + count, 0)
-  const target = namedMentions * coverage
-  let covered = 0
-  let significantCount = 0
+  // Порог значимости поверх частотного префикса — но только среди тех, кто в
+  // потолок попал: значимым нельзя быть, не будучи в составе.
   for (const candidate of named) {
-    if (covered >= target || significantCount >= cap) break
-    covered += candidate.count
-    significantCount += 1
-  }
-  const boundaryCount = named[significantCount - 1]?.count ?? 0
-  while (
-    significantCount < named.length && significantCount < cap &&
-    named[significantCount].count === boundaryCount
-  ) {
-    covered += named[significantCount].count
-    significantCount += 1
-  }
-  const significantKeys = new Set(
-    named.slice(0, significantCount).map(({ candidateKey }) => candidateKey)
-  )
-  for (const candidate of named) {
-    if (significantKeys.size >= cap) break
+    if (significantKeys.size >= significantCap) break
+    if (!rosterKeys.has(candidate.candidateKey)) continue
     if (
       candidate.count >= SALIENCE_FLOOR_MENTIONS &&
       candidate.chapterCount >= SALIENCE_FLOOR_CHAPTERS
@@ -957,20 +995,15 @@ export function buildBookNameInventory({
       significantKeys.add(candidate.candidateKey)
     }
   }
-  // Рассказчик значим всегда: ярус считается по частоте имени, а у него имя и
-  // занижено самой формой повествования.
-  if (narrator && significantKeys.size < cap) significantKeys.add(narrator.candidateKey)
-  significantCount = significantKeys.size
-  for (const candidate of candidates) {
-    candidate.tier = significantKeys.has(candidate.candidateKey) ? 'significant' : 'minor'
-  }
+  const significantCount = significantKeys.size
 
   // Ярус `roster` — вход подтверждения состава и backstop полноты: место,
   // ошибочно помеченное как место, здесь ещё остаётся, и один LLM-вызов может
-  // вернуть его в персонажи. Он и есть отобранный по частоте потолок.
+  // вернуть его в персонажи.
   for (const candidate of candidates) {
-    if (candidate.tier === 'significant') continue
-    candidate.tier = rosterKeys.has(candidate.candidateKey) ? 'roster' : 'minor'
+    candidate.tier = significantKeys.has(candidate.candidateKey)
+      ? 'significant'
+      : rosterKeys.has(candidate.candidateKey) ? 'roster' : 'minor'
   }
   const rosterCount = rosterKeys.size
 
