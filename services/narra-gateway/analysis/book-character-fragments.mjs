@@ -265,7 +265,9 @@ export function collectBookCharacterFragments({
     // слова. Реплики пропускаем — там «я» принадлежит тому, кто говорит.
     if (narratorKey && byCharacter.has(narratorKey) && !isDialogueParagraph(source, paragraph)) {
       const mention = firstPersonMentionAt(paragraphText)
-      if (mention >= 0) matches.push({ start: mention, end: mention, characterId: narratorKey })
+      if (mention >= 0) {
+        matches.push({ start: mention, end: mention, characterId: narratorKey, voice: true })
+      }
     }
     if (!matches.length) continue
     const chapter = index.chapterAt(paragraph.startOffset)
@@ -291,10 +293,17 @@ export function collectBookCharacterFragments({
           startOffset: range.startOffset,
           endOffset: range.endOffset,
           quote: source.slice(range.startOffset, range.endOffset),
-          mentionOffsets: []
+          mentionOffsets: [],
+          // Абзац, найденный по голосу рассказчика, а не по его имени. Голос
+          // цитируется всей книгой, имя — десятком абзацев, и без этой отметки
+          // голос вытеснял имя из выборки: на трёх тысячах абзацев из двухсот
+          // сорока отобранных имя оставалось ровно в одном.
+          voiceOnly: true
         }
         fragments.set(paragraph.index, fragment)
       }
+      if (!match.voice) fragment.voiceOnly = false
+      if (match.voice) continue
       if (!fragment.mentionOffsets.includes(mentionStart)) {
         fragment.mentionOffsets.push(mentionStart)
       }
@@ -310,13 +319,23 @@ export function collectBookCharacterFragments({
       }))
       .sort((left, right) => left.startOffset - right.startOffset)
     const mentionCount = ordered.reduce((sum, { mentionOffsets }) => sum + mentionOffsets.length, 0)
-    const selected = evenlySampled(ordered, maxFragmentsPerCharacter)
+    // Именные абзацы берутся все, голос добирает остаток: имя доказывает, что
+    // персонаж назван, а голос — только что он говорит. Порядок в выборке
+    // восстанавливается по тексту, чтобы карточка читала книгу подряд.
+    const named = ordered.filter(({ voiceOnly }) => !voiceOnly)
+    const voiced = ordered.filter(({ voiceOnly }) => voiceOnly)
+    const selected = voiced.length
+      ? [
+          ...evenlySampled(named, maxFragmentsPerCharacter),
+          ...evenlySampled(voiced, Math.max(0, maxFragmentsPerCharacter - named.length))
+        ].sort((left, right) => left.startOffset - right.startOffset)
+      : evenlySampled(ordered, maxFragmentsPerCharacter)
     result.push({
       characterKey,
       fragmentCount: ordered.length,
       mentionCount,
       selectedCount: selected.length,
-      firstMentionTextOffset: ordered[0]?.mentionOffsets[0] ?? -1,
+      firstMentionTextOffset: ordered[0]?.mentionOffsets[0] ?? ordered[0]?.startOffset ?? -1,
       chapterIndexes: [...new Set(ordered
         .map(({ chapterIndex }) => chapterIndex)
         .filter((value) => value >= 0))].sort((left, right) => left - right),

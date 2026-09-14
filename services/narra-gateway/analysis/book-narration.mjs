@@ -51,16 +51,24 @@ export function firstPersonMentionAt(text) {
 export function bookNarrationPerson(source, textIndex) {
   let narrative = 0
   let firstPerson = 0
+  let firstPersonStart = -1
   for (const paragraph of textIndex.paragraphs) {
     if (isDialogueParagraph(source, paragraph)) continue
     const text = source.slice(paragraph.startOffset, paragraph.endOffset)
     if (!/\p{L}/u.test(text)) continue
     narrative += 1
-    if (firstPersonMentionAt(text) >= 0) firstPerson += 1
+    const mention = firstPersonMentionAt(text)
+    if (mention < 0) continue
+    firstPerson += 1
+    if (firstPersonStart < 0) firstPersonStart = paragraph.startOffset + mention
   }
   return {
     narrativeParagraphs: narrative,
     firstPersonParagraphs: firstPerson,
+    // Где рассказчик заговорил впервые. Это и есть его первое появление: по
+    // имени его назовут много позже — у «Игрока» на 28 % книги, — а окно
+    // карточек и замок читателя считаются именно по первому появлению.
+    firstPersonStartOffset: firstPersonStart,
     firstPersonShare: narrative > 0
       ? Math.round((firstPerson / narrative) * 10_000) / 10_000
       : 0

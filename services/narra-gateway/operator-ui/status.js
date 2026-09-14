@@ -46,8 +46,19 @@ function cardsSummary(book) {
   if (book.status === 'failed') {
     return { tone: 'bad', text: `Прогон упал на стадии «${label(stageLabels, book.stage)}»` }
   }
-  if (!published) return { tone: '', text: 'Карточек ещё нет' }
-  if (!publications) return { tone: 'bad', text: 'Не опубликована' }
+  if (book.status === 'cancelled') return { tone: 'warn', text: 'Прогон отменён' }
+  if (!published) {
+    return { tone: '', text: book.status === 'queued' ? 'В очереди' : 'Карточки собираются' }
+  }
+  // Публикация случается на закрытии окна, а не на каждой карточке. Пока
+  // первое окно ещё закрывается, у здоровой книги карточки уже есть, а
+  // публикаций ещё нет — и красное «Не опубликована» здесь было бы ложной
+  // тревогой, от которой признак перестаёт значить что-либо.
+  if (!publications) {
+    return windows.ready
+      ? { tone: 'bad', text: 'Не опубликована' }
+      : { tone: '', text: 'Первое окно собирается' }
+  }
   return {
     tone: 'ok',
     text: windows.total

@@ -925,7 +925,20 @@ export function buildBookNameInventory({
         null
       )
     : null
-  if (narrator) narrator.narrator = true
+  if (narrator) {
+    narrator.narrator = true
+    // Первое появление рассказчика — там, где он заговорил, а не там, где его
+    // впервые назвали по имени. Окно карточек набирает состав по этому полю, и
+    // замок читателя считается по нему же: пока оно указывало на первое
+    // называние, «Алексей Иванович» получал карточку на 28 % книги и до тех пор
+    // оставался читателю недоступен.
+    if (narration.firstPersonStartOffset >= 0) {
+      narrator.firstMentionTextOffset = Math.min(
+        narrator.firstMentionTextOffset,
+        narration.firstPersonStartOffset
+      )
+    }
+  }
 
   // Кто безусловно значим: минимальный убывающий по частоте префикс по
   // кандидатам-людям, покрывающий `coverage` их упоминаний, с учётом ничьих на

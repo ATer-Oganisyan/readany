@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { bookNarrationPerson, firstPersonMentionAt } from '../analysis/book-narration.mjs'
 import { buildBookTextIndex } from '../analysis/book-text-index.mjs'
-import { buildBookNameInventory } from '../analysis/book-name-inventory.mjs'
+import { buildBookNameInventory, inventoryRoster } from '../analysis/book-name-inventory.mjs'
 import { collectBookCharacterFragments } from '../analysis/book-character-fragments.mjs'
 
 /**
@@ -62,6 +62,15 @@ test('рассказчик попадает в значимый ярус, хот
   assert.equal(narrator.displayName, 'Алексей Иванович')
   assert.equal(narrator.tier, 'significant')
   assert.equal(inventory.narration.firstPerson, true)
+  // Появляется он там, где заговорил, а не там, где его впервые назвали: окно
+  // карточек набирает состав по этому полю, и замок читателя считается по нему
+  // же. Пока оно указывало на первое называние, главный герой был недоступен
+  // читателю до четверти книги.
+  assert.ok(
+    narrator.firstMentionTextOffset < 200,
+    `рассказчик появляется поздно: ${narrator.firstMentionTextOffset}`
+  )
+  assert.equal(inventory.narration.firstPersonStartOffset >= 0, true)
   // Полина названа чаще и вне реплик — рассказчиком её считать нельзя.
   const polina = inventory.candidates.find(({ displayName }) => displayName.startsWith('Полина'))
   assert.ok(polina)
@@ -69,6 +78,20 @@ test('рассказчик попадает в значимый ярус, хот
   // Рассказчик в книге ровно один: признак «зовут только в репликах» сам по
   // себе не единственен, и на «Игроке» под него попадают ещё двое.
   assert.equal(inventory.candidates.filter(({ narrator: flag }) => flag).length, 1)
+})
+
+test('рассказчик не выносит состав за потолок', () => {
+  // Он добавлялся в значимые в обход потолка: inventoryRoster отдавал на
+  // одного больше, чем cap, а rosterCount врал. Потребители считают по этим
+  // числам размер вызова подтверждения состава.
+  const inventory = buildBookNameInventory({ text: firstPersonBook(), cap: 2 })
+  const roster = inventoryRoster(inventory)
+  assert.ok(roster.length <= 2, `состав превысил потолок: ${roster.length}`)
+  assert.equal(inventory.thresholds.rosterCount, roster.length)
+  assert.equal(
+    inventory.thresholds.minorCount,
+    inventory.candidates.filter(({ tier }) => tier === 'minor').length
+  )
 })
 
 test('книга от третьего лица рассказчика не заводит', () => {
@@ -97,6 +120,34 @@ test('свидетельства рассказчика начинаются с 
   assert.ok(byName[0].startOffset > 1_000, `по имени: ${byName[0].startOffset}`)
   assert.equal(byVoice[0].startOffset, 0)
   assert.match(byVoice[0].quote, /Я снова проигрался/)
+})
+
+test('голос рассказчика не вытесняет из выборки его имя', () => {
+  // Голос цитируется всей книгой, имя — десятком абзацев. Пока выборка не
+  // различала их, на трёх тысячах абзацев из двухсот сорока отобранных имя
+  // оставалось ровно в одном: модель почти не видела ни имени, ни обращений,
+  // ни признаков пола, а mentionCount переставал быть счётчиком упоминаний.
+  const voice = Array.from({ length: 900 }, (_, index) =>
+    `Я шёл дальше и считал свои шаги, ${index}.`)
+  const named = Array.from({ length: 12 }, (_, index) =>
+    `— Алексей Иванович, вы опять здесь? — спросила Полина, ${index}.`)
+  const text = [...voice, ...named].join('\n\n')
+  const [character] = collectBookCharacterFragments({
+    text,
+    characters: [{ characterKey: 'name:aleksey', names: ['Алексей Иванович'] }],
+    narratorKey: 'name:aleksey',
+    maxFragmentsPerCharacter: 40
+  }).characters
+
+  const withName = character.fragments.filter(({ quote }) => quote.includes('Алексей Иванович'))
+  assert.equal(withName.length, 12, 'именные абзацы вытеснены голосом')
+  assert.equal(character.fragments.length, 40)
+  // Счётчик упоминаний считает имя, а не голос: иначе он перестаёт значить то,
+  // что значит у всех остальных персонажей.
+  assert.equal(character.mentionCount, 12)
+  // Выборка идёт по тексту подряд, а не голосом после имени.
+  const offsets = character.fragments.map(({ startOffset }) => startOffset)
+  assert.deepEqual(offsets, [...offsets].sort((left, right) => left - right))
 })
 
 test('в репликах «я» принадлежит говорящему, а не рассказчику', () => {
