@@ -1,5 +1,4 @@
 /* Дашборд прогресса. Токены и базовые классы берутся из styles.css. */
-.topbar-side { display: flex; align-items: center; gap: 16px; }
 .refresh-toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--primary-60); cursor: pointer; }
 .refresh-toggle input { width: 16px; height: 16px; accent-color: var(--blue); }
 

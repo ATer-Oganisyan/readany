@@ -429,6 +429,8 @@ test('the progress dashboard is served only when a progress repository is wired'
     assert.equal(api.status, 404)
     const page = await fetch(`${baseUrl}/operator/status`, { headers: { authorization: AUTH } })
     assert.equal(page.status, 404)
+    const cards = await fetch(`${baseUrl}/operator/cards`, { headers: { authorization: AUTH } })
+    assert.equal(cards.status, 404)
   })
 
   const snapshot = {
@@ -438,8 +440,12 @@ test('the progress dashboard is served only when a progress repository is wired'
     running: [],
     books: []
   }
+  const listing = { generatedAt: snapshot.generatedAt, limit: 600, runs: [] }
   const input = dependencies()
-  input.progressRepository = { async snapshot() { return snapshot } }
+  input.progressRepository = {
+    async snapshot() { return snapshot },
+    async cardsRuns() { return listing }
+  }
   await withServer(input, async (baseUrl) => {
     const unauthorized = await fetch(`${baseUrl}/operator/api/progress`)
     assert.equal(unauthorized.status, 401)
@@ -460,5 +466,24 @@ test('the progress dashboard is served only when a progress repository is wired'
     })
     assert.equal(script.status, 200)
     assert.match(page.headers.get('content-security-policy') ?? '', /script-src 'self'/)
+
+    // Список запусков карточками — отдельная страница и отдельный ответ:
+    // снимок дашборда короткий по устройству, а перевод каталога спрашивает
+    // «что мы уже запустили», и книга, вставшая триста запусков назад, в
+    // короткий снимок не попадает вообще.
+    const cardsApi = await fetch(`${baseUrl}/operator/api/cards-runs`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(cardsApi.status, 200)
+    assert.deepEqual(await cardsApi.json(), listing)
+    assert.equal((await fetch(`${baseUrl}/operator/api/cards-runs`)).status, 401)
+
+    const cardsPage = await fetch(`${baseUrl}/operator/cards`, { headers: { authorization: AUTH } })
+    assert.equal(cardsPage.status, 200)
+    assert.match(await cardsPage.text(), /assets\/cards\.js/)
+    const cardsScript = await fetch(`${baseUrl}/operator/assets/cards.js`, {
+      headers: { authorization: AUTH }
+    })
+    assert.equal(cardsScript.status, 200)
   })
 })

@@ -162,8 +162,14 @@ services:
     security_opt:
       - no-new-privileges:true
     pids_limit: 256
-    mem_limit: 1g
-    cpus: 1.0
+    # Гигабайта перестало хватать вместе с ростом каталога: база держала 814 МБ
+    # в покое, и любой тяжёлый запрос — каскадное удаление приватной книги,
+    # выборка дашборда — добирал остаток. Процесс убивал cgroup-OOM, а Postgres
+    # на смерть backend'а уводит весь кластер в recovery: за два часа это
+    # случилось восемь раз. Значение вынесено в настройку, чтобы поднимать его
+    # без выкладки образа.
+    mem_limit: ${NARRA_POSTGRES_MEM_LIMIT:-4g}
+    cpus: ${NARRA_POSTGRES_CPUS:-2.0}
     logging:
       driver: json-file
       options:

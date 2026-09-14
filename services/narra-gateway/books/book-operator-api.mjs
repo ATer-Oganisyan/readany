@@ -147,6 +147,12 @@ export function createBookOperatorRouter({
       res.json(await progressRepository.snapshot())
     }))
     router.get('/status', (_req, res) => res.sendFile('status.html', { root: uiDirectory }))
+    // Перевод каталога спрашивает не «что сейчас», а «что мы уже запустили»:
+    // список целиком, по времени запуска, с местом остановки каждой книги.
+    router.get('/api/cards-runs', asyncRoute(async (_req, res) => {
+      res.json(await progressRepository.cardsRuns())
+    }))
+    router.get('/cards', (_req, res) => res.sendFile('cards.html', { root: uiDirectory }))
   }
 
   router.get('/api/books/:bookEditionId', asyncRoute(async (req, res) => {

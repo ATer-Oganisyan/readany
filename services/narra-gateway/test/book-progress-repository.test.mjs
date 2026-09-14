@@ -164,3 +164,73 @@ test('the snapshot refuses selectors that would scan the whole installation', as
   assert.throws(() => createBookProgressRepository(pool([]), { staleWorkerSeconds: 5 }), RangeError)
   assert.throws(() => createBookProgressRepository(null), TypeError)
 })
+
+/**
+ * Полный список запусков карточками.
+ *
+ * Снимок дашборда держит два десятка книг и отвечает на «что происходит
+ * сейчас». Перевод каталога спрашивает другое — «что мы уже запустили и где
+ * оно стоит»; книга, вставшая три сотни запусков назад, в короткий снимок не
+ * попадает вообще. Тест держит два свойства: одна строка на книгу (перезапуск
+ * создаёт новый прогон, и без этого книга давала бы столько строк, сколько раз
+ * её перезапускали) и порядок по времени запуска.
+ */
+test('the cards listing takes the latest run per book, newest launch first', async () => {
+  const database = pool([
+    [/FROM \(\s*SELECT DISTINCT ON/, [
+      {
+        run_id: RUN,
+        book_edition_id: EDITION,
+        stage: 'publish',
+        status: 'running',
+        run_sequence: 2,
+        created_at: '2026-09-14T13:50:00.000Z',
+        updated_at: '2026-09-14T14:10:00.000Z',
+        pipeline_implementation_version: 'cards-v11',
+        title: 'Война и мир',
+        author: 'Лев Толстой',
+        scope: 'catalog'
+      }
+    ]],
+    [/FROM book_card_windows/, [{ run_id: RUN, total: 6, ready: 4 }]],
+    [/FROM book_character_cards/, [{ run_id: RUN, published: 61 }]],
+    [/FROM book_analysis_publications/, [
+      { run_id: RUN, count: 3, last_at: '2026-09-14T14:09:00.000Z' }
+    ]],
+    [/FROM generation_jobs/, [
+      { run_id: RUN, count: 2, codes: ['CARD_BIO_MISSING'] }
+    ]]
+  ])
+  const listing = await createBookProgressRepository(database).cardsRuns()
+  assert.equal(listing.runs.length, 1)
+  const [run] = listing.runs
+  assert.equal(run.title, 'Война и мир')
+  assert.equal(run.startedAt, '2026-09-14T13:50:00.000Z')
+  assert.deepEqual(run.windows, { total: 6, ready: 4 })
+  assert.equal(run.cards, 61)
+  assert.equal(run.publications, 3)
+  assert.equal(run.failedJobs, 2)
+  assert.deepEqual(run.failedCodes, ['CARD_BIO_MISSING'])
+  const [{ sql }] = database.queries
+  assert.match(sql, /DISTINCT ON \(run\.book_edition_id\)/)
+  assert.match(sql, /run\.pipeline_id = 'cards'/)
+  assert.match(sql, /ORDER BY latest\.created_at DESC/)
+  // Счётчики собираются проходами по списку прогонов, а не подзапросом на
+  // каждый: LATERAL здесь стоил 141 секунду, потому что под «все задания
+  // прогона» индекса нет и каждый прогон приводил свой seq scan.
+  assert.ok(database.queries.every(({ sql: value }) => !/LATERAL/.test(value)))
+  assert.ok(database.queries.slice(1).every(({ params }) => Array.isArray(params?.[0])))
+})
+
+test('a listing with no runs skips the counter queries entirely', async () => {
+  const database = pool([])
+  const listing = await createBookProgressRepository(database).cardsRuns()
+  assert.deepEqual(listing.runs, [])
+  assert.equal(database.queries.length, 1)
+})
+
+test('the cards listing refuses an unbounded page instead of reading the whole table', async () => {
+  const repository = createBookProgressRepository(pool([]))
+  await assert.rejects(() => repository.cardsRuns({ limit: 0 }), RangeError)
+  await assert.rejects(() => repository.cardsRuns({ limit: 5_000 }), RangeError)
+})

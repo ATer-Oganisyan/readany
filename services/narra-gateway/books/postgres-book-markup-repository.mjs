@@ -3087,14 +3087,21 @@ export function createPostgresBookMarkupRepository(pool, {
       )
       if (!result.rows[0]) throw leaseLost(job.id)
       const row = result.rows[0]
-      const candidates = Array.isArray(row.inventory_document?.candidates)
-        ? row.inventory_document.candidates
-        : []
-      if (!candidates.length) {
+      // Инвентарь без имён — не поломка, а книга без персонажей: так выглядит
+      // текст на языке, чьи имена разметка не разбирает, и просто короткий
+      // файл без единого имени. Раньше это была ошибка, задание исчерпывало
+      // попытки, окно оставалось `queued`, и книга навсегда висела в
+      // «обрабатывается» — читателю неотличимо от работающей. Пустой состав
+      // раннер уже умеет подтвердить; отказываем только когда инвентаря нет
+      // вовсе, потому что это действительно сломанный прогон.
+      if (!row.inventory_document) {
         const error = new Error(`run ${row.analysis_run_id} has no name inventory to confirm`)
         error.code = 'ROSTER_INVENTORY_MISSING'
         throw error
       }
+      const candidates = Array.isArray(row.inventory_document.candidates)
+        ? row.inventory_document.candidates
+        : []
       const fragments = await pool.query(
         `SELECT character_key, fragment_id, paragraph_index, chapter_index,
                 start_offset, end_offset, mention_count
@@ -3231,7 +3238,11 @@ export function createPostgresBookMarkupRepository(pool, {
         }
 
         let cardJobsCreated = 0
-        if (windowIndex !== null && !skipped) {
+        // Окно закрывается и тогда, когда подтверждать было некого: карточек
+        // в нём не будет ни одной, и оставить его `queued` значит остановить
+        // цепочку навсегда. Пустое окно проходится насквозь — так же, как
+        // окно, где персонажей не нашлось.
+        if (windowIndex !== null) {
           const enqueued = await enqueueCardWindowJobs(client, {
             runId, bookEditionId, windowIndex, priority: CARD_MEDIA_PRIORITY.foreground
           })
@@ -3769,6 +3780,66 @@ export function createPostgresBookMarkupRepository(pool, {
      * ревизии карточки; общий заказ выдал бы тем же персонажам вторую пачку по
      * ключам старой разметки.
      */
+    /**
+     * Завершить прогон книги, в которой не нашлось ни одного персонажа.
+     *
+     * Публиковать такой книге нечего: проекция требует хотя бы одну карточку,
+     * и это правильно — пустая разметка не разметка. Но и остаться на
+     * `synthesize` прогон не может: книга тогда навсегда висит в
+     * «обрабатывается», и читателю это неотличимо от работающей. Так стояли
+     * «Мцыри» (поэма, где героя ни разу не называют по имени) и текст на
+     * языке, чьи имена разметка не разбирает.
+     *
+     * Условие жёсткое: ни одной карточки и ни одного незакрытого окна. Прогон,
+     * который ещё работает, этот путь не трогает.
+     */
+    async finishCardsRunWithoutCharacters({ runId }) {
+      if (!UUID.test(String(runId))) throw new TypeError('runId must be a UUID')
+      return transaction(pool, async (client) => {
+        const run = await client.query(
+          `SELECT id, book_edition_id, stage, status FROM book_analysis_runs
+            WHERE id = $1 AND pipeline_id = 'cards' AND status = 'running'
+            FOR UPDATE`,
+          [runId]
+        )
+        if (!run.rows[0]) return { finished: false, reason: 'RUN_NOT_RUNNING' }
+        const blockers = await client.query(
+          `SELECT
+             (SELECT count(*) FROM book_character_cards WHERE run_id = $1 AND enabled)::int AS cards,
+             (SELECT count(*) FROM book_card_windows
+               WHERE run_id = $1 AND status IN ('queued', 'running'))::int AS open_windows,
+             (SELECT count(*) FROM generation_jobs
+               WHERE analysis_run_id = $1 AND status IN ('queued', 'running'))::int AS open_jobs`,
+          [runId]
+        )
+        const { cards, open_windows: openWindows, open_jobs: openJobs } = blockers.rows[0]
+        if (cards > 0) return { finished: false, reason: 'RUN_HAS_CARDS' }
+        if (openWindows > 0 || openJobs > 0) return { finished: false, reason: 'RUN_STILL_WORKING' }
+        // Двумя шагами, а не одним: триггер переходов смотрит на новый статус и
+        // на смену стадии разом — «stage changes require a running analysis
+        // run». Сначала прогон доходит до публикации, оставаясь работающим, и
+        // только потом закрывается.
+        if (run.rows[0].stage !== 'publish') {
+          await client.query(
+            "UPDATE book_analysis_runs SET stage = 'publish', updated_at = now() WHERE id = $1",
+            [runId]
+          )
+        }
+        await client.query(
+          "UPDATE book_analysis_runs SET status = 'ready', updated_at = now() WHERE id = $1",
+          [runId]
+        )
+        // Книга остаётся читаемой: персонажей у неё нет, но текст есть, и
+        // держать её в «обрабатывается» не за что.
+        await client.query(
+          `UPDATE book_editions SET status = 'base_ready', updated_at = now()
+            WHERE id = $1 AND status = 'marking_up'`,
+          [run.rows[0].book_edition_id]
+        )
+        return { finished: true, bookEditionId: run.rows[0].book_edition_id }
+      })
+    },
+
     async publishCardsMarkup({
       runId,
       bookEditionId,
