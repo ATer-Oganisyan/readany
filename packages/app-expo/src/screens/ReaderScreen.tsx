@@ -274,11 +274,27 @@ export function ReaderScreen(props: Props) {
         return existingBook.id;
       }
 
-      const importedBook = await importBackendCatalogBook(catalogBook, {
-        importBooks,
-        updateBook,
-        signal: controller.signal,
-      });
+      // Книга должна открыться, даже если обновить её не вышло. Загрузка
+      // каталога уже повторяется трижды сама, и если после этого она всё равно
+      // не удалась, а прежняя копия лежит на устройстве и читается, — читателю
+      // нужна она, а не возврат назад с «попробуйте ещё раз». Так книги из
+      // нижней части каталога открывались только с третьей-четвёртой попытки.
+      let importedBook: Book;
+      try {
+        importedBook = await importBackendCatalogBook(catalogBook, {
+          importBooks,
+          updateBook,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        if (controller.signal.aborted) throw error;
+        if (!existingBook || !(await isStoredBookFileAvailable(existingBook))) throw error;
+        console.warn(
+          `[Catalog] Opening the stored copy of ${catalogBook.catalogKey} after a failed refresh:`,
+          error,
+        );
+        return existingBook.id;
+      }
       if (existingBook && importedBook.id !== existingBook.id) {
         await updateBook(existingBook.id, { sourceKind: "local" });
         await updateBook(importedBook.id, {

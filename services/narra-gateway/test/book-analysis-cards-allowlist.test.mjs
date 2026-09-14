@@ -27,12 +27,20 @@ test('only the named editions get the cards pipeline', () => {
   const env = { BOOK_ANALYSIS_CARDS_EDITIONS: `${CRIME},${GRANT}` }
   assert.equal(bookAnalysisPipelineForEdition(CRIME, env), BOOK_ANALYSIS_PIPELINE_CARDS)
   assert.equal(bookAnalysisPipelineForEdition(GRANT, env), BOOK_ANALYSIS_PIPELINE_CARDS)
-  assert.equal(bookAnalysisPipelineForEdition(OTHER, env), BOOK_ANALYSIS_PIPELINE_NARRA)
-  assert.equal(bookAnalysisPipelineForEdition(null, env), BOOK_ANALYSIS_PIPELINE_NARRA)
+  // Умолчание — карточки; прежнее поведение возвращается настройкой.
+  const narraDefault = { ...env, BOOK_ANALYSIS_PIPELINE: 'narra' }
+  assert.equal(bookAnalysisPipelineForEdition(OTHER, narraDefault), BOOK_ANALYSIS_PIPELINE_NARRA)
+  assert.equal(bookAnalysisPipelineForEdition(OTHER, env), BOOK_ANALYSIS_PIPELINE_CARDS)
+  assert.equal(bookAnalysisPipelineForEdition(null, env), BOOK_ANALYSIS_PIPELINE_CARDS)
 })
 
 test('an empty list changes nothing', () => {
-  assert.equal(bookAnalysisPipelineForEdition(CRIME, {}), BOOK_ANALYSIS_PIPELINE_NARRA)
+  // Пустой список ничего не назначает: книга идёт тем конвейером, который задан
+  // по умолчанию, — и это видно по настройке, а не по списку.
+  assert.equal(
+    bookAnalysisPipelineForEdition(CRIME, { BOOK_ANALYSIS_PIPELINE: 'narra' }),
+    BOOK_ANALYSIS_PIPELINE_NARRA
+  )
   assert.deepEqual([...bookAnalysisCardsEditionsFromEnv({})], [])
   assert.deepEqual([...bookAnalysisCardsEditionsFromEnv({ BOOK_ANALYSIS_CARDS_EDITIONS: '  ' })], [])
 })
@@ -97,7 +105,10 @@ test('приватные книги возвращаются к общей на�
   // Путь отката без выкладки кода: настройка сильнее умолчания в обе стороны.
   const off = { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'none' }
   assert.equal(bookAnalysisPipelineForScope('private', off), null)
-  assert.equal(bookAnalysisPipelineForEdition(OTHER, off), BOOK_ANALYSIS_PIPELINE_NARRA)
+  assert.equal(
+    bookAnalysisPipelineForEdition(OTHER, { ...off, BOOK_ANALYSIS_PIPELINE: 'narra' }),
+    BOOK_ANALYSIS_PIPELINE_NARRA
+  )
   assert.equal(
     bookAnalysisPipelineForScope('private', { BOOK_ANALYSIS_PIPELINE_PRIVATE: 'narra' }),
     BOOK_ANALYSIS_PIPELINE_NARRA

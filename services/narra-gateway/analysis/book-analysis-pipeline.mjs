@@ -67,9 +67,21 @@ export function normalizeBookAnalysisPipelineId(value, name = 'pipeline') {
   return normalized
 }
 
+/**
+ * Конвейер по умолчанию — карточки.
+ *
+ * Прежним умолчанием была narra, и она остаётся в коде: по ней разобран
+ * каталог, и её прогоны читаются как прежде. Но новый разбор идёт карточками —
+ * они проверены на канареечных книгах и на приватных загрузках, а narra на
+ * каталоге до конца так и не дошла: из 1605 книг у 1261 прогон остался
+ * отменённым.
+ *
+ * Вернуть прежнее поведение можно настройкой, не выкладкой:
+ * `BOOK_ANALYSIS_PIPELINE=narra`.
+ */
 export function bookAnalysisPipelineFromEnv(env = process.env) {
   return normalizeBookAnalysisPipelineId(
-    env.BOOK_ANALYSIS_PIPELINE || BOOK_ANALYSIS_PIPELINE_NARRA,
+    env.BOOK_ANALYSIS_PIPELINE || BOOK_ANALYSIS_PIPELINE_CARDS,
     'BOOK_ANALYSIS_PIPELINE'
   )
 }

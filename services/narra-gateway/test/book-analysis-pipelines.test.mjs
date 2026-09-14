@@ -13,6 +13,7 @@ import {
   normalizeExternalBookObservations
 } from '../analysis/book-analysis-external-worker.mjs'
 import {
+  BOOK_ANALYSIS_PIPELINE_CARDS,
   BOOK_ANALYSIS_PIPELINE_EXTERNAL,
   BOOK_ANALYSIS_PIPELINE_NARRA,
   EXTERNAL_ADAPTER_CONTRACT_VERSION,
@@ -43,8 +44,14 @@ function contentHash(value) {
   return hash(JSON.stringify(canonical(value)))
 }
 
-test('pipeline registry defaults to narra and rejects unknown selectors', () => {
-  assert.equal(bookAnalysisPipelineFromEnv({}), BOOK_ANALYSIS_PIPELINE_NARRA)
+test('pipeline registry defaults to cards and rejects unknown selectors', () => {
+  // Умолчание — карточки: narra на каталоге до конца так и не дошла, и новый
+  // разбор идёт ими. Прежнее поведение возвращается настройкой, не выкладкой.
+  assert.equal(bookAnalysisPipelineFromEnv({}), BOOK_ANALYSIS_PIPELINE_CARDS)
+  assert.equal(
+    bookAnalysisPipelineFromEnv({ BOOK_ANALYSIS_PIPELINE: 'narra' }),
+    BOOK_ANALYSIS_PIPELINE_NARRA
+  )
   assert.equal(
     bookAnalysisPipelineFromEnv({ BOOK_ANALYSIS_PIPELINE: 'external' }),
     BOOK_ANALYSIS_PIPELINE_EXTERNAL
