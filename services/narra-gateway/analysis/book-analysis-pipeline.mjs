@@ -44,7 +44,8 @@ export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
 //     у книги, разобранной до правки, «Аомамэ» так и осталась бы без цитат.
 // v8: у книги от первого лица есть рассказчик, и подтверждают его собственные
 //     слова, а не первое называние по имени.
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v8'
+// v9: приветствие обращено к читателю, а не к герою книги.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v9'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'

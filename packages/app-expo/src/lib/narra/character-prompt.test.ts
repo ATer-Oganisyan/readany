@@ -82,3 +82,20 @@ describe("buildCharacterSystemPrompt — предохранители роли",
     expect(english).toContain("30% of the book");
   });
 });
+
+describe("собеседник — читатель, а не герой книги", () => {
+  // Пока это не было сказано прямо, модель заполняла пропуск сама: в «Драко
+  // Малфой и мучительное испытание любовью» Драко здоровался с читателем как с
+  // Грейнджер, а Тонкс — как с Малфоем. Ни промпт чата, ни промпт карточки не
+  // говорили, кто по ту сторону разговора.
+  it("говорит персонажу, что имени собеседника он не знает", () => {
+    const ru = buildCharacterSystemPrompt(bazarov, "Отцы и дети", 0.3, "");
+    expect(ru).toContain("читатель книги, а не её персонаж");
+    expect(ru).toContain("не обращайся к нему по имени героя");
+    expect(ru).toContain("Пока он не представился, говори без имени.");
+
+    const en = buildCharacterSystemPrompt(bazarov, "Отцы и дети", 0.3, "", "en");
+    expect(en).toContain("a reader of the book, not to one of its characters");
+    expect(en).toContain("never address them by a character's name");
+  });
+});
