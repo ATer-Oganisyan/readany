@@ -1,3 +1,5 @@
+import i18n from "@readany/core/i18n";
+
 export type NarraErrorCode =
   | "AUTH"
   | "CONFIG"
@@ -102,4 +104,43 @@ export function reportNarraError(scope: string, error: unknown): NarraServiceErr
         normalized.backendCode,
         normalized.retryAfterMs,
       );
+}
+
+// Keep internal messages stable: retry logic also inspects them. Translate only for display.
+const ERROR_MESSAGE_KEYS: Record<string, string> = {
+  "Сервис вернул пустой ответ.": "narraErrors.emptyResponse",
+  "Сервис отвечает дольше обычного. Попробуйте ещё раз.": "narraErrors.timeout",
+  "Ответ озвучки превышает допустимый размер.": "narraErrors.audioTooLarge",
+  "OpenRouter отклонил ключ.": "narraErrors.openRouterAuth",
+  "Слишком много запросов. Попробуйте немного позже.": "narraErrors.rate",
+  "OpenRouter временно не отвечает.": "narraErrors.openRouterUnavailable",
+  "OpenRouter отвечает дольше обычного. Попробуйте ещё раз.": "narraErrors.openRouterTimeout",
+  "Не удалось связаться с OpenRouter. Проверьте подключение.": "narraErrors.openRouterConnection",
+  "OpenRouter не настроен в этой сборке.": "narraErrors.openRouterConfig",
+  "AI-провайдер Narra сейчас недоступен. Попробуйте немного позже.":
+    "narraErrors.providerUnavailable",
+  "Сервис Narra не настроен в этой сборке.": "narraErrors.config",
+  "Не удалось связаться с сервисом Narra. Проверьте подключение.": "narraErrors.connection",
+  "Сервис Narra отклонил авторизацию.": "narraErrors.auth",
+  "Не удалось подготовить запрос.": "narraErrors.request",
+  "Не удалось прочитать текст книги. Попробуйте снова.": "narraErrors.bookText",
+  "Сервис не распознал персонажей в ответе. Попробуйте снова.": "narraErrors.characters",
+  "Не получилось. Попробуйте снова.": "narraErrors.service",
+  "Не удалось озвучить фрагмент.": "narraErrors.speech",
+  "Озвучка не настроена в этой сборке.": "narraErrors.speechConfig",
+  "Не удалось подготовить фрагмент для озвучки.": "narraErrors.speechText",
+  "Сервис вернул неподдерживаемый формат озвучки.": "narraErrors.audioFormat",
+  "Сервис вернул пустой или повреждённый звук.": "narraErrors.audioInvalid",
+  "Не удалось сохранить звук на устройстве.": "narraErrors.audioSave",
+  "Дневной лимит озвучки исчерпан. Повторите после обновления лимита.": "narraErrors.speechLimit",
+  "Дневной лимит озвучки исчерпан.": "narraErrors.speechLimit",
+  "Сервис отклонил эту сцену по правилам безопасности. Попробуйте другую страницу.":
+    "narraErrors.safety",
+  "Сервис отклонил эту сцену по правилам безопасности. Нажмите «Заново» — попробуем смягчённый вариант, или выберите другую страницу.":
+    "narraErrors.sceneSafety",
+};
+
+export function localizeNarraErrorMessage(message: string): string {
+  const key = ERROR_MESSAGE_KEYS[message];
+  return key ? i18n.t(key) : i18n.t("narraErrors.service");
 }

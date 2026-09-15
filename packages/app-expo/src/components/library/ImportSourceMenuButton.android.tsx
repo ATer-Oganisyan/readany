@@ -1,14 +1,7 @@
-import { useTheme } from "@/styles/theme";
-import { typographyStyles } from "@deslop/primitives";
-import { interfaceFontFamily } from "@deslop/primitives/native";
-import { Button, DropdownMenu, DropdownMenuItem, Host, Text } from "@expo/ui/jetpack-compose";
-import { height, offset } from "@expo/ui/jetpack-compose/modifiers";
+import { EmptyStateActionControl, emptyStateActionTextStyle } from "@/components/ui/empty-state-action-button.android";
+import { DropdownMenu, DropdownMenuItem, Host, Text } from "@expo/ui/jetpack-compose";
 import { useState } from "react";
 import type { ImportSourceMenuButtonProps } from "./ImportSourceMenuButton.types";
-
-const bodyTypography = typographyStyles.find((style) => style.name === "Body");
-const bodyFontSize = Number.parseFloat(String(bodyTypography?.fontSize));
-const bodyLineHeight = Number.parseFloat(String(bodyTypography?.lineHeight));
 
 export function ImportSourceMenuButton({
   label,
@@ -16,7 +9,6 @@ export function ImportSourceMenuButton({
   disabled = false,
   onLocalPress,
 }: ImportSourceMenuButtonProps) {
-  const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
 
   const handleSelect = (action: () => void) => {
@@ -27,23 +19,15 @@ export function ImportSourceMenuButton({
   return (
     <Host matchContents>
       <DropdownMenu expanded={expanded} onDismissRequest={() => setExpanded(false)}>
-        <Button
-          enabled={!disabled}
-          onClick={() => setExpanded(true)}
-          modifiers={[height(56)]}
-          colors={{
-            containerColor: colors.primary,
-            contentColor: colors.primaryForeground,
-          }}
-        >
-          <Text maxLines={1} style={bodyTextStyle} modifiers={[offset(0, -1)]}>
-            {label}
-          </Text>
-        </Button>
+        <EmptyStateActionControl
+          label={label}
+          disabled={disabled}
+          onPress={() => setExpanded(true)}
+        />
         <DropdownMenu.Items>
           <DropdownMenuItem onClick={() => handleSelect(onLocalPress)}>
             <DropdownMenuItem.Text>
-              <Text maxLines={1} style={bodyTextStyle}>
+              <Text maxLines={1} style={emptyStateActionTextStyle}>
                 {localLabel}
               </Text>
             </DropdownMenuItem.Text>
@@ -53,9 +37,3 @@ export function ImportSourceMenuButton({
     </Host>
   );
 }
-
-const bodyTextStyle = {
-  fontFamily: interfaceFontFamily.regular,
-  fontSize: bodyFontSize,
-  lineHeight: bodyLineHeight,
-} as const;

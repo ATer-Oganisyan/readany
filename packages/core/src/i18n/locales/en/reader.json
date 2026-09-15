@@ -100,7 +100,8 @@
     "listen": "Listen",
     "audio": "Audio",
     "textSettings": "Text",
-    "searchTimedOut": "Search is taking too long. Try a shorter phrase."
+    "searchTimedOut": "Search is taking too long. Try a shorter phrase.",
+    "audioLoading": "Loading audio"
   },
   "bookmarks": {
     "title": "Bookmarks",

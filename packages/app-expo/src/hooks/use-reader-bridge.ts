@@ -9,10 +9,12 @@ import type { WebView } from "react-native-webview";
 export interface RelocateEvent {
   loadId?: string;
   fraction?: number;
+  reason?: string;
   isPDF?: boolean;
   section?: { current: number; total: number };
   location?: { current: number; next: number; total: number };
   page?: { current: number; total: number };
+  scroll?: { offset: number; viewport: number };
   tocItem?: { label?: string; href?: string; id?: number };
   pageItem?: { label?: string };
   cfi?: string;
@@ -569,6 +571,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       force = false,
       wordIndex?: number | null,
       text?: string | null,
+      fade = false,
     ) => {
       const nextColor = color || null;
       const nextWordIndex = cfi
@@ -611,6 +614,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
             if (typeof handleCommand === 'function') {
               handleCommand({
                 type: 'setTTSHighlight',
+                fade: ${fade},
                 cfi: ${cfiStr},
                 color: ${colorStr},
                 wordIndex: ${wordIndexStr},

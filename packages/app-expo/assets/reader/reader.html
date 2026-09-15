@@ -671,6 +671,9 @@
 
     function removeAllTTSCSSHighlights() {
       for (const content of getRendererContents()) {
+        for (const span of content.doc?.querySelectorAll('.readany-tts-text') || []) {
+          span.replaceWith(...span.childNodes);
+        }
         const css = content?.doc?.defaultView?.CSS;
         try {
           css?.highlights?.delete(TTS_CSS_HIGHLIGHT_NAME);
@@ -730,12 +733,7 @@
           removeAllTTSHighlights();
 
           try {
-            (target || source).overlayer.add(
-              TTS_HIGHLIGHT_KEY,
-              renderRange,
-              Overlayer.highlight,
-              { color: resolveTTSHighlightColor(ttsHighlightState.color) }
-            );
+            drawTTSHighlightWithCSS(renderRange, ttsHighlightState.color);
           } catch (e) {
             console.log('[ttsHighlight] error drawing active TTS highlight:', e);
           }
@@ -749,67 +747,38 @@
       }
     }
 
-    function drawTTSHighlight(rects, options) {
-      const { color = 'rgba(96, 165, 250, 0.35)', padding = 1, radius = 4, radiusPadding = 2 } = options || {};
-      const svgNS = 'http://www.w3.org/2000/svg';
-      const g = document.createElementNS(svgNS, 'g');
-      g.setAttribute('fill', color);
-      g.style.opacity = 'var(--overlayer-highlight-opacity, 1)';
-      g.style.mixBlendMode = 'var(--overlayer-highlight-blend-mode, normal)';
-
-      for (let index = 0; index < rects.length; index++) {
-        const { left, top, width, height } = rects[index];
-        const isFirst = index === 0;
-        const isLast = index === rects.length - 1;
-        const x = left - padding - (isFirst ? radiusPadding : 0);
-        const y = top - padding;
-        const w = width + padding * 2 + (isFirst ? radiusPadding : 0) + (isLast ? radiusPadding : 0);
-        const h = height + padding * 2;
-        const rtl = isLast ? radius : 0;
-        const rtr = isFirst ? radius : 0;
-        const rbr = isFirst ? radius : 0;
-        const rbl = isLast ? radius : 0;
-        const path = document.createElementNS(svgNS, 'path');
-        path.setAttribute(
-          'd',
-          [
-            `M ${x + rtl} ${y}`,
-            `H ${x + w - rtr}`,
-            rtr ? `Q ${x + w} ${y} ${x + w} ${y + rtr}` : '',
-            `V ${y + h - rbr}`,
-            rbr ? `Q ${x + w} ${y + h} ${x + w - rbr} ${y + h}` : '',
-            `H ${x + rbl}`,
-            rbl ? `Q ${x} ${y + h} ${x} ${y + h - rbl}` : '',
-            `V ${y + rtl}`,
-            rtl ? `Q ${x} ${y} ${x + rtl} ${y}` : '',
-            'Z',
-          ].filter(Boolean).join(' ')
-        );
-        g.append(path);
+    // Older WebKit has no Custom Highlight API. Transparent CFI wrappers keep
+    // the same text coordinates while colouring only the active sentence.
+    function drawTTSHighlightWithSpans(range, color) {
+      const doc = range.startContainer.ownerDocument;
+      const walker = doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+      const nodes = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+        ? [range.commonAncestorContainer] : [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (range.intersectsNode(node)) nodes.push(node);
       }
-
-      return g;
-    }
-
-    function resolveTTSHighlightColor(color) {
-      if (!color) return 'rgba(96, 165, 250, 0.35)';
-      // If it's already an rgba/rgb value, use as-is
-      if (color.startsWith('rgba(') || color.startsWith('rgb(')) return color;
-      // Preserve the alpha channel from primitives tokens such as Primary 5 (#RRGGBBAA).
-      if (/^#[0-9a-fA-F]{8}$/.test(color)) {
-        const r = parseInt(color.slice(1, 3), 16);
-        const g = parseInt(color.slice(3, 5), 16);
-        const b = parseInt(color.slice(5, 7), 16);
-        const a = parseInt(color.slice(7, 9), 16) / 255;
-        return `rgba(${r}, ${g}, ${b}, ${a})`;
+      const slices = nodes.map(node => ({
+        node,
+        start: node === range.startContainer ? range.startOffset : 0,
+        end: node === range.endContainer ? range.endOffset : node.length,
+      })).filter(({ start, end }) => end > start);
+      let style = doc.getElementById(TTS_CSS_HIGHLIGHT_STYLE_ID);
+      if (!style) {
+        style = doc.createElement('style');
+        style.id = TTS_CSS_HIGHLIGHT_STYLE_ID;
+        (doc.head || doc.documentElement).append(style);
       }
-      if (/^#[0-9a-fA-F]{6}$/.test(color)) {
-        const r = parseInt(color.slice(1, 3), 16);
-        const g = parseInt(color.slice(3, 5), 16);
-        const b = parseInt(color.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, 0.35)`;
+      style.textContent = `.readany-tts-text { color: ${color || currentThemeColors.primary} !important; }`;
+      for (const { node, start, end } of slices.reverse()) {
+        if (end < node.length) node.splitText(end);
+        const text = start ? node.splitText(start) : node;
+        const span = doc.createElement('span');
+        span.className = 'readany-tts-text';
+        text.replaceWith(span);
+        span.append(text);
       }
-      return color;
+      return slices.length > 0;
     }
 
     function drawTTSHighlightWithCSS(range, color) {
@@ -820,7 +789,10 @@
       const win = doc?.defaultView;
       const highlightRegistry = win?.CSS?.highlights;
       const HighlightConstructor = win?.Highlight;
-      if (!doc || !highlightRegistry || typeof HighlightConstructor !== 'function') return false;
+      if (!doc) return false;
+      if (!highlightRegistry || typeof HighlightConstructor !== 'function') {
+        return drawTTSHighlightWithSpans(range, color);
+      }
 
       try {
         let style = doc.getElementById(TTS_CSS_HIGHLIGHT_STYLE_ID);
@@ -829,7 +801,7 @@
           style.id = TTS_CSS_HIGHLIGHT_STYLE_ID;
           (doc.head || doc.documentElement).append(style);
         }
-        style.textContent = `::highlight(${TTS_CSS_HIGHLIGHT_NAME}) { background-color: ${resolveTTSHighlightColor(color)} !important; color: inherit !important; }`;
+        style.textContent = `::highlight(${TTS_CSS_HIGHLIGHT_NAME}) { background-color: transparent !important; color: ${color || currentThemeColors.primary} !important; }`;
         highlightRegistry.set(TTS_CSS_HIGHLIGHT_NAME, new HighlightConstructor(range.cloneRange()));
         return true;
       } catch (error) {
@@ -838,7 +810,48 @@
       }
     }
 
+    let ttsFadeTimer = null;
+    let ttsFadeFrame = null;
+
+    function cancelTTSHighlightFade() {
+      clearTimeout(ttsFadeTimer);
+      cancelAnimationFrame(ttsFadeFrame);
+      ttsFadeTimer = ttsFadeFrame = null;
+    }
+
+    function fadeTTSHighlight() {
+      if (ttsFadeTimer !== null || ttsFadeFrame !== null) return;
+      ttsFadeTimer = setTimeout(() => {
+        ttsFadeTimer = null;
+        const start = performance.now();
+        const styles = getRendererContents().flatMap(({ doc }) => {
+          const style = doc?.getElementById(TTS_CSS_HIGHLIGHT_STYLE_ID);
+          return style ? [{ style, original: style.textContent }] : [];
+        });
+        const tick = (now) => {
+          const progress = Math.min(1, (now - start) / 1000);
+          // CSS ease-out: cubic-bezier(0, 0, 0.58, 1).
+          let low = 0, high = 1;
+          for (let i = 0; i < 16; i++) {
+            const t = (low + high) / 2;
+            const x = 1.74 * (1 - t) * t * t + t * t * t;
+            if (x < progress) low = t; else high = t;
+          }
+          const t = (low + high) / 2;
+          const eased = 3 * (1 - t) * t * t + t * t * t;
+          for (const { style, original } of styles) {
+            style.textContent = original.replace(/color: ([^;]+) !important; }$/, (_, color) =>
+              `color: color-mix(in srgb, ${color} ${(1 - eased) * 100}%, ${currentThemeColors.fg}) !important; }`);
+          }
+          if (progress < 1) ttsFadeFrame = requestAnimationFrame(tick);
+          else clearTTSHighlight();
+        };
+        ttsFadeFrame = requestAnimationFrame(tick);
+      }, 2000);
+    }
+
     function clearTTSHighlight() {
+      cancelTTSHighlightFade();
       const previousValue = ttsHighlightState.annotationValue;
       if (!previousValue && !ttsHighlightState.cfi) return;
       ttsHighlightState = {
@@ -953,68 +966,6 @@
       }
     }
 
-    function getTTSWordRange(sourceRange, requestedWordIndex) {
-      if (!sourceRange || requestedWordIndex == null) return null;
-      const doc = sourceRange.startContainer && sourceRange.startContainer.ownerDocument;
-      if (!doc) return null;
-
-      const root = sourceRange.commonAncestorContainer;
-      const textNodes = [];
-      if (root.nodeType === Node.TEXT_NODE) {
-        textNodes.push(root);
-      } else {
-        const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-          try {
-            if (sourceRange.intersectsNode(node)) textNodes.push(node);
-          } catch {}
-        }
-      }
-
-      let text = '';
-      const positions = [];
-      for (const node of textNodes) {
-        const start = node === sourceRange.startContainer ? sourceRange.startOffset : 0;
-        const end = node === sourceRange.endContainer ? sourceRange.endOffset : node.nodeValue.length;
-        if (end <= start) continue;
-        const absoluteStart = text.length;
-        text += node.nodeValue.slice(start, end);
-        positions.push({ node, nodeStart: start, start: absoluteStart, end: text.length });
-      }
-      if (!text || !positions.length) return null;
-
-      const lang = doc.documentElement && doc.documentElement.lang || undefined;
-      const segments = typeof Intl !== 'undefined' && Intl.Segmenter
-        ? Array.from(new Intl.Segmenter(lang, { granularity: 'word' }).segment(text))
-        : Array.from(text.matchAll(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)).map((match) => ({
-            segment: match[0],
-            index: match.index,
-            isWordLike: true,
-          }));
-      const words = segments.filter((segment) =>
-        segment.isWordLike === true || /[\p{L}\p{N}]/u.test(segment.segment)
-      );
-      if (!words.length) return null;
-
-      const word = words[Math.max(0, Math.min(requestedWordIndex, words.length - 1))];
-      const wordStart = word.index;
-      const wordEnd = word.index + word.segment.length;
-      const startPosition = positions.find((position) => wordStart < position.end);
-      const endPosition = positions.find((position) => wordEnd <= position.end) || positions[positions.length - 1];
-      if (!startPosition || !endPosition) return null;
-
-      const range = doc.createRange();
-      range.setStart(
-        startPosition.node,
-        startPosition.nodeStart + Math.max(0, wordStart - startPosition.start)
-      );
-      range.setEnd(
-        endPosition.node,
-        endPosition.nodeStart + Math.max(0, wordEnd - endPosition.start)
-      );
-      return range;
-    }
 
     function findTTSRangeByText(doc, requestedText) {
       const targetText = normalizeTTSText(requestedText);
@@ -1056,6 +1007,8 @@
     }
 
     async function setTTSHighlight(cfi, color, wordIndex, text) {
+      if (ttsFadeTimer !== null || ttsFadeFrame !== null) ttsHighlightState.drawn = false;
+      cancelTTSHighlightFade();
       const previousValue = ttsHighlightState.annotationValue;
       const normalizedColor = color || null;
       const normalizedWordIndex = cfi ? Math.max(0, Number(wordIndex) || 0) : null;
@@ -1112,36 +1065,10 @@
           break;
         }
       }
-      const wordRange = resolved && getTTSWordRange(resolved.range, normalizedWordIndex);
       if (resolved) {
-        const target = getRendererContentForDoc(resolved.doc) || getRendererContentForCfi(cfi);
-        const renderRange = wordRange || resolved.range;
+        const renderRange = resolved.range;
         const hasRenderableRects = renderRange && Array.from(renderRange.getClientRects?.() || [])
           .some((rect) => rect.width > 0 && rect.height > 0);
-        if (target?.overlayer && renderRange && hasRenderableRects) {
-          try {
-            target.overlayer.add(
-              TTS_HIGHLIGHT_KEY,
-              renderRange,
-              drawTTSHighlight,
-              { color: resolveTTSHighlightColor(normalizedColor) }
-            );
-            ttsHighlightState = {
-              cfi,
-              color: normalizedColor,
-              wordIndex: normalizedWordIndex,
-              text: normalizedText,
-              annotationValue: null,
-              drawn: true,
-            };
-            return;
-          } catch (e) {
-            emitTTSDebug('direct highlight error', { error: String(e) });
-          }
-        }
-        // Keep the platform Highlight API only as a fallback. Foliate's own
-        // overlayer is deterministic across arbitrary EPUB CSS, while WebKit
-        // can accept CSS.highlights.set() without painting in some layouts.
         if (hasRenderableRects && drawTTSHighlightWithCSS(renderRange, normalizedColor)) {
           ttsHighlightState = {
             cfi,
@@ -1648,6 +1575,7 @@
           if (view && msg.settings) applySettings(msg.settings);
           break;
         case 'setTTSHighlight':
+          if (msg.fade) { fadeTTSHighlight(); break; }
           await setTTSHighlight(msg.cfi, msg.color, msg.wordIndex, msg.text);
           break;
         case 'clearTTSHighlight':
@@ -1921,10 +1849,14 @@
           postToRN('relocate', {
             loadId: msg.loadId,
             fraction: detail.fraction,
+            reason: detail.reason,
             isPDF,
             section: { current: currentSectionIndex, total: relocatedSectionTotal },
             location: isPDF ? undefined : detail.location,
             page: actualPage,
+            scroll: !isPDF && view.renderer && view.renderer.scrolled
+              ? { offset: view.renderer.start, viewport: view.renderer.size }
+              : undefined,
             tocItem: detail.tocItem,
             pageItem: detail.pageItem,
             cfi: detail.cfi,
@@ -1965,7 +1897,7 @@
                 text: range && typeof range.toString === 'function' ? range.toString().slice(0, 48) : '',
               })}`,
             });
-            draw(drawTTSHighlight, { color: resolveTTSHighlightColor(annotation.color) });
+            drawTTSHighlightWithCSS(range, annotation.color);
           } else if (annotation.note) {
             console.log('[draw-annotation] has note:', annotation.note);
             // Draw both highlight and squiggly underline for notes
@@ -3771,7 +3703,8 @@ a { color: ${primary} !important; }
     ].join(',');
 
     function normalizeTTSText(text) {
-      return String(text || '').replace(TTS_FOOTNOTE_MARKER_PATTERN, '').replace(/\s+/g, ' ').trim();
+      const normalized = String(text || '').replace(TTS_FOOTNOTE_MARKER_PATTERN, '').replace(/\s+/g, ' ').trim();
+      return /[\p{L}\p{N}]/u.test(normalized) ? normalized : '';
     }
 
     function isTTSFootnoteMarker(text) {
@@ -5724,7 +5657,7 @@ a { color: ${primary} !important; }
       if (node.nodeType !== 1 || !node.classList) return NodeFilter.FILTER_ACCEPT;
       if (node.hasAttribute('cfi-inert')) return NodeFilter.FILTER_REJECT;
       if (node.classList.contains(SCENE_INSERT_CLASS)) return NodeFilter.FILTER_REJECT;
-      if (node.classList.contains(CHARACTER_NAME_CLASS)) return NodeFilter.FILTER_SKIP;
+      if (node.classList.contains(CHARACTER_NAME_CLASS) || node.classList.contains('readany-tts-text')) return NodeFilter.FILTER_SKIP;
       if (node.classList.contains('readany-translation')) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     }
@@ -6218,14 +6151,10 @@ a { color: ${primary} !important; }
       return host;
     }
 
-    // Последний видимый блок текста — логика видимости как в getVisibleTextSnippet
+    // Учитываем положение iframe: в прокрутке он имеет высоту всей главы.
     function findLastVisibleSceneBlock(doc, win) {
       var renderer = view && view.renderer;
       if (!renderer) return null;
-      var isPaginated = !renderer.scrolled;
-      var pSize = renderer.size;
-      var pStart = renderer.start;
-      var pEnd = renderer.end;
       var blocks = doc.querySelectorAll(SCENE_BLOCK_SELECTOR);
       var best = null;
       for (var i = 0; i < blocks.length; i++) {
@@ -6233,19 +6162,7 @@ a { color: ${primary} !important; }
         if (!block.textContent || !block.textContent.trim()) continue;
         if (block.closest && block.closest('.' + SCENE_INSERT_CLASS)) continue;
         var rect = block.getBoundingClientRect();
-        var visible;
-        if (isPaginated && pSize > 0) {
-          var visibleLeft = pStart;
-          var visibleRight = Number.isFinite(pEnd) && pEnd > pStart
-            ? pEnd
-            : pStart + pSize;
-          visible = rect.right > visibleLeft && rect.left < visibleRight && rect.width > 0;
-        } else {
-          visible = rect.width > 0 && rect.height > 0 &&
-            rect.right > 0 && rect.left < win.innerWidth &&
-            rect.bottom > 0 && rect.top < win.innerHeight;
-        }
-        if (visible) best = block;
+        if (isRectVisibleInReader(rect, renderer, win, doc)) best = block;
       }
       return best;
     }
@@ -6850,7 +6767,7 @@ body:not(.notesBodyType) > .title, body:not(.notesBodyType) > .epigraph {
                         0% { opacity: 1; }
                         100% { opacity: 0; }
                     }
-                `,m.head.appendChild(b)}o&&c>0&&setTimeout(()=>{w.classList.add("foliate-arrow-fadeout"),setTimeout(()=>{w.parentNode&&w.parentNode.removeChild(w)},1e3)},c)}return d.append(w),d}static copyImage([e],t={}){let{src:s}=t,i=st("image"),{left:r,top:o,height:c,width:l}=e;return i.setAttribute("href",s),i.setAttribute("x",r),i.setAttribute("y",o),i.setAttribute("height",c),i.setAttribute("width",l),i}};bs=new WeakMap,Dn=new WeakMap,Ve=new WeakMap,Lt=new WeakMap,Bn=new WeakMap,le=new WeakMap;var Mh=n=>{let e=0,t=s=>{if(s.id=e++,s.subitems)for(let i of s.subitems)t(i)};for(let s of n)t(s);return n},za=n=>n.flatMap(e=>e.subitems?.length?[e,za(e.subitems)].flat():e),qs=class{async init({toc:e,ids:t,splitHref:s,getFragment:i}){Mh(e);let r=za(e),o=new Map;for(let[l,d]of r.entries()){let[h,f]=await s(d?.href)??[],g={fragment:f,item:d};o.has(h)?o.get(h).items.push(g):o.set(h,{prev:r[l-1],items:[g]})}let c=new Map;for(let[l,d]of t.entries())o.has(d)?c.set(d,o.get(d)):c.set(d,c.get(t[l-1]));this.ids=t,this.map=c,this.getFragment=i}getProgress(e,t){if(!this.ids)return;let s=this.ids[e],i=this.map.get(s);if(!i)return null;let{prev:r,items:o}=i;if(!o)return r;if(!t||o.length===1&&!o[0].fragment)return o[0].item;let c=t.startContainer.getRootNode();for(let[l,{fragment:d}]of o.entries()){let h=this.getFragment(c,d);if(h&&t.comparePoint(h,0)>0)return o[l-1]?.item??r}return o[o.length-1].item}},Gi,Fa,qi=class{constructor(e,t,s){C(this,Gi);this.sizes=e.map(i=>i.linear!="no"&&i.size>0?i.size:0),this.sizePerLoc=t,this.sizePerTimeUnit=s,this.sizeTotal=this.sizes.reduce((i,r)=>i+r,0),this.sectionFractions=x(this,Gi,Fa).call(this)}getProgress(e,t,s=0){let{sizes:i,sizePerLoc:r,sizePerTimeUnit:o,sizeTotal:c}=this,l=i[e]??0,h=i.slice(0,e).reduce((w,p)=>w+p,0)+t*l,f=h+s*l,g=c-h,u=(1-t)*l;return{fraction:f/c,section:{current:e,total:i.length},location:{current:Math.floor(h/r),next:Math.floor(f/r),total:Math.ceil(c/r)},time:{section:u/o,total:g/o}}}getSection(e){if(e<=0)return[0,0];if(e>=1)return[this.sizes.length-1,1];e=e+Number.EPSILON;let{sizeTotal:t}=this,s=this.sectionFractions.findIndex(r=>r>e)-1;if(s<0)return[0,0];for(;!this.sizes[s];)s++;let i=(e-this.sectionFractions[s])/(this.sizes[s]/t);return[s,i]}};Gi=new WeakSet,Fa=function(){let{sizeTotal:e}=this,t=[0],s=0;for(let i of this.sizes)t.push((s+=i)/e);return t};var Lh=(n,e)=>{let t=[];for(let s=e.currentNode;s;s=e.nextNode()){let i=n.comparePoint(s,0);if(i===0)t.push(s);else if(i>0)break}return t},Ih=(n,e)=>{let t=[];for(let s=e.nextNode();s;s=e.nextNode())t.push(s);return t},Rh=NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT|NodeFilter.SHOW_CDATA_SECTION,Ph=n=>{if(n.nodeType===1){let e=n.tagName.toLowerCase();return e==="script"||e==="style"||e==="rt"||e==="rp"?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP}return NodeFilter.FILTER_ACCEPT},Yr=function*(n,e,t){let s=n.commonAncestorContainer??n.body??n,i=document.createTreeWalker(s,Rh,{acceptNode:t||Ph}),o=(n.commonAncestorContainer?Lh:Ih)(n,i),c=o.map(d=>d.nodeValue),l=(d,h,f,g)=>{let u=document.createRange();return u.setStart(o[d],h),u.setEnd(o[f],g),u};for(let d of e(c,l))yield d};var Bi="foliate-search:",ih="foliate-tts:",Yu=async n=>{let e=new Uint8Array(await n.slice(0,4).arrayBuffer());return e[0]===80&&e[1]===75&&e[2]===3&&e[3]===4},Zu=async n=>{let e=new Uint8Array(await n.slice(0,5).arrayBuffer());return e[0]===37&&e[1]===80&&e[2]===68&&e[3]===70&&e[4]===45},Ju=({name:n,type:e})=>e==="application/vnd.comicbook+zip"||n.toLowerCase().endsWith(".cbz"),Qu=({name:n,type:e})=>e==="application/x-fictionbook+xml"||n.toLowerCase().endsWith(".fb2"),tf=({name:n,type:e})=>e==="application/x-zip-compressed-fb2"||n.toLowerCase().endsWith(".fb2.zip")||n.toLowerCase().endsWith(".fbz"),ef=async n=>{let{configure:e,ZipReader:t,BlobReader:s,TextWriter:i,BlobWriter:r}=await Promise.resolve().then(()=>(vo(),Fc));e({useWebWorkers:!1});let c=await new t(new s(n)).getEntries(),l=new Map(c.map(u=>[u.filename,u])),d=u=>(w,...p)=>l.has(w)?u(l.get(w),...p):null,h=d(u=>u.getData(new i)),f=d((u,w)=>u.getData(new r(w)));return{entries:c,loadText:h,loadBlob:f,getSize:u=>l.get(u)?.uncompressedSize??0}},rh=async n=>n.isFile?n:(await Promise.all(Array.from(await new Promise((e,t)=>n.createReader().readEntries(s=>e(s),s=>t(s))),rh))).flat(),sf=async n=>{let e=await rh(n),t=await Promise.all(e.map(h=>new Promise((f,g)=>h.file(u=>f([u,h.fullPath]),u=>g(u))))),s=new Map(t.map(([h,f])=>[f.replace(`${n.fullPath}/`,""),h])),i=new TextDecoder,r=h=>h?i.decode(h):null,o=h=>s.get(h)?.arrayBuffer()??null;return{loadText:async h=>r(await o(h)),loadBlob:h=>s.get(h),getSize:h=>s.get(h)?.size??0}},wa=class extends Error{},ba=class extends Error{},ya=class extends Error{},nf=async n=>{let e=await fetch(n);if(!e.ok)throw new wa(`${e.status} ${e.statusText}`,{cause:e});return new File([await e.blob()],new URL(e.url).pathname)},_a=async n=>{typeof n=="string"&&(n=await nf(n));let e;if(n.isDirectory){let t=await sf(n),{EPUB:s}=await Promise.resolve().then(()=>(pr(),Lo));e=await new s(t).init()}else if(n.size)if(await Yu(n)){let t=await ef(n);if(Ju(n)){let{makeComicBook:s}=await Promise.resolve().then(()=>(Xc(),Vc));e=s(t,n)}else if(tf(n)){let{makeFB2:s}=await Promise.resolve().then(()=>(zo(),No)),{entries:i}=t,r=i.find(c=>!c.directory&&!c.filename.startsWith("__MACOSX/")&&!c.filename.split("/").pop().startsWith("._")&&c.filename.toLowerCase().endsWith(".fb2"));if(!r)throw new Error("FB2 archive contains no FB2 document");let o=await t.loadBlob(r.filename);e=await s(o)}else{let{EPUB:s}=await Promise.resolve().then(()=>(pr(),Lo));e=await new s(t).init()}}else if(await Zu(n)){let{makePDF:t}=await Promise.resolve().then(()=>(Bo(),Yc));e=await t(n)}else{let{isMOBI:t,MOBI:s}=await Promise.resolve().then(()=>(cl(),al));if(await t(n)){let i=await Promise.resolve().then(()=>(wl(),ml));e=await new s({unzlib:i.unzlibSync}).open(n)}else if(Qu(n)){let{makeFB2:i}=await Promise.resolve().then(()=>(zo(),No));e=await i(n)}}else throw new ba("File not found");if(!e)throw new ya("File type not supported");return e},Mn,Hs,Ui,Gt,Sa=class Sa{constructor(e,t,s={}){C(this,Mn);C(this,Hs);C(this,Ui);C(this,Gt);E(this,Hs,e),E(this,Ui,t),E(this,Gt,s),a(this,Gt).hidden&&this.hide(),a(this,Hs).addEventListener("mousemove",({screenX:i,screenY:r})=>{i===a(this,Gt).x&&r===a(this,Gt).y||(a(this,Gt).x=i,a(this,Gt).y=r,this.show(),a(this,Mn)&&clearTimeout(a(this,Mn)),t()&&E(this,Mn,setTimeout(this.hide.bind(this),1e3)))},!1)}cloneFor(e){return new Sa(e,a(this,Ui),a(this,Gt))}hide(){a(this,Hs).style.cursor="none",a(this,Gt).hidden=!0}show(){a(this,Hs).style.removeProperty("cursor"),a(this,Gt).hidden=!1}};Mn=new WeakMap,Hs=new WeakMap,Ui=new WeakMap,Gt=new WeakMap;var xa=Sa,Kt,Mt,va=class extends EventTarget{constructor(){super(...arguments);C(this,Kt,[]);C(this,Mt,-1)}pushState(t){let s=a(this,Kt)[a(this,Mt)];s===t||s?.fraction&&s.fraction===t.fraction||(a(this,Kt)[++We(this,Mt)._]=t,a(this,Kt).length=a(this,Mt)+1,this.dispatchEvent(new Event("index-change")))}replaceState(t){let s=a(this,Mt);a(this,Kt)[s]=t}back(){let t=a(this,Mt);if(t<=0)return;let s={state:a(this,Kt)[t-1]};E(this,Mt,t-1),this.dispatchEvent(new CustomEvent("popstate",{detail:s})),this.dispatchEvent(new Event("index-change"))}forward(){let t=a(this,Mt);if(t>=a(this,Kt).length-1)return;let s={state:a(this,Kt)[t+1]};E(this,Mt,t+1),this.dispatchEvent(new CustomEvent("popstate",{detail:s})),this.dispatchEvent(new Event("index-change"))}get canGoBack(){return a(this,Mt)>0}get canGoForward(){return a(this,Mt)<a(this,Kt).length-1}clear(){E(this,Kt,[]),E(this,Mt,-1)}};Kt=new WeakMap,Mt=new WeakMap;var rf=n=>{if(!n)return{};try{let e=Intl.getCanonicalLocales(n)[0],t=new Intl.Locale(e),s=["zh","ja","kr"].includes(t.language),i=(t.getTextInfo?.()??t.textInfo)?.direction;return{canonical:e,locale:t,isCJK:s,direction:i}}catch(e){return console.warn(e),{}}},Dr,$e,Yt,Hi,gs,Ue,xe,Br,K,ce,oh,ah,ch,Or,lh,hh,dh,$i=class extends HTMLElement{constructor(){super();C(this,K);C(this,Dr,this.attachShadow({mode:"closed"}));C(this,$e);C(this,Yt);C(this,Hi,0);C(this,gs);C(this,Ue,new Map);C(this,xe,{type:"outline",options:{}});C(this,Br,new xa(this,()=>this.hasAttribute("autohide-cursor")));et(this,"isFixedLayout",!1);et(this,"cfiFilter");et(this,"lastLocation");et(this,"history",new va);this.history.addEventListener("popstate",({detail:t})=>{let s=this.resolveNavigation(t.state);this.renderer.goTo(s)})}async open(t){if((typeof t=="string"||typeof t.arrayBuffer=="function"||t.isDirectory)&&(t=await _a(t)),this.book=t,this.language=rf(t.metadata?.language),t.splitTOCHref&&t.getTOCFragment){let s=t.sections.map(o=>o.id);E(this,$e,new qi(t.sections,1500,1600));let i=t.splitTOCHref.bind(t),r=t.getTOCFragment.bind(t);E(this,Yt,new qs),await a(this,Yt).init({toc:t.toc??[],ids:s,splitHref:i,getFragment:r}),E(this,gs,new qs),await a(this,gs).init({toc:t.pageList??[],ids:s,splitHref:i,getFragment:r})}if(this.isFixedLayout=this.book.rendition?.layout==="pre-paginated",this.isFixedLayout?(await Promise.resolve().then(()=>(vl(),xl)),this.renderer=document.createElement("foliate-fxl")):(await Promise.resolve().then(()=>(Wl(),jl)),this.renderer=document.createElement("foliate-paginator")),this.renderer.setAttribute("exportparts","head,foot,filter"),this.renderer.addEventListener("load",s=>x(this,K,ah).call(this,s.detail)),this.renderer.addEventListener("relocate",s=>x(this,K,oh).call(this,s.detail)),this.renderer.addEventListener("create-overlayer",s=>s.detail.attach(x(this,K,lh).call(this,s.detail))),this.renderer.open(t),a(this,Dr).append(this.renderer),t.sections.some(s=>s.mediaOverlay)){let s=t.media.activeClass,i=t.media.playbackActiveClass;this.mediaOverlay=t.getMediaOverlay();let r;this.mediaOverlay.addEventListener("highlight",o=>{let c=this.resolveNavigation(o.detail.text);this.renderer.goTo(c).then(()=>{let{doc:l}=this.renderer.getContents().find(h=>h.index=c.index),d=c.anchor(l);d.classList.add(s),i&&d.ownerDocument.documentElement.classList.add(i),r=new WeakRef(d)})}),this.mediaOverlay.addEventListener("unhighlight",()=>{let o=r?.deref();o&&(o.classList.remove(s),i&&o.ownerDocument.documentElement.classList.remove(i))})}}close(){this.renderer?.destroy(),this.renderer?.remove(),E(this,$e,null),E(this,Yt,null),E(this,gs,null),E(this,Ue,new Map),this.lastLocation=null,this.history.clear(),this.tts=null,this.mediaOverlay=null}async setTOC(t){let s=this.book;if(!s?.splitTOCHref||!s?.getTOCFragment)return;let i=++We(this,Hi)._,r=new qs;if(await r.init({toc:t,ids:s.sections.map(o=>o.id),splitHref:s.splitTOCHref.bind(s),getFragment:s.getTOCFragment.bind(s)}),!(this.book!==s||i!==a(this,Hi))&&(s.toc=t,E(this,Yt,r),this.lastLocation)){let{section:o,range:c}=this.lastLocation;this.lastLocation.tocItem=r.getProgress(o.current,c),x(this,K,ce).call(this,"relocate",this.lastLocation)}}goToTextStart(){return this.goTo(this.book.landmarks?.find(t=>t.type.includes("bodymatter")||t.type.includes("text"))?.href??this.book.sections.findIndex(t=>t.linear!=="no"))}async init({lastLocation:t,showTextStart:s}){let i=t?this.resolveNavigation(t):null;i?(await this.renderer.goTo(i),this.history.pushState(t)):s?await this.goToTextStart():(this.history.pushState(0),await this.next())}async addAnnotation(t,s){let{value:i,indicatorType:r="outline",indicatorOptions:o={}}=t;if(i.startsWith(Bi)){let g=i.replace(Bi,""),{index:u,anchor:w}=await this.resolveNavigation(g),p=x(this,K,Or).call(this,u);if(p){let{overlayer:m,doc:b}=p;if(s){m.remove(i),m.remove(`${i}::underline`),m.remove(`${i}::tooltip`);return}let v=b?w(b):w,k;switch(r){case"highlight":k=Ee.highlight;break;case"arrow":k=Ee.arrow;break;default:k=Ee.outline;break}m.add(i,v,k,o)}return}let c=i.startsWith(ih)?i.replace(ih,""):i,{index:l,anchor:d}=await this.resolveNavigation(c),h=x(this,K,Or).call(this,l);if(h){let{overlayer:g,doc:u}=h;if(g.remove(i),g.remove(`${i}::underline`),g.remove(`${i}::tooltip`),s&&x(this,K,ce).call(this,"delete-annotation",{value:i,doc:u}),!s){let w=u?d(u):d,p=(m,b,v)=>{let k=v?`${i}::${v}`:i;g.add(k,w,m,b)};x(this,K,ce).call(this,"draw-annotation",{draw:p,annotation:t,doc:u,range:w})}}let f=a(this,Yt).getProgress(l)?.label??"";return{index:l,label:f}}deleteAnnotation(t){return this.addAnnotation(t,!0)}async showAnnotation(t){let{value:s}=t,i=await this.goTo(s);if(i){let{index:r,anchor:o}=i,{doc:c}=x(this,K,Or).call(this,r),l=o(c);x(this,K,ce).call(this,"show-annotation",{value:s,index:r,range:l})}}getCFI(t,s){let i=this.book.sections[t].cfi??Fn.fromIndex(t);return s?Xr(i,Gr(s,this.cfiFilter)):i}resolveCFI(t){if(this.book.resolveCFI)return this.book.resolveCFI(t,this.cfiFilter);let s=Jt(t);return{index:Fn.toIndex((s.parent??s).shift()),anchor:o=>zn(o,s,this.cfiFilter)}}resolveNavigation(t){try{if(typeof t=="number")return{index:t};if(typeof t.fraction=="number"){let[s,i]=a(this,$e).getSection(t.fraction);return{index:s,anchor:i}}return Xs.test(t)?this.resolveCFI(t):this.book.resolveHref(t)}catch(s){console.error(s),console.error(`Could not resolve target ${t}`)}}async goTo(t){t=decodeURIComponent(t);let s=this.resolveNavigation(t);try{return await this.renderer.goTo(s),this.history.pushState(t),s}catch(i){console.error(i),console.error(`Could not go to ${t}`)}}async goToFraction(t){let[s,i]=a(this,$e).getSection(t);await this.renderer.goTo({index:s,anchor:i}),this.history.pushState({fraction:t})}async select(t){try{let s=await this.resolveNavigation(t);await this.renderer.goTo({...s,select:!0}),this.history.pushState(t)}catch(s){console.error(s),console.error(`Could not go to ${t}`)}}deselect(){for(let{doc:t}of this.renderer.getContents())t.defaultView.getSelection().removeAllRanges()}getSectionFractions(){return(a(this,$e)?.sectionFractions??[]).map(t=>t+Number.EPSILON)}getProgressOf(t,s){let i=a(this,Yt)?.getProgress(t,s),r=a(this,gs)?.getProgress(t,s);return{tocItem:i,pageItem:r}}async getTOCItemOf(t){try{let{index:s,anchor:i}=await this.resolveNavigation(t),r=await this.book.sections[s].createDocument(),o=i(r),c=o instanceof Range,l=c?o:r.createRange();return c||l.selectNodeContents(o),a(this,Yt).getProgress(s,l)}catch(s){console.error(s),console.error(`Could not get ${t}`)}}async prev(t){await this.renderer.prev(t)}async next(t){await this.renderer.next(t)}goLeft(){return this.book.dir==="rtl"?this.next():this.prev()}goRight(){return this.book.dir==="rtl"?this.prev():this.next()}async*search(t){this.clearSearch();let{searchMatcher:s}=await Promise.resolve().then(()=>(Kl(),Gl)),{query:i,index:r}=t,o=s(Yr,{defaultLocale:this.language,...t}),c=r!=null?x(this,K,hh).call(this,o,i,r):x(this,K,dh).call(this,o,i),l=[];a(this,Ue).set(r,l);for await(let d of c)if(d.subitems){let h=d.subitems.map(({cfi:f})=>({value:Bi+f}));a(this,Ue).set(d.index,h);for(let f of h){let g={...f,indicatorType:a(this,xe).type,indicatorOptions:a(this,xe).options};this.addAnnotation(g)}yield{label:a(this,Yt).getProgress(d.index)?.label??"",subitems:d.subitems}}else{if(d.cfi){let h={value:Bi+d.cfi};l.push(h);let f={...h,indicatorType:a(this,xe).type,indicatorOptions:a(this,xe).options};this.addAnnotation(f)}yield d}yield"done"}clearSearch(){for(let t of a(this,Ue).values())for(let s of t)this.deleteAnnotation(s);a(this,Ue).clear()}setSearchIndicator(t="outline",s={}){E(this,xe,{type:t,options:s})}async initTTS(t="word",s,i){let r=this.renderer.getContents(),o=this.renderer.primaryIndex,c=r.find(f=>f.index===o)??r[0],l=c?.doc,d=c?.index??0;if(!l)return;if(this.tts&&this.tts.doc===l){s&&(this.tts.highlight=s);return}let{TTS:h}=await Promise.resolve().then(()=>(nh(),sh));this.tts=new h(l,Yr,i||null,s||(f=>this.renderer.scrollToAnchor(f,!0)),f=>this.getCFI(d,f),t)}startMediaOverlay(){let{index:t}=this.renderer.getContents()[0];return this.mediaOverlay.start(t)}};Dr=new WeakMap,$e=new WeakMap,Yt=new WeakMap,Hi=new WeakMap,gs=new WeakMap,Ue=new WeakMap,xe=new WeakMap,Br=new WeakMap,K=new WeakSet,ce=function(t,s,i){return this.dispatchEvent(new CustomEvent(t,{detail:s,cancelable:i}))},oh=function({reason:t,range:s,index:i,fraction:r,size:o}){let c=a(this,$e)?.getProgress(i,r,o)??{},l=a(this,Yt)?.getProgress(i,s),d=a(this,gs)?.getProgress(i,s),h=this.getCFI(i,s);this.lastLocation={...c,tocItem:l,pageItem:d,cfi:h,range:s},(t==="snap"||t==="page"||t==="scroll")&&this.history.replaceState(h),x(this,K,ce).call(this,"relocate",this.lastLocation)},ah=function({doc:t,index:s}){var i,r;(i=t.documentElement).lang||(i.lang=this.language.canonical??""),this.language.isCJK||(r=t.documentElement).dir||(r.dir=this.language.direction??""),x(this,K,ch).call(this,t,s),a(this,Br).cloneFor(t.documentElement),x(this,K,ce).call(this,"load",{doc:t,index:s})},ch=function(t,s){let{book:i}=this,r=i.sections[s];t.addEventListener("click",o=>{let c=o.target.closest("a[href]");if(!c)return;o.preventDefault();let l=c.getAttribute("href"),d=r?.resolveHref?.(l)??l;i?.isExternal?.(d)?Promise.resolve(x(this,K,ce).call(this,"external-link",{a:c,href:d},!0)).then(h=>h?globalThis.open(d,"_blank"):null).catch(h=>console.error(h)):Promise.resolve(x(this,K,ce).call(this,"link",{a:c,href:d},!0)).then(h=>h?this.goTo(d):null).catch(h=>console.error(h))})},Or=function(t){return this.renderer.getContents().find(s=>s.index===t&&s.overlayer)},lh=function({doc:t,index:s}){let i=new Ee;t.addEventListener("click",o=>{let[c,l]=i.hitTest(o);c&&!c.startsWith(Bi)&&x(this,K,ce).call(this,"show-annotation",{value:c,index:s,range:l})},!1);let r=a(this,Ue).get(s);if(r)for(let o of r){let c={...o,indicatorType:a(this,xe).type,indicatorOptions:a(this,xe).options};this.addAnnotation(c)}return x(this,K,ce).call(this,"create-overlay",{index:s}),i},hh=async function*(t,s,i){let r=await this.book.sections[i].createDocument();for(let{range:o,excerpt:c}of t(r,s))yield{cfi:this.getCFI(i,o),excerpt:c}},dh=async function*(t,s){let{sections:i}=this.book;for(let[r,{createDocument:o}]of i.entries()){if(!o)continue;let c=await o(),l=Array.from(t(c,s),({range:h,excerpt:f})=>({cfi:this.getCFI(r,h),excerpt:f}));yield{progress:(r+1)/i.length},l.length&&(yield{index:r,subitems:l})}};customElements.get("foliate-view")||customElements.define("foliate-view",$i);Xi();vo();pr();Bo();var of=["","\u0430","\u044F","\u0443","\u044E","\u0435","\u043E","\u044B","\u0438","\u0439","\u044C","\u043E\u0439","\u043E\u044E","\u0435\u0439","\u0435\u044E","\u043E\u043C","\u0435\u043C","\u044B\u043C","\u0438\u043C","\u0430\u043C","\u044F\u043C","\u0430\u0445","\u044F\u0445","\u0430\u043C\u0438","\u044F\u043C\u0438","\u044C\u0435","\u044C\u044F","\u044C\u044E","\u044C\u0438"];var uh=new WeakMap;function af(n){let e=uh.get(n);if(e)return e;let t={stems:new Map(Object.entries(n.stems??{})),exact:new Map(Object.entries(n.exact??{})),stopwords:new Set(n.stopwords??[]),endings:n.endings?.length?n.endings:[...of]};return uh.set(n,t),t}function cf(n,e){let t=new Set,s=e.exact.get(n);if(s)for(let i of s)t.add(i);for(let i of e.endings){if(i.length>=n.length||i&&!n.endsWith(i))continue;let r=i?n.slice(0,n.length-i.length):n;if(r.length<3)continue;let o=e.stems.get(r);if(o)for(let c of o)t.add(c)}return[...t]}function lf(n){return/[A-ZА-ЯЁ]/.test(n)}function fh(n,e){if(!n||!e)return[];if(!/[A-ZА-ЯЁ]/.test(n))return[];let t=af(e);if(t.stems.size===0&&t.exact.size===0)return[];let s=[];for(let o of n.matchAll(/[A-Za-zА-Яа-яЁё]+/g)){let c=o[0];if(o.index==null||!lf(c[0]))continue;let l=c.toLowerCase();if(t.stopwords.has(l))continue;let d=cf(l,t);d.length!==0&&s.push({start:o.index,end:o.index+c.length,ids:d})}let i=[],r=0;for(;r<s.length;){let o=s[r],c=o.ids,l=r,d=r+1;for(;d<s.length;){let h=n.slice(s[d-1].end,s[d].start);if(!/^\s+$/.test(h))break;let f=c.filter(g=>s[d].ids.includes(g));if(f.length===0)break;c=f,l=d,d+=1}c.length===1&&(o.ids.length===1||l>r)?(i.push({start:o.start,end:s[l].end,characterId:c[0]}),r=l+1):r+=1}return i}var ph={scale:.97,durationMs:150,easing:[.33,1,.68,1]};var He=n=>Math.max(0,Math.min(1,n)),In=n=>{let e=He(n);return e*e*(3-2*e)},Ln=n=>n-Math.floor(n),Ea=n=>n-Math.floor(n/289)*289,gh=n=>Ea((n*34+1)*n);function $r(n,e){let t=(n+e)*.366025403784439,s=Math.floor(n+t),i=Math.floor(e+t),r=(s+i)*.211324865405187,o=n-s+r,c=e-i+r,l=o>c?1:0,d=1-l;s=Ea(s),i=Ea(i);let h=0;for(let f=0;f<3;f++){let g=f===0?o:f===1?o+.211324865405187-l:o-.577350269189626,u=f===0?c:f===1?c+.211324865405187-d:c-.577350269189626,w=gh(gh(i+(f===0?0:f===1?d:1))+s+(f===0?0:f===1?l:1)),p=2*Ln(w*.024390243902439)-1,m=Math.abs(p)-.5,b=p-Math.floor(p+.5),v=Math.max(.5-g*g-u*u,0);h+=v**4*(1.79284291400159-.85373472095314*(b*b+m*m))*(b*g+m*u)}return 130*h}var mh=(n,e)=>.5*$r(n,e)+.25*$r(n*2,e*2),wh=(n,e,t)=>[mh(n+t*.1,e)*.6,mh(n+5,e+t*.12+5)*.6];function hf(n,e,t,s){let i=n+t*.15,r=wh(i*.7,e*.7,t*.5),o=wh(i*.4+r[0]*.3,e*.4+r[1]*.3,t*.3),c=i+r[0]*.58,l=e+r[1]*.58,d=$r(c*1.72+t*.14,l*1.72+t*.14),h=$r((c+o[0]*.12)*2.4+3-t*.1,(l+o[1]*.12)*2.4+7-t*.1),f=(1-Math.abs(d))**11.24,g=(1-Math.abs(h))**9.2,u=(d+h)*.25+.5,w=He(u*.6+f*1.2)**2,p=He((1-u)*.6+g)**2,m=He(f*.8+g*.6)**2,b=(w*.7+m*.3)**2,v=(p*.5+m*.5)**2;return(s[0]*w+s[1]*p+s[2]*m+s[3]*b+s[4]*v)/Math.max(.001,w+p+m+b+v)}function df(n){let t=(i=>{let r=i.trim().replace(/^#/,"");if(!/^[a-f\d]{8}$/i.test(r))return null;let o=[0,2,4,6].map(c=>Number.parseInt(r.slice(c,c+2),16));return[o[0],o[1],o[2],o[3]/255]})(n);if(!t||t[3]<.01)return null;let s=Array.from({length:8},(i,r)=>[t[0],t[1],t[2],Math.min((r+1)/100,t[3])]);return{primary1:s[0],primary8:t,levels:s,mode:t[0]*.299+t[1]*.587+t[2]*.114>128?"dark":"light"}}function uf(n,e){let t=He(n)*7,s=Math.floor(t),i=e.levels[s],r=e.levels[Math.min(7,s+1)],o=t-s;return[i[0]+(r[0]-i[0])*o,i[1]+(r[1]-i[1])*o,i[2]+(r[2]-i[2])*o,i[3]+(r[3]-i[3])*o]}var ff={"pixels-organic":{light:[2,1,1,1,8],dark:[1,3,6,1,8]},"sweep-gradient":{light:[1,1,3,5,8],dark:[1,1,3,5,8]}};function pf(n,e,t,s,i){let r=(n+.5+(.5-e))*.5,o=.9,c=t*.08,l=-o+(1+o*2)*In(Ln(c)),d=-o+(1+o*2)*In(Ln(c+.5)),h=Math.max(He(1-Math.abs(r-l)/o),He(1-Math.abs(r-d)/o)),f=t*1.6,g=Math.floor(f)%1024,u=Math.floor((n+.5)*s)*127.1+Math.floor((e+.5)*s)*311.7,w=Ln(Math.sin(u+g*17.23)*43758.5453),p=Ln(Math.sin(u+(g+1)%1024*17.23)*43758.5453),m=w+(p-w)*In(Ln(f)),b=In(He(h+(m-.5)*.45*(.15+h*.85))),v=0,k=0;for(let T=0;T<5;T++){let L=Math.exp(-64*(b-T*.25)**2);v+=i[T]*L,k+=L}return v/k}function gf(n,e,t,s,i="pixels-organic"){let r=Math.max(2,Math.floor(22.28*e/320)),o=e/r,c=i==="sweep-gradient",l=t*(c?2.65:.3),d=ff[i][s.mode],h=(f,g)=>c?pf(f,g,l,r,d):hf(f,g,l,d);n.save(),n.globalCompositeOperation="source-over",n.clearRect(0,0,e,e);for(let f=0;f<r;f++)for(let g=0;g<r;g++){let u=(g+.5)/r-.5,w=.5-(f+.5)/r,p=h(u,w)*.4;p+=(h(u+.02,w)+h(u-.02,w)+h(u,w+.02)+h(u,w-.02))*.15;let m=Math.min(g+.5,f+.5,r-g-.5,r-f-.5)*o,b=!c&&s.mode==="light"?In((p-1.4)/1.3):He((p-1)/7),[v,k,T,L]=uf(b,s);n.fillStyle=`rgb(${Math.round(v)},${Math.round(k)},${Math.round(T)})`,n.globalAlpha=L*In(m/24);let A=o*.049;n.fillRect(g*o+A,f*o+A,o-A*2,o-A*2)}n.restore()}function bh(n,e="pixels-organic"){let t=n.ownerDocument,s=t.defaultView,i=n.getContext("2d");if(!s||!i)return()=>{};let r=s,o=i,c=r.matchMedia("(prefers-reduced-motion: reduce)"),l,d=!0,h=!1,f=0,g=0,u=0,w=null,p=e==="sweep-gradient"?15:10;function m(){g>0&&w&&gf(o,g,4+f/p,w,e)}function b(){if(l=void 0,!n.isConnected){_();return}h||!d||t.hidden||c.matches||(f++,m(),l=r.setTimeout(b,1e3/p))}function v(){l!==void 0&&r.clearTimeout(l),l=void 0,!h&&(m(),d&&!t.hidden&&!c.matches&&(l=r.setTimeout(b,1e3/p)))}function k(){let M=n.getBoundingClientRect().width;if(M<=0)return;let S=Math.min(r.devicePixelRatio||1,1.5),I=r.getComputedStyle(n);w=df(I.getPropertyValue("--scene-primary8")),(g!==M||u!==S)&&(g=M,u=S,n.width=n.height=Math.round(g*u),o.setTransform(u,0,0,u,0,0)),m()}let T=new r.ResizeObserver(k);T.observe(n);let L=new r.IntersectionObserver(M=>{d=M[0]?.isIntersecting??!1,v()});L.observe(n);let A=new r.MutationObserver(k),R=t.getElementById("readany-scene-insert-style");R&&A.observe(R,{childList:!0}),t.addEventListener("visibilitychange",v),c.addEventListener("change",v),r.addEventListener("pagehide",_);function _(){h||(h=!0,l!==void 0&&r.clearTimeout(l),T.disconnect(),L.disconnect(),A.disconnect(),t.removeEventListener("visibilitychange",v),c.removeEventListener("change",v),r.removeEventListener("pagehide",_))}return k(),v(),_}window.makeBook=_a;window._readanyCoverPressFeedback=ph;window._readanyMountScenePixelLoader=bh;window._readanyFindCharacterNameMatches=fh;window.Overlayer=Ee;window.CFI=On;window._zipJs={configure:ar,ZipReader:Gn,BlobReader:Qs,TextWriter:qn,BlobWriter:tn};window._EPUB=Yn;window._makePDFFromURL=Oo;window._extractPDFChapters=Do;customElements.get("foliate-view")||customElements.define("foliate-view",$i);window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:"foliate-loaded"}));})();
+                `,m.head.appendChild(b)}o&&c>0&&setTimeout(()=>{w.classList.add("foliate-arrow-fadeout"),setTimeout(()=>{w.parentNode&&w.parentNode.removeChild(w)},1e3)},c)}return d.append(w),d}static copyImage([e],t={}){let{src:s}=t,i=st("image"),{left:r,top:o,height:c,width:l}=e;return i.setAttribute("href",s),i.setAttribute("x",r),i.setAttribute("y",o),i.setAttribute("height",c),i.setAttribute("width",l),i}};bs=new WeakMap,Dn=new WeakMap,Ve=new WeakMap,Lt=new WeakMap,Bn=new WeakMap,le=new WeakMap;var Mh=n=>{let e=0,t=s=>{if(s.id=e++,s.subitems)for(let i of s.subitems)t(i)};for(let s of n)t(s);return n},za=n=>n.flatMap(e=>e.subitems?.length?[e,za(e.subitems)].flat():e),qs=class{async init({toc:e,ids:t,splitHref:s,getFragment:i}){Mh(e);let r=za(e),o=new Map;for(let[l,d]of r.entries()){let[h,f]=await s(d?.href)??[],g={fragment:f,item:d};o.has(h)?o.get(h).items.push(g):o.set(h,{prev:r[l-1],items:[g]})}let c=new Map;for(let[l,d]of t.entries())o.has(d)?c.set(d,o.get(d)):c.set(d,c.get(t[l-1]));this.ids=t,this.map=c,this.getFragment=i}getProgress(e,t){if(!this.ids)return;let s=this.ids[e],i=this.map.get(s);if(!i)return null;let{prev:r,items:o}=i;if(!o)return r;if(!t||o.length===1&&!o[0].fragment)return o[0].item;let c=t.startContainer.getRootNode();for(let[l,{fragment:d}]of o.entries()){let h=this.getFragment(c,d);if(h&&t.comparePoint(h,0)>0)return o[l-1]?.item??r}return o[o.length-1].item}},Gi,Fa,qi=class{constructor(e,t,s){C(this,Gi);this.sizes=e.map(i=>i.linear!="no"&&i.size>0?i.size:0),this.sizePerLoc=t,this.sizePerTimeUnit=s,this.sizeTotal=this.sizes.reduce((i,r)=>i+r,0),this.sectionFractions=x(this,Gi,Fa).call(this)}getProgress(e,t,s=0){let{sizes:i,sizePerLoc:r,sizePerTimeUnit:o,sizeTotal:c}=this,l=i[e]??0,h=i.slice(0,e).reduce((w,p)=>w+p,0)+t*l,f=h+s*l,g=c-h,u=(1-t)*l;return{fraction:f/c,section:{current:e,total:i.length},location:{current:Math.floor(h/r),next:Math.floor(f/r),total:Math.ceil(c/r)},time:{section:u/o,total:g/o}}}getSection(e){if(e<=0)return[0,0];if(e>=1)return[this.sizes.length-1,1];e=e+Number.EPSILON;let{sizeTotal:t}=this,s=this.sectionFractions.findIndex(r=>r>e)-1;if(s<0)return[0,0];for(;!this.sizes[s];)s++;let i=(e-this.sectionFractions[s])/(this.sizes[s]/t);return[s,i]}};Gi=new WeakSet,Fa=function(){let{sizeTotal:e}=this,t=[0],s=0;for(let i of this.sizes)t.push((s+=i)/e);return t};var Lh=(n,e)=>{let t=[];for(let s=e.currentNode;s;s=e.nextNode()){let i=n.comparePoint(s,0);if(i===0)t.push(s);else if(i>0)break}return t},Ih=(n,e)=>{let t=[];for(let s=e.nextNode();s;s=e.nextNode())t.push(s);return t},Rh=NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT|NodeFilter.SHOW_CDATA_SECTION,Ph=n=>{if((n.nodeType===1?n:n.parentElement)?.closest?.(".readany-scene-insert, .readany-translation"))return NodeFilter.FILTER_REJECT;if(n.nodeType===1){let t=n.tagName.toLowerCase();return t==="script"||t==="style"||t==="rt"||t==="rp"?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_SKIP}return NodeFilter.FILTER_ACCEPT},Yr=function*(n,e,t){let s=n.commonAncestorContainer??n.body??n,i=document.createTreeWalker(s,Rh,{acceptNode:t||Ph}),o=(n.commonAncestorContainer?Lh:Ih)(n,i),c=o.map(d=>d.nodeValue),l=(d,h,f,g)=>{let u=document.createRange();return u.setStart(o[d],h),u.setEnd(o[f],g),u};for(let d of e(c,l))yield d};var Bi="foliate-search:",ih="foliate-tts:",Yu=async n=>{let e=new Uint8Array(await n.slice(0,4).arrayBuffer());return e[0]===80&&e[1]===75&&e[2]===3&&e[3]===4},Zu=async n=>{let e=new Uint8Array(await n.slice(0,5).arrayBuffer());return e[0]===37&&e[1]===80&&e[2]===68&&e[3]===70&&e[4]===45},Ju=({name:n,type:e})=>e==="application/vnd.comicbook+zip"||n.toLowerCase().endsWith(".cbz"),Qu=({name:n,type:e})=>e==="application/x-fictionbook+xml"||n.toLowerCase().endsWith(".fb2"),tf=({name:n,type:e})=>e==="application/x-zip-compressed-fb2"||n.toLowerCase().endsWith(".fb2.zip")||n.toLowerCase().endsWith(".fbz"),ef=async n=>{let{configure:e,ZipReader:t,BlobReader:s,TextWriter:i,BlobWriter:r}=await Promise.resolve().then(()=>(vo(),Fc));e({useWebWorkers:!1});let c=await new t(new s(n)).getEntries(),l=new Map(c.map(u=>[u.filename,u])),d=u=>(w,...p)=>l.has(w)?u(l.get(w),...p):null,h=d(u=>u.getData(new i)),f=d((u,w)=>u.getData(new r(w)));return{entries:c,loadText:h,loadBlob:f,getSize:u=>l.get(u)?.uncompressedSize??0}},rh=async n=>n.isFile?n:(await Promise.all(Array.from(await new Promise((e,t)=>n.createReader().readEntries(s=>e(s),s=>t(s))),rh))).flat(),sf=async n=>{let e=await rh(n),t=await Promise.all(e.map(h=>new Promise((f,g)=>h.file(u=>f([u,h.fullPath]),u=>g(u))))),s=new Map(t.map(([h,f])=>[f.replace(`${n.fullPath}/`,""),h])),i=new TextDecoder,r=h=>h?i.decode(h):null,o=h=>s.get(h)?.arrayBuffer()??null;return{loadText:async h=>r(await o(h)),loadBlob:h=>s.get(h),getSize:h=>s.get(h)?.size??0}},wa=class extends Error{},ba=class extends Error{},ya=class extends Error{},nf=async n=>{let e=await fetch(n);if(!e.ok)throw new wa(`${e.status} ${e.statusText}`,{cause:e});return new File([await e.blob()],new URL(e.url).pathname)},_a=async n=>{typeof n=="string"&&(n=await nf(n));let e;if(n.isDirectory){let t=await sf(n),{EPUB:s}=await Promise.resolve().then(()=>(pr(),Lo));e=await new s(t).init()}else if(n.size)if(await Yu(n)){let t=await ef(n);if(Ju(n)){let{makeComicBook:s}=await Promise.resolve().then(()=>(Xc(),Vc));e=s(t,n)}else if(tf(n)){let{makeFB2:s}=await Promise.resolve().then(()=>(zo(),No)),{entries:i}=t,r=i.find(c=>!c.directory&&!c.filename.startsWith("__MACOSX/")&&!c.filename.split("/").pop().startsWith("._")&&c.filename.toLowerCase().endsWith(".fb2"));if(!r)throw new Error("FB2 archive contains no FB2 document");let o=await t.loadBlob(r.filename);e=await s(o)}else{let{EPUB:s}=await Promise.resolve().then(()=>(pr(),Lo));e=await new s(t).init()}}else if(await Zu(n)){let{makePDF:t}=await Promise.resolve().then(()=>(Bo(),Yc));e=await t(n)}else{let{isMOBI:t,MOBI:s}=await Promise.resolve().then(()=>(cl(),al));if(await t(n)){let i=await Promise.resolve().then(()=>(wl(),ml));e=await new s({unzlib:i.unzlibSync}).open(n)}else if(Qu(n)){let{makeFB2:i}=await Promise.resolve().then(()=>(zo(),No));e=await i(n)}}else throw new ba("File not found");if(!e)throw new ya("File type not supported");return e},Mn,Hs,Ui,Gt,Sa=class Sa{constructor(e,t,s={}){C(this,Mn);C(this,Hs);C(this,Ui);C(this,Gt);E(this,Hs,e),E(this,Ui,t),E(this,Gt,s),a(this,Gt).hidden&&this.hide(),a(this,Hs).addEventListener("mousemove",({screenX:i,screenY:r})=>{i===a(this,Gt).x&&r===a(this,Gt).y||(a(this,Gt).x=i,a(this,Gt).y=r,this.show(),a(this,Mn)&&clearTimeout(a(this,Mn)),t()&&E(this,Mn,setTimeout(this.hide.bind(this),1e3)))},!1)}cloneFor(e){return new Sa(e,a(this,Ui),a(this,Gt))}hide(){a(this,Hs).style.cursor="none",a(this,Gt).hidden=!0}show(){a(this,Hs).style.removeProperty("cursor"),a(this,Gt).hidden=!1}};Mn=new WeakMap,Hs=new WeakMap,Ui=new WeakMap,Gt=new WeakMap;var xa=Sa,Kt,Mt,va=class extends EventTarget{constructor(){super(...arguments);C(this,Kt,[]);C(this,Mt,-1)}pushState(t){let s=a(this,Kt)[a(this,Mt)];s===t||s?.fraction&&s.fraction===t.fraction||(a(this,Kt)[++We(this,Mt)._]=t,a(this,Kt).length=a(this,Mt)+1,this.dispatchEvent(new Event("index-change")))}replaceState(t){let s=a(this,Mt);a(this,Kt)[s]=t}back(){let t=a(this,Mt);if(t<=0)return;let s={state:a(this,Kt)[t-1]};E(this,Mt,t-1),this.dispatchEvent(new CustomEvent("popstate",{detail:s})),this.dispatchEvent(new Event("index-change"))}forward(){let t=a(this,Mt);if(t>=a(this,Kt).length-1)return;let s={state:a(this,Kt)[t+1]};E(this,Mt,t+1),this.dispatchEvent(new CustomEvent("popstate",{detail:s})),this.dispatchEvent(new Event("index-change"))}get canGoBack(){return a(this,Mt)>0}get canGoForward(){return a(this,Mt)<a(this,Kt).length-1}clear(){E(this,Kt,[]),E(this,Mt,-1)}};Kt=new WeakMap,Mt=new WeakMap;var rf=n=>{if(!n)return{};try{let e=Intl.getCanonicalLocales(n)[0],t=new Intl.Locale(e),s=["zh","ja","kr"].includes(t.language),i=(t.getTextInfo?.()??t.textInfo)?.direction;return{canonical:e,locale:t,isCJK:s,direction:i}}catch(e){return console.warn(e),{}}},Dr,$e,Yt,Hi,gs,Ue,xe,Br,K,ce,oh,ah,ch,Or,lh,hh,dh,$i=class extends HTMLElement{constructor(){super();C(this,K);C(this,Dr,this.attachShadow({mode:"closed"}));C(this,$e);C(this,Yt);C(this,Hi,0);C(this,gs);C(this,Ue,new Map);C(this,xe,{type:"outline",options:{}});C(this,Br,new xa(this,()=>this.hasAttribute("autohide-cursor")));et(this,"isFixedLayout",!1);et(this,"cfiFilter");et(this,"lastLocation");et(this,"history",new va);this.history.addEventListener("popstate",({detail:t})=>{let s=this.resolveNavigation(t.state);this.renderer.goTo(s)})}async open(t){if((typeof t=="string"||typeof t.arrayBuffer=="function"||t.isDirectory)&&(t=await _a(t)),this.book=t,this.language=rf(t.metadata?.language),t.splitTOCHref&&t.getTOCFragment){let s=t.sections.map(o=>o.id);E(this,$e,new qi(t.sections,1500,1600));let i=t.splitTOCHref.bind(t),r=t.getTOCFragment.bind(t);E(this,Yt,new qs),await a(this,Yt).init({toc:t.toc??[],ids:s,splitHref:i,getFragment:r}),E(this,gs,new qs),await a(this,gs).init({toc:t.pageList??[],ids:s,splitHref:i,getFragment:r})}if(this.isFixedLayout=this.book.rendition?.layout==="pre-paginated",this.isFixedLayout?(await Promise.resolve().then(()=>(vl(),xl)),this.renderer=document.createElement("foliate-fxl")):(await Promise.resolve().then(()=>(Wl(),jl)),this.renderer=document.createElement("foliate-paginator")),this.renderer.setAttribute("exportparts","head,foot,filter"),this.renderer.addEventListener("load",s=>x(this,K,ah).call(this,s.detail)),this.renderer.addEventListener("relocate",s=>x(this,K,oh).call(this,s.detail)),this.renderer.addEventListener("create-overlayer",s=>s.detail.attach(x(this,K,lh).call(this,s.detail))),this.renderer.open(t),a(this,Dr).append(this.renderer),t.sections.some(s=>s.mediaOverlay)){let s=t.media.activeClass,i=t.media.playbackActiveClass;this.mediaOverlay=t.getMediaOverlay();let r;this.mediaOverlay.addEventListener("highlight",o=>{let c=this.resolveNavigation(o.detail.text);this.renderer.goTo(c).then(()=>{let{doc:l}=this.renderer.getContents().find(h=>h.index=c.index),d=c.anchor(l);d.classList.add(s),i&&d.ownerDocument.documentElement.classList.add(i),r=new WeakRef(d)})}),this.mediaOverlay.addEventListener("unhighlight",()=>{let o=r?.deref();o&&(o.classList.remove(s),i&&o.ownerDocument.documentElement.classList.remove(i))})}}close(){this.renderer?.destroy(),this.renderer?.remove(),E(this,$e,null),E(this,Yt,null),E(this,gs,null),E(this,Ue,new Map),this.lastLocation=null,this.history.clear(),this.tts=null,this.mediaOverlay=null}async setTOC(t){let s=this.book;if(!s?.splitTOCHref||!s?.getTOCFragment)return;let i=++We(this,Hi)._,r=new qs;if(await r.init({toc:t,ids:s.sections.map(o=>o.id),splitHref:s.splitTOCHref.bind(s),getFragment:s.getTOCFragment.bind(s)}),!(this.book!==s||i!==a(this,Hi))&&(s.toc=t,E(this,Yt,r),this.lastLocation)){let{section:o,range:c}=this.lastLocation;this.lastLocation.tocItem=r.getProgress(o.current,c),x(this,K,ce).call(this,"relocate",this.lastLocation)}}goToTextStart(){return this.goTo(this.book.landmarks?.find(t=>t.type.includes("bodymatter")||t.type.includes("text"))?.href??this.book.sections.findIndex(t=>t.linear!=="no"))}async init({lastLocation:t,showTextStart:s}){let i=t?this.resolveNavigation(t):null;i?(await this.renderer.goTo(i),this.history.pushState(t)):s?await this.goToTextStart():(this.history.pushState(0),await this.next())}async addAnnotation(t,s){let{value:i,indicatorType:r="outline",indicatorOptions:o={}}=t;if(i.startsWith(Bi)){let g=i.replace(Bi,""),{index:u,anchor:w}=await this.resolveNavigation(g),p=x(this,K,Or).call(this,u);if(p){let{overlayer:m,doc:b}=p;if(s){m.remove(i),m.remove(`${i}::underline`),m.remove(`${i}::tooltip`);return}let v=b?w(b):w,k;switch(r){case"highlight":k=Ee.highlight;break;case"arrow":k=Ee.arrow;break;default:k=Ee.outline;break}m.add(i,v,k,o)}return}let c=i.startsWith(ih)?i.replace(ih,""):i,{index:l,anchor:d}=await this.resolveNavigation(c),h=x(this,K,Or).call(this,l);if(h){let{overlayer:g,doc:u}=h;if(g.remove(i),g.remove(`${i}::underline`),g.remove(`${i}::tooltip`),s&&x(this,K,ce).call(this,"delete-annotation",{value:i,doc:u}),!s){let w=u?d(u):d,p=(m,b,v)=>{let k=v?`${i}::${v}`:i;g.add(k,w,m,b)};x(this,K,ce).call(this,"draw-annotation",{draw:p,annotation:t,doc:u,range:w})}}let f=a(this,Yt).getProgress(l)?.label??"";return{index:l,label:f}}deleteAnnotation(t){return this.addAnnotation(t,!0)}async showAnnotation(t){let{value:s}=t,i=await this.goTo(s);if(i){let{index:r,anchor:o}=i,{doc:c}=x(this,K,Or).call(this,r),l=o(c);x(this,K,ce).call(this,"show-annotation",{value:s,index:r,range:l})}}getCFI(t,s){let i=this.book.sections[t].cfi??Fn.fromIndex(t);return s?Xr(i,Gr(s,this.cfiFilter)):i}resolveCFI(t){if(this.book.resolveCFI)return this.book.resolveCFI(t,this.cfiFilter);let s=Jt(t);return{index:Fn.toIndex((s.parent??s).shift()),anchor:o=>zn(o,s,this.cfiFilter)}}resolveNavigation(t){try{if(typeof t=="number")return{index:t};if(typeof t.fraction=="number"){let[s,i]=a(this,$e).getSection(t.fraction);return{index:s,anchor:i}}return Xs.test(t)?this.resolveCFI(t):this.book.resolveHref(t)}catch(s){console.error(s),console.error(`Could not resolve target ${t}`)}}async goTo(t){t=decodeURIComponent(t);let s=this.resolveNavigation(t);try{return await this.renderer.goTo(s),this.history.pushState(t),s}catch(i){console.error(i),console.error(`Could not go to ${t}`)}}async goToFraction(t){let[s,i]=a(this,$e).getSection(t);await this.renderer.goTo({index:s,anchor:i}),this.history.pushState({fraction:t})}async select(t){try{let s=await this.resolveNavigation(t);await this.renderer.goTo({...s,select:!0}),this.history.pushState(t)}catch(s){console.error(s),console.error(`Could not go to ${t}`)}}deselect(){for(let{doc:t}of this.renderer.getContents())t.defaultView.getSelection().removeAllRanges()}getSectionFractions(){return(a(this,$e)?.sectionFractions??[]).map(t=>t+Number.EPSILON)}getProgressOf(t,s){let i=a(this,Yt)?.getProgress(t,s),r=a(this,gs)?.getProgress(t,s);return{tocItem:i,pageItem:r}}async getTOCItemOf(t){try{let{index:s,anchor:i}=await this.resolveNavigation(t),r=await this.book.sections[s].createDocument(),o=i(r),c=o instanceof Range,l=c?o:r.createRange();return c||l.selectNodeContents(o),a(this,Yt).getProgress(s,l)}catch(s){console.error(s),console.error(`Could not get ${t}`)}}async prev(t){await this.renderer.prev(t)}async next(t){await this.renderer.next(t)}goLeft(){return this.book.dir==="rtl"?this.next():this.prev()}goRight(){return this.book.dir==="rtl"?this.prev():this.next()}async*search(t){this.clearSearch();let{searchMatcher:s}=await Promise.resolve().then(()=>(Kl(),Gl)),{query:i,index:r}=t,o=s(Yr,{defaultLocale:this.language,...t}),c=r!=null?x(this,K,hh).call(this,o,i,r):x(this,K,dh).call(this,o,i),l=[];a(this,Ue).set(r,l);for await(let d of c)if(d.subitems){let h=d.subitems.map(({cfi:f})=>({value:Bi+f}));a(this,Ue).set(d.index,h);for(let f of h){let g={...f,indicatorType:a(this,xe).type,indicatorOptions:a(this,xe).options};this.addAnnotation(g)}yield{label:a(this,Yt).getProgress(d.index)?.label??"",subitems:d.subitems}}else{if(d.cfi){let h={value:Bi+d.cfi};l.push(h);let f={...h,indicatorType:a(this,xe).type,indicatorOptions:a(this,xe).options};this.addAnnotation(f)}yield d}yield"done"}clearSearch(){for(let t of a(this,Ue).values())for(let s of t)this.deleteAnnotation(s);a(this,Ue).clear()}setSearchIndicator(t="outline",s={}){E(this,xe,{type:t,options:s})}async initTTS(t="word",s,i){let r=this.renderer.getContents(),o=this.renderer.primaryIndex,c=r.find(f=>f.index===o)??r[0],l=c?.doc,d=c?.index??0;if(!l)return;if(this.tts&&this.tts.doc===l){s&&(this.tts.highlight=s);return}let{TTS:h}=await Promise.resolve().then(()=>(nh(),sh));this.tts=new h(l,Yr,i||null,s||(f=>this.renderer.scrollToAnchor(f,!0)),f=>this.getCFI(d,f),t)}startMediaOverlay(){let{index:t}=this.renderer.getContents()[0];return this.mediaOverlay.start(t)}};Dr=new WeakMap,$e=new WeakMap,Yt=new WeakMap,Hi=new WeakMap,gs=new WeakMap,Ue=new WeakMap,xe=new WeakMap,Br=new WeakMap,K=new WeakSet,ce=function(t,s,i){return this.dispatchEvent(new CustomEvent(t,{detail:s,cancelable:i}))},oh=function({reason:t,range:s,index:i,fraction:r,size:o}){let c=a(this,$e)?.getProgress(i,r,o)??{},l=a(this,Yt)?.getProgress(i,s),d=a(this,gs)?.getProgress(i,s),h=this.getCFI(i,s);this.lastLocation={...c,tocItem:l,pageItem:d,cfi:h,range:s,reason:t},(t==="snap"||t==="page"||t==="scroll")&&this.history.replaceState(h),x(this,K,ce).call(this,"relocate",this.lastLocation)},ah=function({doc:t,index:s}){var i,r;(i=t.documentElement).lang||(i.lang=this.language.canonical??""),this.language.isCJK||(r=t.documentElement).dir||(r.dir=this.language.direction??""),x(this,K,ch).call(this,t,s),a(this,Br).cloneFor(t.documentElement),x(this,K,ce).call(this,"load",{doc:t,index:s})},ch=function(t,s){let{book:i}=this,r=i.sections[s];t.addEventListener("click",o=>{let c=o.target.closest("a[href]");if(!c)return;o.preventDefault();let l=c.getAttribute("href"),d=r?.resolveHref?.(l)??l;i?.isExternal?.(d)?Promise.resolve(x(this,K,ce).call(this,"external-link",{a:c,href:d},!0)).then(h=>h?globalThis.open(d,"_blank"):null).catch(h=>console.error(h)):Promise.resolve(x(this,K,ce).call(this,"link",{a:c,href:d},!0)).then(h=>h?this.goTo(d):null).catch(h=>console.error(h))})},Or=function(t){return this.renderer.getContents().find(s=>s.index===t&&s.overlayer)},lh=function({doc:t,index:s}){let i=new Ee;t.addEventListener("click",o=>{let[c,l]=i.hitTest(o);c&&!c.startsWith(Bi)&&x(this,K,ce).call(this,"show-annotation",{value:c,index:s,range:l})},!1);let r=a(this,Ue).get(s);if(r)for(let o of r){let c={...o,indicatorType:a(this,xe).type,indicatorOptions:a(this,xe).options};this.addAnnotation(c)}return x(this,K,ce).call(this,"create-overlay",{index:s}),i},hh=async function*(t,s,i){let r=await this.book.sections[i].createDocument();for(let{range:o,excerpt:c}of t(r,s))yield{cfi:this.getCFI(i,o),excerpt:c}},dh=async function*(t,s){let{sections:i}=this.book;for(let[r,{createDocument:o}]of i.entries()){if(!o)continue;let c=await o(),l=Array.from(t(c,s),({range:h,excerpt:f})=>({cfi:this.getCFI(r,h),excerpt:f}));yield{progress:(r+1)/i.length},l.length&&(yield{index:r,subitems:l})}};customElements.get("foliate-view")||customElements.define("foliate-view",$i);Xi();vo();pr();Bo();var of=["","\u0430","\u044F","\u0443","\u044E","\u0435","\u043E","\u044B","\u0438","\u0439","\u044C","\u043E\u0439","\u043E\u044E","\u0435\u0439","\u0435\u044E","\u043E\u043C","\u0435\u043C","\u044B\u043C","\u0438\u043C","\u0430\u043C","\u044F\u043C","\u0430\u0445","\u044F\u0445","\u0430\u043C\u0438","\u044F\u043C\u0438","\u044C\u0435","\u044C\u044F","\u044C\u044E","\u044C\u0438"];var uh=new WeakMap;function af(n){let e=uh.get(n);if(e)return e;let t={stems:new Map(Object.entries(n.stems??{})),exact:new Map(Object.entries(n.exact??{})),stopwords:new Set(n.stopwords??[]),endings:n.endings?.length?n.endings:[...of]};return uh.set(n,t),t}function cf(n,e){let t=new Set,s=e.exact.get(n);if(s)for(let i of s)t.add(i);for(let i of e.endings){if(i.length>=n.length||i&&!n.endsWith(i))continue;let r=i?n.slice(0,n.length-i.length):n;if(r.length<3)continue;let o=e.stems.get(r);if(o)for(let c of o)t.add(c)}return[...t]}function lf(n){return/[A-ZА-ЯЁ]/.test(n)}function fh(n,e){if(!n||!e)return[];if(!/[A-ZА-ЯЁ]/.test(n))return[];let t=af(e);if(t.stems.size===0&&t.exact.size===0)return[];let s=[];for(let o of n.matchAll(/[A-Za-zА-Яа-яЁё]+/g)){let c=o[0];if(o.index==null||!lf(c[0]))continue;let l=c.toLowerCase();if(t.stopwords.has(l))continue;let d=cf(l,t);d.length!==0&&s.push({start:o.index,end:o.index+c.length,ids:d})}let i=[],r=0;for(;r<s.length;){let o=s[r],c=o.ids,l=r,d=r+1;for(;d<s.length;){let h=n.slice(s[d-1].end,s[d].start);if(!/^\s+$/.test(h))break;let f=c.filter(g=>s[d].ids.includes(g));if(f.length===0)break;c=f,l=d,d+=1}c.length===1&&(o.ids.length===1||l>r)?(i.push({start:o.start,end:s[l].end,characterId:c[0]}),r=l+1):r+=1}return i}var ph={scale:.97,durationMs:150,easing:[.33,1,.68,1]};var He=n=>Math.max(0,Math.min(1,n)),In=n=>{let e=He(n);return e*e*(3-2*e)},Ln=n=>n-Math.floor(n),Ea=n=>n-Math.floor(n/289)*289,gh=n=>Ea((n*34+1)*n);function $r(n,e){let t=(n+e)*.366025403784439,s=Math.floor(n+t),i=Math.floor(e+t),r=(s+i)*.211324865405187,o=n-s+r,c=e-i+r,l=o>c?1:0,d=1-l;s=Ea(s),i=Ea(i);let h=0;for(let f=0;f<3;f++){let g=f===0?o:f===1?o+.211324865405187-l:o-.577350269189626,u=f===0?c:f===1?c+.211324865405187-d:c-.577350269189626,w=gh(gh(i+(f===0?0:f===1?d:1))+s+(f===0?0:f===1?l:1)),p=2*Ln(w*.024390243902439)-1,m=Math.abs(p)-.5,b=p-Math.floor(p+.5),v=Math.max(.5-g*g-u*u,0);h+=v**4*(1.79284291400159-.85373472095314*(b*b+m*m))*(b*g+m*u)}return 130*h}var mh=(n,e)=>.5*$r(n,e)+.25*$r(n*2,e*2),wh=(n,e,t)=>[mh(n+t*.1,e)*.6,mh(n+5,e+t*.12+5)*.6];function hf(n,e,t,s){let i=n+t*.15,r=wh(i*.7,e*.7,t*.5),o=wh(i*.4+r[0]*.3,e*.4+r[1]*.3,t*.3),c=i+r[0]*.58,l=e+r[1]*.58,d=$r(c*1.72+t*.14,l*1.72+t*.14),h=$r((c+o[0]*.12)*2.4+3-t*.1,(l+o[1]*.12)*2.4+7-t*.1),f=(1-Math.abs(d))**11.24,g=(1-Math.abs(h))**9.2,u=(d+h)*.25+.5,w=He(u*.6+f*1.2)**2,p=He((1-u)*.6+g)**2,m=He(f*.8+g*.6)**2,b=(w*.7+m*.3)**2,v=(p*.5+m*.5)**2;return(s[0]*w+s[1]*p+s[2]*m+s[3]*b+s[4]*v)/Math.max(.001,w+p+m+b+v)}function df(n){let t=(i=>{let r=i.trim().replace(/^#/,"");if(!/^[a-f\d]{8}$/i.test(r))return null;let o=[0,2,4,6].map(c=>Number.parseInt(r.slice(c,c+2),16));return[o[0],o[1],o[2],o[3]/255]})(n);if(!t||t[3]<.01)return null;let s=Array.from({length:8},(i,r)=>[t[0],t[1],t[2],Math.min((r+1)/100,t[3])]);return{primary1:s[0],primary8:t,levels:s,mode:t[0]*.299+t[1]*.587+t[2]*.114>128?"dark":"light"}}function uf(n,e){let t=He(n)*7,s=Math.floor(t),i=e.levels[s],r=e.levels[Math.min(7,s+1)],o=t-s;return[i[0]+(r[0]-i[0])*o,i[1]+(r[1]-i[1])*o,i[2]+(r[2]-i[2])*o,i[3]+(r[3]-i[3])*o]}var ff={"pixels-organic":{light:[2,1,1,1,8],dark:[1,3,6,1,8]},"sweep-gradient":{light:[1,1,3,5,8],dark:[1,1,3,5,8]}};function pf(n,e,t,s,i){let r=(n+.5+(.5-e))*.5,o=.9,c=t*.08,l=-o+(1+o*2)*In(Ln(c)),d=-o+(1+o*2)*In(Ln(c+.5)),h=Math.max(He(1-Math.abs(r-l)/o),He(1-Math.abs(r-d)/o)),f=t*1.6,g=Math.floor(f)%1024,u=Math.floor((n+.5)*s)*127.1+Math.floor((e+.5)*s)*311.7,w=Ln(Math.sin(u+g*17.23)*43758.5453),p=Ln(Math.sin(u+(g+1)%1024*17.23)*43758.5453),m=w+(p-w)*In(Ln(f)),b=In(He(h+(m-.5)*.45*(.15+h*.85))),v=0,k=0;for(let T=0;T<5;T++){let L=Math.exp(-64*(b-T*.25)**2);v+=i[T]*L,k+=L}return v/k}function gf(n,e,t,s,i="pixels-organic"){let r=Math.max(2,Math.floor(22.28*e/320)),o=e/r,c=i==="sweep-gradient",l=t*(c?2.65:.3),d=ff[i][s.mode],h=(f,g)=>c?pf(f,g,l,r,d):hf(f,g,l,d);n.save(),n.globalCompositeOperation="source-over",n.clearRect(0,0,e,e);for(let f=0;f<r;f++)for(let g=0;g<r;g++){let u=(g+.5)/r-.5,w=.5-(f+.5)/r,p=h(u,w)*.4;p+=(h(u+.02,w)+h(u-.02,w)+h(u,w+.02)+h(u,w-.02))*.15;let m=Math.min(g+.5,f+.5,r-g-.5,r-f-.5)*o,b=!c&&s.mode==="light"?In((p-1.4)/1.3):He((p-1)/7),[v,k,T,L]=uf(b,s);n.fillStyle=`rgb(${Math.round(v)},${Math.round(k)},${Math.round(T)})`,n.globalAlpha=L*In(m/24);let A=o*.049;n.fillRect(g*o+A,f*o+A,o-A*2,o-A*2)}n.restore()}function bh(n,e="pixels-organic"){let t=n.ownerDocument,s=t.defaultView,i=n.getContext("2d");if(!s||!i)return()=>{};let r=s,o=i,c=r.matchMedia("(prefers-reduced-motion: reduce)"),l,d=!0,h=!1,f=0,g=0,u=0,w=null,p=e==="sweep-gradient"?15:10;function m(){g>0&&w&&gf(o,g,4+f/p,w,e)}function b(){if(l=void 0,!n.isConnected){_();return}h||!d||t.hidden||c.matches||(f++,m(),l=r.setTimeout(b,1e3/p))}function v(){l!==void 0&&r.clearTimeout(l),l=void 0,!h&&(m(),d&&!t.hidden&&!c.matches&&(l=r.setTimeout(b,1e3/p)))}function k(){let M=n.getBoundingClientRect().width;if(M<=0)return;let S=Math.min(r.devicePixelRatio||1,1.5),I=r.getComputedStyle(n);w=df(I.getPropertyValue("--scene-primary8")),(g!==M||u!==S)&&(g=M,u=S,n.width=n.height=Math.round(g*u),o.setTransform(u,0,0,u,0,0)),m()}let T=new r.ResizeObserver(k);T.observe(n);let L=new r.IntersectionObserver(M=>{d=M[0]?.isIntersecting??!1,v()});L.observe(n);let A=new r.MutationObserver(k),R=t.getElementById("readany-scene-insert-style");R&&A.observe(R,{childList:!0}),t.addEventListener("visibilitychange",v),c.addEventListener("change",v),r.addEventListener("pagehide",_);function _(){h||(h=!0,l!==void 0&&r.clearTimeout(l),T.disconnect(),L.disconnect(),A.disconnect(),t.removeEventListener("visibilitychange",v),c.removeEventListener("change",v),r.removeEventListener("pagehide",_))}return k(),v(),_}window.makeBook=_a;window._readanyCoverPressFeedback=ph;window._readanyMountScenePixelLoader=bh;window._readanyFindCharacterNameMatches=fh;window.Overlayer=Ee;window.CFI=On;window._zipJs={configure:ar,ZipReader:Gn,BlobReader:Qs,TextWriter:qn,BlobWriter:tn};window._EPUB=Yn;window._makePDFFromURL=Oo;window._extractPDFChapters=Do;customElements.get("foliate-view")||customElements.define("foliate-view",$i);window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify({type:"foliate-loaded"}));})();
 /*!
  * Canvas adaptation of img-fx's pixels-organic and sweep-gradient presets.
  * https://github.com/Jakubantalik/img-fx — Copyright (c) 2026 Jakub Antalik.

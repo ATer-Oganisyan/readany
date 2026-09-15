@@ -590,6 +590,14 @@
           "fail": "Narra Skill is not installed at {{path}}."
         }
       }
-    }
+    },
+    "narraChatMode": "Narra chat mode",
+    "narraChatModeDescription": "Responses always go through the backend. Choose where book context comes from.",
+    "narraChatIndexFirst": "Index first",
+    "narraChatIndexFirstDescription": "Use the server book index. Read the local file if the index is not ready yet.",
+    "narraChatProxyFirst": "Through proxy",
+    "narraChatProxyFirstDescription": "Read the source file through chat tools without using the server index.",
+    "temperatureLabel": "Temperature",
+    "maxTokensLabel": "Max tokens"
   }
 }

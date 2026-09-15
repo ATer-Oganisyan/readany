@@ -1,5 +1,6 @@
 import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
 import { getTTSCfiStartIdentity } from "@/lib/tts-chapter-progress";
+import { useResumeFromReader } from "./use-resume-from-reader";
 /**
  * useReaderTTS — encapsulates all TTS (text-to-speech) logic for ReaderScreen.
  *
@@ -61,6 +62,7 @@ export type TTSBridgeRef = {
     force?: boolean,
     wordIndex?: number | null,
     text?: string | null,
+    fade?: boolean,
   ) => void;
   flashHighlight: (cfi: string, color?: string, duration?: number) => void;
 };
@@ -110,6 +112,7 @@ export interface UseReaderTTSResult {
   currentTTSChapterSegmentIndex: number;
 
   // Handlers
+  startPageTTS: () => Promise<void>;
   handleToggleTTS: () => Promise<void>;
   handleTTSReplay: () => Promise<void>;
   handleTTSPlayPause: () => Promise<void>;
@@ -272,7 +275,7 @@ export function useReaderTTS({
   const ttsCurrentLocationCfiRef = useRef<string | null>(null);
   const ttsTotalChunksRef = useRef(0);
 
-  const ttsHighlightColor = colors.primary5;
+  const ttsHighlightColor = colors.primary;
 
   // Keep mirrors in sync every render (no useEffect needed — render is synchronous).
   ttsCurrentChunkIndexRef.current = ttsCurrentChunkIndex;
@@ -1562,12 +1565,13 @@ export function useReaderTTS({
 
   // ─── startPageTTS ─────────────────────────────────────────────────────────
   const startPageTTS = useCallback(
-    async (continuous = ttsContinuousEnabled) => {
+    async (continuous = ttsContinuousEnabled, isCurrent: () => boolean = () => true) => {
       // Start from the currently visible page, not from currentCfi. During fast
       // page/chapter transitions currentCfi can still point at the previous
       // relocation or a mid-page sentence, which makes TTS skip the real first
       // visible sentence.
       const normalizedSegments = await getNormalizedVisibleTTSSegments(currentCfi);
+      if (!isCurrent()) return;
       const pageAnchorCfi = normalizedSegments[0]?.cfi || currentCfi || null;
       if (__DEV__) {
         console.log("[ReaderScreen][TTS][queue-start] visible-page", {
@@ -1595,6 +1599,7 @@ export function useReaderTTS({
           pageAnchorCfi;
         if (lastCfi) {
           const context = await getCachedTTSSegmentContext(lastCfi, 0, TTS_DYNAMIC_APPEND_SEGMENTS);
+          if (!isCurrent()) return;
           futureSegments = filterDistinctTTSSegments(context.after || [], playbackSegments).slice(
             0,
             TTS_DYNAMIC_APPEND_SEGMENTS,
@@ -1610,6 +1615,7 @@ export function useReaderTTS({
 
           if (futureSegments.length < TTS_DYNAMIC_APPEND_THRESHOLD) {
             const nextChapterSegments = await prefetchNextChapterTTSSegments();
+            if (!isCurrent()) return;
             if (nextChapterSegments.length > 0) {
               playbackSegments = mergeUniqueTTSSegments(
                 playbackSegments,
@@ -1814,6 +1820,8 @@ export function useReaderTTS({
     ttsLastText,
     ttsSourceKind,
   ]);
+
+  useResumeFromReader(bookId, currentCfi, webViewReady, (isCurrent) => startPageTTS(ttsContinuousEnabled, isCurrent));
 
   const handleTTSPlayPause = useCallback(async () => {
     if (ttsPlayState === "loading" || ttsPlayState === "playing") {
@@ -2269,6 +2277,10 @@ export function useReaderTTS({
   // ─── TTS highlight sync effects ───────────────────────────────────────────
   useEffect(() => {
     if (!webViewReady) return;
+    if (ttsPlayState === "stopped" && !showTTS && (!ttsCurrentBookId || ttsCurrentBookId === bookId)) {
+      bridgeRef.current?.setTTSHighlight(null, undefined, true, undefined, undefined, true);
+      return;
+    }
     if (ttsCurrentBookId !== bookId) {
       bridgeRef.current?.setTTSHighlight(null);
       return;
@@ -2277,8 +2289,8 @@ export function useReaderTTS({
       bridgeRef.current?.setTTSHighlight(null);
       return;
     }
-    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading") {
-      bridgeRef.current?.setTTSHighlight(null);
+    if (ttsPlayState === "paused" || ttsPlayState === "stopped") {
+      bridgeRef.current?.setTTSHighlight(null, undefined, true, undefined, undefined, true);
       return;
     }
     if (ttsSourceKind !== "page") {
@@ -2371,7 +2383,7 @@ export function useReaderTTS({
     }
     if (didForceReapplyTTSHighlightRef.current) return;
     if (ttsSourceKind !== "page") return;
-    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading")
+    if (ttsPlayState !== "playing" && ttsPlayState !== "loading")
       return;
     const targetCfi = resolvedTTSSegmentCfi;
     if (!targetCfi) return;
@@ -2393,7 +2405,7 @@ export function useReaderTTS({
     if (!webViewReady || showTTS) return;
     if (ttsCurrentBookId !== bookId) return;
     if (ttsSourceKind !== "page") return;
-    if (ttsPlayState !== "playing" && ttsPlayState !== "paused" && ttsPlayState !== "loading")
+    if (ttsPlayState !== "playing" && ttsPlayState !== "loading")
       return;
     const targetCfi = resolvedTTSSegmentCfi || currentCfi || null;
     if (!targetCfi) return;
@@ -2422,7 +2434,7 @@ export function useReaderTTS({
       if (nextState !== "active") return;
       if (!webViewReady || !bridgeRef.current) return;
       if (ttsCurrentBookId !== bookId) return;
-      if (ttsPlayState !== "playing" && ttsPlayState !== "paused") return;
+      if (ttsPlayState !== "playing") return;
       if (ttsSourceKind !== "page") return;
 
       // Small delay to let WebView fully resume before injecting JS
@@ -2941,6 +2953,7 @@ export function useReaderTTS({
     currentTTSChapterSegmentIndex,
 
     // Handlers
+    startPageTTS,
     handleToggleTTS,
     handleTTSReplay,
     handleTTSPlayPause,

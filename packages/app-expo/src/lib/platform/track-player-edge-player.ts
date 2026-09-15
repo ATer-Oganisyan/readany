@@ -1,10 +1,11 @@
+import i18n from "@readany/core/i18n";
 import type { ITTSPlayer, TTSConfig } from "@readany/core/tts";
 import { splitIntoChunks } from "@readany/core/tts";
 import { File } from "expo-file-system";
 import { Alert, AppState, type AppStateStatus, Image, Platform } from "react-native";
 import TrackPlayer, { Event, State } from "react-native-track-player";
 
-import { NarraServiceError, normalizeNarraError } from "../narra/errors";
+import { NarraServiceError, localizeNarraErrorMessage, normalizeNarraError } from "../narra/errors";
 import { synthesizeNarraBookSpeech } from "../narra/media";
 import { getNarratorVoice } from "../narra/scene-audio";
 import { resolveReaderVoiceForChunk } from "../narra/voice-markup";
@@ -291,7 +292,10 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       if (gen === this._speakGen && !this._stopped && (err as Error)?.message !== "aborted") {
         console.log("[TTS] Speech synthesis stopped after retries");
         this.stop();
-        Alert.alert("Озвучка недоступна", normalizeNarraError(err).message);
+        Alert.alert(
+          i18n.t("narra.speechUnavailableTitle"),
+          localizeNarraErrorMessage(normalizeNarraError(err).message),
+        );
       }
     }
   }

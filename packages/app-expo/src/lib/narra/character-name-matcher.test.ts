@@ -76,9 +76,11 @@ describe("защиты матчера", () => {
     expect(matchedTexts("Аннушка и Аннуитет остались без совпадений.", spec)).toEqual([]);
   });
 
-  it("слишком короткие имена не матчатся вовсе", () => {
+  it("короткие имена матчатся точно и только целиком", () => {
     const spec = buildCharacterNameMatcherSpec([{ id: "li", name: "Ли" }]);
-    expect(matchedTexts("Ли пришёл.", spec)).toEqual([]);
+    expect(matchedTexts("Ли пришёл. Лилия спросила, пришёл ли он.", spec)).toEqual([
+      { text: "Ли", characterId: "li" },
+    ]);
   });
 
   it("частотные слова и титулы из стоп-листа не подсвечиваются", () => {
@@ -187,4 +189,16 @@ describe("границы и служебные случаи", () => {
       { text: "Драко", characterId: "draco" },
     ]);
   });
+});
+
+
+it("подчёркивает Е из списка персонажей, но не местоимения и чужие инициалы", () => {
+  const spec = buildCharacterNameMatcherSpec([
+    { id: "ye", name: "Е", fullName: "Е Вэньцзе" },
+    { id: "other", name: "Евгений", fullName: "Е. Онегин" },
+  ]);
+  expect(matchedTexts("Е ощущала запах. Е написала. Ее сердце. Елена пришла.", spec)).toEqual([
+    { text: "Е", characterId: "ye" },
+    { text: "Е", characterId: "ye" },
+  ]);
 });

@@ -12,6 +12,7 @@ import {
 } from "@expo/ui/swift-ui/modifiers";
 import { requireNativeView } from "expo";
 import type { ComponentType } from "react";
+import { useTranslation } from "react-i18next";
 import { View } from "react-native";
 import type { TTSNativePlayerProps } from "./TTSNativePlayer.types";
 import { useTTSNativePlayer } from "./useTTSNativePlayer";
@@ -28,6 +29,9 @@ interface NativeTTSPlayerToolbarProps {
   isPlaying: boolean;
   isLoading: boolean;
   seekEnabled: boolean;
+  backwardLabel: string;
+  forwardLabel: string;
+  playPauseLabel: string;
   onBackwardPress: () => void;
   onPlayPausePress: () => void;
   onForwardPress: () => void;
@@ -47,6 +51,7 @@ export function TTSNativePlayer({
   onSeekChapterChunk,
 }: TTSNativePlayerProps) {
   const { colors, isDark } = useTheme();
+  const { t } = useTranslation();
   const player = useTTSNativePlayer(playState, onPlayPause, {
     chapterCurrentIndex,
     chapterTotalChunks,
@@ -101,6 +106,15 @@ export function TTSNativePlayer({
         isPlaying={player.isPlaying}
         isLoading={player.isLoading}
         seekEnabled={player.hasDuration}
+        backwardLabel={t("tts.backward15")}
+        forwardLabel={t("tts.forward15")}
+        playPauseLabel={
+          player.isLoading
+            ? t("common.cancel")
+            : player.isPlaying
+              ? t("tts.pauseShort")
+              : t("tts.playShort")
+        }
         onBackwardPress={player.seekBackward}
         onPlayPausePress={player.togglePlayback}
         onForwardPress={player.seekForward}

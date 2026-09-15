@@ -1,6 +1,6 @@
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
-import { reportNarraError } from "@/lib/narra/errors";
+import { localizeNarraErrorMessage, reportNarraError } from "@/lib/narra/errors";
 import { generateNarraSummary } from "@/lib/narra/summary";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useNarraStore } from "@/stores";
@@ -88,7 +88,7 @@ export function NarraSummaryScreen({ route }: Props) {
             ) : null}
             {error ? (
               <Text selectable style={{ color: colors.mutedForeground }}>
-                {error}
+                {localizeNarraErrorMessage(error)}
               </Text>
             ) : null}
           </>
@@ -101,7 +101,8 @@ export function NarraSummaryScreen({ route }: Props) {
           </View>
         ) : (
           <Text selectable style={[styles.result, { color: colors.mutedForeground }]}>
-            {error || t("narra.summaryFailed", "Не удалось составить пересказ.")}
+            {(error && localizeNarraErrorMessage(error)) ||
+              t("narra.summaryFailed", "Не удалось составить пересказ.")}
           </Text>
         )}
       </View>

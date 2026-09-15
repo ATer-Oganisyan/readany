@@ -6,7 +6,7 @@ import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { characterBiography } from "@/lib/narra/character-profile";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
-import { reportNarraError } from "@/lib/narra/errors";
+import { localizeNarraErrorMessage, reportNarraError } from "@/lib/narra/errors";
 import {
   ensureCharacterPortrait,
   generateCharacterPortrait,
@@ -61,6 +61,8 @@ import { ReaderCharacterActions } from "./ReaderCharacterActions";
 const PortraitBlurTarget = Platform.OS === "android" ? BlurTargetView : View;
 
 interface ReaderCharacterCardProps {
+  portraitUnavailable?: boolean;
+  onPortraitUnavailable?: () => void;
   onBackgroundColorChange?: (color: string) => void;
   visible: boolean;
   character: NarraCharacter | null;
@@ -210,6 +212,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       portraitLoadingPreview = false,
       staticPortraitOnly = false,
       onBackgroundColorChange,
+      portraitUnavailable = false,
+      onPortraitUnavailable,
     },
     ref,
   ) {
@@ -242,7 +246,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
     // Растущий id запроса синтеза: устаревший ответ не должен заиграть после отмены.
     const voiceRequestRef = useRef(0);
 
-    const portraitUri = resolveCharacterPortraitUri(liveCharacter);
+    const portraitUri = portraitUnavailable
+      ? undefined
+      : resolveCharacterPortraitUri(liveCharacter);
     const portraitPending = embedded && !portraitUri;
     const [portraitBackgroundColor, setPortraitBackgroundColor] = useState(
       portraitUri
@@ -445,7 +451,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           if (voiceRequestRef.current !== requestId) return;
           setVoiceState("idle");
           toast.error(t("narra.voiceSampleFailedTitle", "Не удалось озвучить героя"), {
-            description: normalized.message,
+            description: localizeNarraErrorMessage(normalized.message),
           });
         });
     };
@@ -488,6 +494,7 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           <CharacterPortraitImage
             character={liveCharacter}
             staticOnly={staticPortraitOnly}
+            onUnavailable={onPortraitUnavailable}
             style={styles.portraitImage}
             fallback={
               portraitBusy ? (

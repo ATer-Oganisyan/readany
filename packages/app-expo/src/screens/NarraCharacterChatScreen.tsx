@@ -13,7 +13,7 @@ import { recordTelemetry } from "@/lib/analytics/telemetry";
 import { buildCharacterSystemPrompt } from "@/lib/narra/character-prompt";
 import { normalizeCharacterChatPlaceholder } from "@/lib/narra/chat-placeholder";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
-import { reportNarraError } from "@/lib/narra/errors";
+import { localizeNarraErrorMessage, reportNarraError } from "@/lib/narra/errors";
 import type { NarraChatMessage } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -311,7 +311,7 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
         void refreshMemory([...messages, userMessage, assistantMessage]);
       } catch (error) {
         toast.error(t("narra.chatFailedTitle", "Не удалось получить ответ"), {
-          description: reportNarraError("character_chat", error).message,
+          description: localizeNarraErrorMessage(reportNarraError("character_chat", error).message),
         });
       } finally {
         setSending(false);

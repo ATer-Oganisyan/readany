@@ -15,7 +15,11 @@ function findNode(root: ts.Node, predicate: (node: ts.Node) => boolean): ts.Node
   return found;
 }
 
-function runRelocation({ fixed, pdf }: { fixed: boolean; pdf: boolean }) {
+function runRelocation({
+  fixed,
+  pdf,
+  scrolled = false,
+}: { fixed: boolean; pdf: boolean; scrolled?: boolean }) {
   const html = readFileSync(
     new URL("../../../assets/reader/reader.template.html", import.meta.url),
     "utf8",
@@ -33,7 +37,7 @@ function runRelocation({ fixed, pdf }: { fixed: boolean; pdf: boolean }) {
   ) as ts.CallExpression;
 
   const messages: Record<string, unknown>[] = [];
-  const renderer = { index: 3, page: 2, pages: 10 };
+  const renderer = { index: 3, page: 2, pages: 10, scrolled, start: 1250, size: 800 };
   const book = {
     isPDF: pdf,
     physicalPageCount: pdf ? 127 : undefined,
@@ -57,6 +61,7 @@ function runRelocation({ fixed, pdf }: { fixed: boolean; pdf: boolean }) {
   context.relocate({
     detail: {
       fraction: 0.03,
+      reason: "scroll",
       section: { current: 3, total: 85 },
       location: { current: 3, next: 4, total: 85 },
       cfi: "epubcfi(/6/8)",
@@ -72,6 +77,7 @@ describe("fixed-layout page reporting", () => {
       section: { current: 3, total: 127 },
       page: { current: 4, total: 127 },
       location: undefined,
+      scroll: undefined,
     });
   });
 
@@ -90,6 +96,15 @@ describe("fixed-layout page reporting", () => {
       section: { current: 3, total: 85 },
       page: { current: 2, total: 8 },
       location: { current: 3, next: 4, total: 85 },
+      scroll: undefined,
+    });
+  });
+
+  it("reports scroll distance separately from the book's page counter", () => {
+    expect(runRelocation({ fixed: false, pdf: false, scrolled: true })).toMatchObject({
+      page: { current: 2, total: 8 },
+      scroll: { offset: 1250, viewport: 800 },
+      reason: "scroll",
     });
   });
 });

@@ -671,6 +671,9 @@
 
     function removeAllTTSCSSHighlights() {
       for (const content of getRendererContents()) {
+        for (const span of content.doc?.querySelectorAll('.readany-tts-text') || []) {
+          span.replaceWith(...span.childNodes);
+        }
         const css = content?.doc?.defaultView?.CSS;
         try {
           css?.highlights?.delete(TTS_CSS_HIGHLIGHT_NAME);
@@ -730,12 +733,7 @@
           removeAllTTSHighlights();
 
           try {
-            (target || source).overlayer.add(
-              TTS_HIGHLIGHT_KEY,
-              renderRange,
-              Overlayer.highlight,
-              { color: resolveTTSHighlightColor(ttsHighlightState.color) }
-            );
+            drawTTSHighlightWithCSS(renderRange, ttsHighlightState.color);
           } catch (e) {
             console.log('[ttsHighlight] error drawing active TTS highlight:', e);
           }
@@ -749,67 +747,38 @@
       }
     }
 
-    function drawTTSHighlight(rects, options) {
-      const { color = 'rgba(96, 165, 250, 0.35)', padding = 1, radius = 4, radiusPadding = 2 } = options || {};
-      const svgNS = 'http://www.w3.org/2000/svg';
-      const g = document.createElementNS(svgNS, 'g');
-      g.setAttribute('fill', color);
-      g.style.opacity = 'var(--overlayer-highlight-opacity, 1)';
-      g.style.mixBlendMode = 'var(--overlayer-highlight-blend-mode, normal)';
-
-      for (let index = 0; index < rects.length; index++) {
-        const { left, top, width, height } = rects[index];
-        const isFirst = index === 0;
-        const isLast = index === rects.length - 1;
-        const x = left - padding - (isFirst ? radiusPadding : 0);
-        const y = top - padding;
-        const w = width + padding * 2 + (isFirst ? radiusPadding : 0) + (isLast ? radiusPadding : 0);
-        const h = height + padding * 2;
-        const rtl = isLast ? radius : 0;
-        const rtr = isFirst ? radius : 0;
-        const rbr = isFirst ? radius : 0;
-        const rbl = isLast ? radius : 0;
-        const path = document.createElementNS(svgNS, 'path');
-        path.setAttribute(
-          'd',
-          [
-            `M ${x + rtl} ${y}`,
-            `H ${x + w - rtr}`,
-            rtr ? `Q ${x + w} ${y} ${x + w} ${y + rtr}` : '',
-            `V ${y + h - rbr}`,
-            rbr ? `Q ${x + w} ${y + h} ${x + w - rbr} ${y + h}` : '',
-            `H ${x + rbl}`,
-            rbl ? `Q ${x} ${y + h} ${x} ${y + h - rbl}` : '',
-            `V ${y + rtl}`,
-            rtl ? `Q ${x} ${y} ${x + rtl} ${y}` : '',
-            'Z',
-          ].filter(Boolean).join(' ')
-        );
-        g.append(path);
+    // Older WebKit has no Custom Highlight API. Transparent CFI wrappers keep
+    // the same text coordinates while colouring only the active sentence.
+    function drawTTSHighlightWithSpans(range, color) {
+      const doc = range.startContainer.ownerDocument;
+      const walker = doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+      const nodes = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+        ? [range.commonAncestorContainer] : [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (range.intersectsNode(node)) nodes.push(node);
       }
-
-      return g;
-    }
-
-    function resolveTTSHighlightColor(color) {
-      if (!color) return 'rgba(96, 165, 250, 0.35)';
-      // If it's already an rgba/rgb value, use as-is
-      if (color.startsWith('rgba(') || color.startsWith('rgb(')) return color;
-      // Preserve the alpha channel from primitives tokens such as Primary 5 (#RRGGBBAA).
-      if (/^#[0-9a-fA-F]{8}$/.test(color)) {
-        const r = parseInt(color.slice(1, 3), 16);
-        const g = parseInt(color.slice(3, 5), 16);
-        const b = parseInt(color.slice(5, 7), 16);
-        const a = parseInt(color.slice(7, 9), 16) / 255;
-        return `rgba(${r}, ${g}, ${b}, ${a})`;
+      const slices = nodes.map(node => ({
+        node,
+        start: node === range.startContainer ? range.startOffset : 0,
+        end: node === range.endContainer ? range.endOffset : node.length,
+      })).filter(({ start, end }) => end > start);
+      let style = doc.getElementById(TTS_CSS_HIGHLIGHT_STYLE_ID);
+      if (!style) {
+        style = doc.createElement('style');
+        style.id = TTS_CSS_HIGHLIGHT_STYLE_ID;
+        (doc.head || doc.documentElement).append(style);
       }
-      if (/^#[0-9a-fA-F]{6}$/.test(color)) {
-        const r = parseInt(color.slice(1, 3), 16);
-        const g = parseInt(color.slice(3, 5), 16);
-        const b = parseInt(color.slice(5, 7), 16);
-        return `rgba(${r}, ${g}, ${b}, 0.35)`;
+      style.textContent = `.readany-tts-text { color: ${color || currentThemeColors.primary} !important; }`;
+      for (const { node, start, end } of slices.reverse()) {
+        if (end < node.length) node.splitText(end);
+        const text = start ? node.splitText(start) : node;
+        const span = doc.createElement('span');
+        span.className = 'readany-tts-text';
+        text.replaceWith(span);
+        span.append(text);
       }
-      return color;
+      return slices.length > 0;
     }
 
     function drawTTSHighlightWithCSS(range, color) {
@@ -820,7 +789,10 @@
       const win = doc?.defaultView;
       const highlightRegistry = win?.CSS?.highlights;
       const HighlightConstructor = win?.Highlight;
-      if (!doc || !highlightRegistry || typeof HighlightConstructor !== 'function') return false;
+      if (!doc) return false;
+      if (!highlightRegistry || typeof HighlightConstructor !== 'function') {
+        return drawTTSHighlightWithSpans(range, color);
+      }
 
       try {
         let style = doc.getElementById(TTS_CSS_HIGHLIGHT_STYLE_ID);
@@ -829,7 +801,7 @@
           style.id = TTS_CSS_HIGHLIGHT_STYLE_ID;
           (doc.head || doc.documentElement).append(style);
         }
-        style.textContent = `::highlight(${TTS_CSS_HIGHLIGHT_NAME}) { background-color: ${resolveTTSHighlightColor(color)} !important; color: inherit !important; }`;
+        style.textContent = `::highlight(${TTS_CSS_HIGHLIGHT_NAME}) { background-color: transparent !important; color: ${color || currentThemeColors.primary} !important; }`;
         highlightRegistry.set(TTS_CSS_HIGHLIGHT_NAME, new HighlightConstructor(range.cloneRange()));
         return true;
       } catch (error) {
@@ -838,7 +810,48 @@
       }
     }
 
+    let ttsFadeTimer = null;
+    let ttsFadeFrame = null;
+
+    function cancelTTSHighlightFade() {
+      clearTimeout(ttsFadeTimer);
+      cancelAnimationFrame(ttsFadeFrame);
+      ttsFadeTimer = ttsFadeFrame = null;
+    }
+
+    function fadeTTSHighlight() {
+      if (ttsFadeTimer !== null || ttsFadeFrame !== null) return;
+      ttsFadeTimer = setTimeout(() => {
+        ttsFadeTimer = null;
+        const start = performance.now();
+        const styles = getRendererContents().flatMap(({ doc }) => {
+          const style = doc?.getElementById(TTS_CSS_HIGHLIGHT_STYLE_ID);
+          return style ? [{ style, original: style.textContent }] : [];
+        });
+        const tick = (now) => {
+          const progress = Math.min(1, (now - start) / 1000);
+          // CSS ease-out: cubic-bezier(0, 0, 0.58, 1).
+          let low = 0, high = 1;
+          for (let i = 0; i < 16; i++) {
+            const t = (low + high) / 2;
+            const x = 1.74 * (1 - t) * t * t + t * t * t;
+            if (x < progress) low = t; else high = t;
+          }
+          const t = (low + high) / 2;
+          const eased = 3 * (1 - t) * t * t + t * t * t;
+          for (const { style, original } of styles) {
+            style.textContent = original.replace(/color: ([^;]+) !important; }$/, (_, color) =>
+              `color: color-mix(in srgb, ${color} ${(1 - eased) * 100}%, ${currentThemeColors.fg}) !important; }`);
+          }
+          if (progress < 1) ttsFadeFrame = requestAnimationFrame(tick);
+          else clearTTSHighlight();
+        };
+        ttsFadeFrame = requestAnimationFrame(tick);
+      }, 2000);
+    }
+
     function clearTTSHighlight() {
+      cancelTTSHighlightFade();
       const previousValue = ttsHighlightState.annotationValue;
       if (!previousValue && !ttsHighlightState.cfi) return;
       ttsHighlightState = {
@@ -953,68 +966,6 @@
       }
     }
 
-    function getTTSWordRange(sourceRange, requestedWordIndex) {
-      if (!sourceRange || requestedWordIndex == null) return null;
-      const doc = sourceRange.startContainer && sourceRange.startContainer.ownerDocument;
-      if (!doc) return null;
-
-      const root = sourceRange.commonAncestorContainer;
-      const textNodes = [];
-      if (root.nodeType === Node.TEXT_NODE) {
-        textNodes.push(root);
-      } else {
-        const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-          try {
-            if (sourceRange.intersectsNode(node)) textNodes.push(node);
-          } catch {}
-        }
-      }
-
-      let text = '';
-      const positions = [];
-      for (const node of textNodes) {
-        const start = node === sourceRange.startContainer ? sourceRange.startOffset : 0;
-        const end = node === sourceRange.endContainer ? sourceRange.endOffset : node.nodeValue.length;
-        if (end <= start) continue;
-        const absoluteStart = text.length;
-        text += node.nodeValue.slice(start, end);
-        positions.push({ node, nodeStart: start, start: absoluteStart, end: text.length });
-      }
-      if (!text || !positions.length) return null;
-
-      const lang = doc.documentElement && doc.documentElement.lang || undefined;
-      const segments = typeof Intl !== 'undefined' && Intl.Segmenter
-        ? Array.from(new Intl.Segmenter(lang, { granularity: 'word' }).segment(text))
-        : Array.from(text.matchAll(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)).map((match) => ({
-            segment: match[0],
-            index: match.index,
-            isWordLike: true,
-          }));
-      const words = segments.filter((segment) =>
-        segment.isWordLike === true || /[\p{L}\p{N}]/u.test(segment.segment)
-      );
-      if (!words.length) return null;
-
-      const word = words[Math.max(0, Math.min(requestedWordIndex, words.length - 1))];
-      const wordStart = word.index;
-      const wordEnd = word.index + word.segment.length;
-      const startPosition = positions.find((position) => wordStart < position.end);
-      const endPosition = positions.find((position) => wordEnd <= position.end) || positions[positions.length - 1];
-      if (!startPosition || !endPosition) return null;
-
-      const range = doc.createRange();
-      range.setStart(
-        startPosition.node,
-        startPosition.nodeStart + Math.max(0, wordStart - startPosition.start)
-      );
-      range.setEnd(
-        endPosition.node,
-        endPosition.nodeStart + Math.max(0, wordEnd - endPosition.start)
-      );
-      return range;
-    }
 
     function findTTSRangeByText(doc, requestedText) {
       const targetText = normalizeTTSText(requestedText);
@@ -1056,6 +1007,8 @@
     }
 
     async function setTTSHighlight(cfi, color, wordIndex, text) {
+      if (ttsFadeTimer !== null || ttsFadeFrame !== null) ttsHighlightState.drawn = false;
+      cancelTTSHighlightFade();
       const previousValue = ttsHighlightState.annotationValue;
       const normalizedColor = color || null;
       const normalizedWordIndex = cfi ? Math.max(0, Number(wordIndex) || 0) : null;
@@ -1112,36 +1065,10 @@
           break;
         }
       }
-      const wordRange = resolved && getTTSWordRange(resolved.range, normalizedWordIndex);
       if (resolved) {
-        const target = getRendererContentForDoc(resolved.doc) || getRendererContentForCfi(cfi);
-        const renderRange = wordRange || resolved.range;
+        const renderRange = resolved.range;
         const hasRenderableRects = renderRange && Array.from(renderRange.getClientRects?.() || [])
           .some((rect) => rect.width > 0 && rect.height > 0);
-        if (target?.overlayer && renderRange && hasRenderableRects) {
-          try {
-            target.overlayer.add(
-              TTS_HIGHLIGHT_KEY,
-              renderRange,
-              drawTTSHighlight,
-              { color: resolveTTSHighlightColor(normalizedColor) }
-            );
-            ttsHighlightState = {
-              cfi,
-              color: normalizedColor,
-              wordIndex: normalizedWordIndex,
-              text: normalizedText,
-              annotationValue: null,
-              drawn: true,
-            };
-            return;
-          } catch (e) {
-            emitTTSDebug('direct highlight error', { error: String(e) });
-          }
-        }
-        // Keep the platform Highlight API only as a fallback. Foliate's own
-        // overlayer is deterministic across arbitrary EPUB CSS, while WebKit
-        // can accept CSS.highlights.set() without painting in some layouts.
         if (hasRenderableRects && drawTTSHighlightWithCSS(renderRange, normalizedColor)) {
           ttsHighlightState = {
             cfi,
@@ -1648,6 +1575,7 @@
           if (view && msg.settings) applySettings(msg.settings);
           break;
         case 'setTTSHighlight':
+          if (msg.fade) { fadeTTSHighlight(); break; }
           await setTTSHighlight(msg.cfi, msg.color, msg.wordIndex, msg.text);
           break;
         case 'clearTTSHighlight':
@@ -1921,10 +1849,14 @@
           postToRN('relocate', {
             loadId: msg.loadId,
             fraction: detail.fraction,
+            reason: detail.reason,
             isPDF,
             section: { current: currentSectionIndex, total: relocatedSectionTotal },
             location: isPDF ? undefined : detail.location,
             page: actualPage,
+            scroll: !isPDF && view.renderer && view.renderer.scrolled
+              ? { offset: view.renderer.start, viewport: view.renderer.size }
+              : undefined,
             tocItem: detail.tocItem,
             pageItem: detail.pageItem,
             cfi: detail.cfi,
@@ -1965,7 +1897,7 @@
                 text: range && typeof range.toString === 'function' ? range.toString().slice(0, 48) : '',
               })}`,
             });
-            draw(drawTTSHighlight, { color: resolveTTSHighlightColor(annotation.color) });
+            drawTTSHighlightWithCSS(range, annotation.color);
           } else if (annotation.note) {
             console.log('[draw-annotation] has note:', annotation.note);
             // Draw both highlight and squiggly underline for notes
@@ -3771,7 +3703,8 @@ a { color: ${primary} !important; }
     ].join(',');
 
     function normalizeTTSText(text) {
-      return String(text || '').replace(TTS_FOOTNOTE_MARKER_PATTERN, '').replace(/\s+/g, ' ').trim();
+      const normalized = String(text || '').replace(TTS_FOOTNOTE_MARKER_PATTERN, '').replace(/\s+/g, ' ').trim();
+      return /[\p{L}\p{N}]/u.test(normalized) ? normalized : '';
     }
 
     function isTTSFootnoteMarker(text) {
@@ -5724,7 +5657,7 @@ a { color: ${primary} !important; }
       if (node.nodeType !== 1 || !node.classList) return NodeFilter.FILTER_ACCEPT;
       if (node.hasAttribute('cfi-inert')) return NodeFilter.FILTER_REJECT;
       if (node.classList.contains(SCENE_INSERT_CLASS)) return NodeFilter.FILTER_REJECT;
-      if (node.classList.contains(CHARACTER_NAME_CLASS)) return NodeFilter.FILTER_SKIP;
+      if (node.classList.contains(CHARACTER_NAME_CLASS) || node.classList.contains('readany-tts-text')) return NodeFilter.FILTER_SKIP;
       if (node.classList.contains('readany-translation')) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     }
@@ -6218,14 +6151,10 @@ a { color: ${primary} !important; }
       return host;
     }
 
-    // Последний видимый блок текста — логика видимости как в getVisibleTextSnippet
+    // Учитываем положение iframe: в прокрутке он имеет высоту всей главы.
     function findLastVisibleSceneBlock(doc, win) {
       var renderer = view && view.renderer;
       if (!renderer) return null;
-      var isPaginated = !renderer.scrolled;
-      var pSize = renderer.size;
-      var pStart = renderer.start;
-      var pEnd = renderer.end;
       var blocks = doc.querySelectorAll(SCENE_BLOCK_SELECTOR);
       var best = null;
       for (var i = 0; i < blocks.length; i++) {
@@ -6233,19 +6162,7 @@ a { color: ${primary} !important; }
         if (!block.textContent || !block.textContent.trim()) continue;
         if (block.closest && block.closest('.' + SCENE_INSERT_CLASS)) continue;
         var rect = block.getBoundingClientRect();
-        var visible;
-        if (isPaginated && pSize > 0) {
-          var visibleLeft = pStart;
-          var visibleRight = Number.isFinite(pEnd) && pEnd > pStart
-            ? pEnd
-            : pStart + pSize;
-          visible = rect.right > visibleLeft && rect.left < visibleRight && rect.width > 0;
-        } else {
-          visible = rect.width > 0 && rect.height > 0 &&
-            rect.right > 0 && rect.left < win.innerWidth &&
-            rect.bottom > 0 && rect.top < win.innerHeight;
-        }
-        if (visible) best = block;
+        if (isRectVisibleInReader(rect, renderer, win, doc)) best = block;
       }
       return best;
     }

@@ -11,6 +11,7 @@ import { NarraAudioPlayer } from "@/lib/narra/audio-player";
 import {
   NARRA_SAFETY_DECLINED_MESSAGE,
   NARRA_SCENE_SAFETY_RETRY_MESSAGE,
+  localizeNarraErrorMessage,
   reportNarraError,
 } from "@/lib/narra/errors";
 import { normalizePersistedNarraMediaUri, synthesizeNarraSpeech } from "@/lib/narra/media";
@@ -282,7 +283,7 @@ export function NarraSceneScreen({ route, navigation }: Props) {
     } catch (cause) {
       const normalized = reportNarraError("scene_animate", cause);
       toast.error(t("narra.sceneAnimateFailedTitle", "Не удалось оживить сцену"), {
-        description: normalized.message,
+        description: localizeNarraErrorMessage(normalized.message),
       });
     } finally {
       sceneMediaOperationRef.current = "idle";
@@ -389,7 +390,9 @@ export function NarraSceneScreen({ route, navigation }: Props) {
               <Text style={styles.placeholderTitle}>
                 {t("narra.sceneFailedTitle", "Не удалось создать сцену")}
               </Text>
-              {error ? <Text style={styles.placeholderHint}>{error}</Text> : null}
+              {error ? (
+                <Text style={styles.placeholderHint}>{localizeNarraErrorMessage(error)}</Text>
+              ) : null}
             </View>
           )}
         </View>

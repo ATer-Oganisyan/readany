@@ -22,7 +22,7 @@ describe("characters processing status", () => {
     expect(screen).toContain('const isFindingCharacters = analysisAvailability === "processing"');
     expect(screen).toContain('t("narra.findingCharacters", "Ищу персонажей…")');
     expect(screen).toContain('backendStatus.preview?.status === "preview_ready"');
-    expect(screen).toContain('charactersStatus === "full_ready"');
+    expect(screen).not.toContain('charactersStatus === "full_ready"');
     expect(screen).toContain('t("narra.characterProfilePreparing", "Профиль формируется…")');
     expect(screen).toContain("disabled: true");
     expect(screen).toContain("dimmed: true");

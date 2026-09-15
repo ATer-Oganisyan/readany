@@ -381,6 +381,7 @@ export interface TTSState {
   append: (text: NarrationInput) => boolean;
   pause: () => void;
   resume: () => void;
+  resumeFromReader: (() => boolean) | null;
   stop: () => void;
   toggle: (text?: string) => void;
   updateConfig: (updates: Partial<TTSConfig>) => void;
@@ -414,6 +415,7 @@ export const useTTSStore = create<TTSState>()(
       segmentCfis: [],
       narrationChapters: [],
       onSeekChapterSegment: null,
+      resumeFromReader: null,
       sleepTimerEndsAt: null,
       sleepTimerDurationMinutes: null,
 
@@ -515,6 +517,7 @@ export const useTTSStore = create<TTSState>()(
 
       resume: () => {
         console.log("[TTSStore] resume called");
+        if (get().playState === "paused" && get().resumeFromReader?.()) return;
         const config = normalizeTTSConfig(get().config);
         // Speed lives in SSML. Resume old WAV only if its synthesis settings still match.
         if (
@@ -806,6 +809,7 @@ export const useTTSStore = create<TTSState>()(
       segmentCfis: [],
       narrationChapters: [],
       onSeekChapterSegment: null,
+      resumeFromReader: null,
       currentLocationCfi: "",
       sleepTimerEndsAt: null,
       sleepTimerDurationMinutes: null,

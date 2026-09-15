@@ -57,6 +57,7 @@ vi.mock("@/hooks/use-backend-book", () => ({ useBackendBook: vi.fn() }));
 vi.mock("@/lib/library/open-mobile-book", () => ({ openMobileBook: vi.fn() }));
 vi.mock("@/lib/narra/character-portrait", () => ({
   hasCharacterPortrait: () => Boolean(runtime.character.portraitUri),
+  resolveCharacterPortraitUri: (character: typeof runtime.character | undefined) => character?.portraitUri,
 }));
 vi.mock("@/styles/theme", () => ({ useTheme: () => ({ colors: { card: "#fff" } }) }));
 vi.mock("react-i18next", () => ({

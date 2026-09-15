@@ -4,6 +4,8 @@ import android.app.AlertDialog
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
+import androidx.core.view.WindowInsetsControllerCompat
 import android.text.InputType
 import android.widget.EditText
 import expo.modules.kotlin.Promise
@@ -21,6 +23,22 @@ import java.util.Locale
 class ReadAnyNativeControlsModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ReadAnyNativeControls")
+
+    AsyncFunction("setNavigationBarTheme") { background: String, dark: Boolean ->
+      appContext.currentActivity?.let { activity ->
+        activity.runOnUiThread {
+          val window = activity.window
+          // Older Android paints the bar; edge-to-edge uses the screen behind it.
+          @Suppress("DEPRECATION")
+          window.navigationBarColor = Color.parseColor(background)
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+          }
+          WindowInsetsControllerCompat(window, window.decorView)
+            .isAppearanceLightNavigationBars = !dark
+        }
+      }
+    }
 
     AsyncFunction("averageTopImageColor") Coroutine {
       uri: String,

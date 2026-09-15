@@ -21,7 +21,8 @@ vi.mock("@/styles/theme", () => ({
 }));
 vi.mock("@deslop/primitives", () => ({ spacingPixels: { 16: 16 } }));
 vi.mock("@expo/ui", () => ({ Host: "Host", List: "List", ListItem: "ListItem", Text: "Text" }));
-vi.mock("react-i18next", () => ({
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   useTranslation: () => ({ t: (_key: string, fallback: string) => fallback }),
 }));
 

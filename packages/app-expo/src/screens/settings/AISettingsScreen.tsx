@@ -244,7 +244,7 @@ export default function AISettingsScreen() {
               <Text style={styles.sectionTitle}>{t("settings.ai_globalParams", "全局参数")}</Text>
 
               <View style={styles.paramRow}>
-                <Text style={styles.paramLabel}>Temperature</Text>
+                <Text style={styles.paramLabel}>{t("settings.temperatureLabel")}</Text>
                 <View style={styles.stepperContainer}>
                   <TouchableOpacity
                     style={styles.stepperBtn}
@@ -283,7 +283,7 @@ export default function AISettingsScreen() {
               </View>
 
               <View style={[styles.paramRow, { marginTop: spacing.md }]}>
-                <Text style={styles.paramLabel}>Max Tokens</Text>
+                <Text style={styles.paramLabel}>{t("settings.maxTokensLabel")}</Text>
                 <View style={styles.stepperContainer}>
                   <TouchableOpacity
                     style={styles.stepperBtn}

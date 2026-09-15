@@ -4,7 +4,7 @@ import { useBackendBook } from "@/hooks/use-backend-book";
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { retryBackendBookSync, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
 import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
-import { hasCharacterPortrait } from "@/lib/narra/character-portrait";
+import { resolveCharacterPortraitUri } from "@/lib/narra/character-portrait";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ReaderCharacterCard } from "@/screens/reader/ReaderCharacterCard";
@@ -29,10 +29,13 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
   const character = useNarraStore((state) =>
     state.books[bookId]?.characters.find((item) => item.id === characterId),
   );
+  const portraitUri = resolveCharacterPortraitUri(character);
+  const [failedPortraitUri, setFailedPortraitUri] = useState<string>();
+  const portraitUnavailable = Boolean(portraitUri && failedPortraitUri === portraitUri);
   const portraitReady = Boolean(
     character?.backendManaged &&
       isCharacterUnlocked(book?.progress ?? 0, character) &&
-      hasCharacterPortrait(character),
+      portraitUri && !portraitUnavailable,
   );
   const hasPortraitAsset = character?.backendAssets?.some(
     (asset) => asset.type === "primary_portrait",
@@ -86,6 +89,8 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
       <ReaderCharacterCard
         embedded
         onBackgroundColorChange={Platform.OS === "android" ? setSheetBackgroundColor : undefined}
+        portraitUnavailable={portraitUnavailable}
+        onPortraitUnavailable={() => setFailedPortraitUri(portraitUri)}
         staticPortraitOnly
         visible
         character={character}

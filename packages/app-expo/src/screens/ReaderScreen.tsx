@@ -1,3 +1,4 @@
+import ReadAnyNativeControls from "../../modules/native-controls";
 import { allowReaderNavigation } from "@/lib/reader/reader-navigation";
 import { openAudiobookPlayerFromReader } from "@/lib/audiobook-player";
 import { useReaderCopy } from "@/hooks/use-reader-copy";
@@ -1021,6 +1022,11 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Focus & foreground state for volume paging whitelist
   const isFocused = useIsFocused();
+  useEffect(() => {
+    if (Platform.OS === "android" && isFocused) {
+      void ReadAnyNativeControls.setNavigationBarTheme?.(readerThemeColors.background, isReaderThemeDark);
+    }
+  }, [isFocused, readerThemeColors.background, isReaderThemeDark]);
   useReaderErrorToast(error, isFocused, navigation, `${bookId}:${loadAttempt}`);
   useBackendBook(book, isFocused, progress);
   const [appActive, setAppActive] = useState(true);
@@ -1572,8 +1578,8 @@ function ReaderContent({ route, navigation }: Props) {
     (excerpt: string, sourceKey: string) => {
       const normalizedExcerpt = excerpt.trim();
       if (!normalizedExcerpt) {
-        toast.error("Не удалось создать сцену", {
-          description: "На этой странице нет текста для иллюстрации.",
+        toast.error(t("narra.sceneFailedTitle"), {
+          description: t("narra.sceneNoText"),
         });
         return;
       }
@@ -1588,7 +1594,7 @@ function ReaderContent({ route, navigation }: Props) {
         sourceKey,
       });
     },
-    [book?.meta.title, bookId, bookTitle, currentChapter, navigation],
+    [book?.meta.title, bookId, bookTitle, currentChapter, navigation, t],
   );
 
   const handleSelectionMenuAction = useCallback(() => {
@@ -1608,10 +1614,10 @@ function ReaderContent({ route, navigation }: Props) {
   const openReaderAppearance = useCallback(() => setShowSettings(true), []);
 
   const openAudiobookPlayer = useCallback(async () => {
-    await openAudiobookPlayerFromReader(bookId, tts.handleToggleTTS, () => {
+    await openAudiobookPlayerFromReader(bookId, tts.startPageTTS, () => {
       navigation.navigate("AudiobookPlayer", { sourceId: speechSheetSourceId });
-    });
-  }, [bookId, navigation, speechSheetSourceId, tts.handleToggleTTS]);
+    }, tts.handleToggleTTS);
+  }, [bookId, navigation, speechSheetSourceId, tts.startPageTTS, tts.handleToggleTTS]);
 
   const readerActions = useMemo<NativeContextMenuItem[]>(
     () => [
@@ -2194,6 +2200,7 @@ function ReaderContent({ route, navigation }: Props) {
       (computeEffectiveFontSize(readSettings.fontSize, readSettings.followSystemFontScale) / 16),
   );
   const readerTopMargin = showTopTitleProgress ? layoutTopInset + 30 : layoutTopInset;
+  const isScrollMode = readSettings.viewMode === "scroll";
   const adjustedNoteTooltip = noteTooltip
     ? {
         ...noteTooltip,
@@ -2212,7 +2219,7 @@ function ReaderContent({ route, navigation }: Props) {
         style={[
           s.container,
           {
-            paddingBottom: insets.bottom,
+            paddingBottom: isScrollMode ? 0 : insets.bottom,
             backgroundColor: readerThemeColors.background,
           },
         ]}
@@ -2233,6 +2240,7 @@ function ReaderContent({ route, navigation }: Props) {
                 s.webview,
                 {
                   marginTop: readerTopMargin,
+                  marginBottom: isScrollMode ? 0 : Platform.OS === "android" ? 40 : 16,
                   backgroundColor: "transparent",
                 },
               ]}

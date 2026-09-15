@@ -28,7 +28,7 @@ import {
   useTheme,
   withOpacity,
 } from "@/styles/theme";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { changeAndPersistLanguage } from "@readany/core/i18n";
 import { readingStatsService } from "@readany/core/stats";
@@ -297,12 +297,13 @@ export function ProfileScreen() {
   const statsGridColumns = layout.isTablet ? 4 : 2;
   const statCardSlotWidth = `${100 / statsGridColumns}%` as `${number}%`;
   const nav = useNavigation<Nav>();
+  const isFocused = useIsFocused();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [clearingCache, setClearingCache] = useState(false);
   const [sharingLogs, setSharingLogs] = useState(false);
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
-  const currentSession = useReadingSessionStore((s) => s.currentSession);
+  const currentSession = useReadingSessionStore((s) => (isFocused ? s.currentSession : null));
   const stopTTS = useTTSStore((s) => s.stop);
   const themeLabels = [
     t("settings.system", "Системная"),

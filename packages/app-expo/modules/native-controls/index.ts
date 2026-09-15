@@ -1,6 +1,7 @@
 import { NativeModule, requireNativeModule } from "expo";
 
 declare class ReadAnyNativeControlsModule extends NativeModule {
+  setNavigationBarTheme?: (background: string, dark: boolean) => Promise<void>;
   averageTopImageColor(uri: string, fraction: number): Promise<string>;
   averageBottomImageColor(uri: string, bottomFraction: number): Promise<string>;
 

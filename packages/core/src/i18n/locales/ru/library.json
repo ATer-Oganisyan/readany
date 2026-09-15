@@ -183,7 +183,12 @@
     "detailsSelectedTags": "{{count}} выбрано",
     "detailsNoTagsSelected": "Теги не выбраны",
     "detailsManagedMetadataNote": "Narra поддерживает эти метаданные для отображения, поиска и синхронизации библиотеки. Исходный файл книги не изменяется.",
-    "bookNotFound": "Книга не найдена"
+    "bookNotFound": "Книга не найдена",
+    "catalogLoadError": "Не удалось загрузить каталог",
+    "catalogLoadMoreError": "Не удалось загрузить следующие книги",
+    "catalogEmpty": "В каталоге пока нет книг",
+    "section": "Раздел библиотеки",
+    "catalogUncategorized": "Без категории"
   },
   "home": {
     "library": "Библиотека",

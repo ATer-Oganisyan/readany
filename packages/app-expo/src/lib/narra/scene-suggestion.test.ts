@@ -193,7 +193,54 @@ describe("счётчик перелистываний", () => {
   });
 });
 
-describe("фолбэк без пагинации (scroll-режим, только fraction)", () => {
+describe("сцены при прокрутке", () => {
+  const scroll = (offset: number, viewport = 800): SceneSuggestionRelocate => ({
+    ...pageRelocate(0, 1), // В начале главы номер страницы может не меняться.
+    scroll: { offset, viewport },
+    reason: "scroll",
+  });
+
+  it("считает пройденные экраны, а не короткие свайпы", () => {
+    const events = Array.from({ length: 17 }, (_, index) => scroll(100 + index * 200));
+    expect(run(events.slice(0, 16), 4, ONGOING_STATE).suggestions).toBe(0);
+    expect(run(events, 4, ONGOING_STATE).suggestions).toBe(1);
+    expect(run(events.slice(0, 9), 4).suggestions).toBe(1); // Первая — после двух экранов.
+    expect(run(events, 0).suggestions).toBe(0);
+  });
+
+  it("учитывает длинный свайп, пришедший одним событием", () => {
+    expect(run([scroll(100), scroll(3500)], 4, ONGOING_STATE).suggestions).toBe(1);
+  });
+
+  it("не считает восстановление позиции и перевёрстку после окончания таймера загрузки", () => {
+    const { state } = run([scroll(0), scroll(400)], 4, ONGOING_STATE);
+    for (const reason of ["navigation", "anchor", "selection"]) {
+      const restored = advanceSceneSuggestion(state, { ...scroll(16_000), reason }, 4);
+      expect(restored.suggest).toBe(false);
+      expect(restored.state.pagesTurned).toBe(0.5);
+    }
+  });
+
+  it("не считает повтор, движение назад и программный переход", () => {
+    const { state } = run([scroll(0), scroll(400), scroll(400), scroll(200)], 4, ONGOING_STATE);
+    expect(state.pagesTurned).toBe(0.5);
+    const restored = advanceSceneSuggestion(state, scroll(16_000), 4, true);
+    expect(restored.suggest).toBe(false);
+    expect(restored.state.pagesTurned).toBe(0.5);
+    expect(advanceSceneSuggestion(restored.state, scroll(16_400), 4).state.pagesTurned).toBe(1);
+  });
+
+  it("перепривязывает счётчик при изменении высоты экрана или режима чтения", () => {
+    const { state } = run([scroll(800), scroll(1200)], 4, ONGOING_STATE);
+    for (const detail of [scroll(1200, 400), pageRelocate(0, 3)]) {
+      const result = advanceSceneSuggestion(state, detail, 4);
+      expect(result.suggest).toBe(false);
+      expect(result.state.pagesTurned).toBe(0);
+    }
+  });
+});
+
+describe("фолбэк без пагинации (только fraction)", () => {
   const fraction = (value: number): SceneSuggestionRelocate => ({ fraction: value });
 
   it("плавное продвижение вперёд считается страницами", () => {

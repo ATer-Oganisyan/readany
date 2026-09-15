@@ -266,7 +266,10 @@ export function NotesView({
     const chapters: { chapter: string; items: HighlightWithBook[] }[] = [];
     const chapterMap = new Map<string, HighlightWithBook[]>();
     for (const h of currentList) {
-      const chapter = h.chapterTitle || t("notes.unknownChapter", "未知章节");
+      const chapter =
+        h.chapterTitle === "Заметка к книге"
+          ? t("notes.bookNote")
+          : h.chapterTitle || t("notes.unknownChapter", "未知章节");
       const arr = chapterMap.get(chapter) || [];
       arr.push(h);
       chapterMap.set(chapter, arr);

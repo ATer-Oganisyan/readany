@@ -248,10 +248,17 @@ export function buildCharacterNameMatcherSpec(
 
   for (const character of characters) {
     if (!character?.id) continue;
-    const raw = [character.name, character.fullName ?? "", ...(character.aliases ?? [])].join(" ");
+    const names = [character.name, character.fullName ?? "", ...(character.aliases ?? [])];
+    const standaloneNames = new Set(names.map((name) => name.trim().toLowerCase()));
+    const raw = names.join(" ");
     const tokens = raw.toLowerCase().match(/[a-zа-яё]+/g) ?? [];
     for (const token of new Set(tokens)) {
-      if (token.length < 3 || stopwordSet.has(token)) continue;
+      if (stopwordSet.has(token)) continue;
+      if (token.length < 3) {
+        // Explicit short names (Е, Ли) are safe as whole words, not as stems or initials.
+        if (standaloneNames.has(token)) addId(exact, token, character.id);
+        continue;
+      }
       for (const form of exactRussianNameForms(token)) addId(exact, form, character.id);
       const stem = stemNameToken(token);
       if (

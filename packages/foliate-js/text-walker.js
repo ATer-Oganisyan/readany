@@ -17,6 +17,9 @@ const walkDocument = (_, walker) => {
 const filter = NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT | NodeFilter.SHOW_CDATA_SECTION;
 
 const acceptNode = (node) => {
+  const element = node.nodeType === 1 ? node : node.parentElement;
+  if (element?.closest?.(".readany-scene-insert, .readany-translation"))
+    return NodeFilter.FILTER_REJECT;
   if (node.nodeType === 1) {
     const name = node.tagName.toLowerCase();
     if (name === "script" || name === "style" || name === "rt" || name === "rp")

@@ -39,6 +39,8 @@ import {
   createNativeStackNavigator,
 } from "@react-navigation/native-stack";
 import type { WebDavImportSource } from "@readany/core";
+import { useEffect, useRef } from "react";
+import ReadAnyNativeControls from "../../modules/native-controls";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
 import { TabNavigator } from "./TabNavigator";
@@ -123,6 +125,12 @@ function NarraCharacterChatRouteScreen(
 export function RootNavigator() {
   const { _hasHydrated } = useSettingsStore();
   const { colors, isDark } = useTheme();
+  const readerFocused = useRef(false);
+  useEffect(() => {
+    if (Platform.OS === "android" && !readerFocused.current) {
+      void ReadAnyNativeControls.setNavigationBarTheme?.(colors.background, isDark);
+    }
+  }, [colors.background, isDark]);
   const { t } = useTranslation();
 
   if (!_hasHydrated) return null;
@@ -130,6 +138,14 @@ export function RootNavigator() {
   return (
     <>
       <Stack.Navigator
+        screenListeners={({ route }) => ({
+          focus: () => {
+            readerFocused.current = route.name === "Reader";
+            if (Platform.OS === "android" && !readerFocused.current) {
+              void ReadAnyNativeControls.setNavigationBarTheme?.(colors.background, isDark);
+            }
+          },
+        })}
         screenOptions={{
           ...(Platform.OS === "android"
             ? { sheetCornerRadius: radius.card, sheetAllowedDetents: [0.8] }

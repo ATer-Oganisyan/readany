@@ -164,7 +164,16 @@
     "character": "Personality",
     "bio": "Bio",
     "description": "Description",
-    "continueReading": "Continue reading"
+    "continueReading": "Continue reading",
+    "characterTyping": "Typing…",
+    "characterOnline": "online",
+    "analysisFailed": "Couldn't prepare the book",
+    "analysisSourceUnavailable": "Original book file needed",
+    "analysisSourceUnavailableHint": "Import the same file again. You can continue reading locally.",
+    "analysisFailedHint": "You can keep reading. Try preparing the book again when convenient.",
+    "analysisProcessing": "The book is still being prepared",
+    "analysisProcessingHint": "Scenes will be available when preparation is complete.",
+    "speechUnavailableTitle": "Read aloud unavailable"
   },
   "chats": {
     "emptyTitle": "Characters from your books will appear here",
@@ -228,5 +237,33 @@
     "enterFullscreen": "Enter Fullscreen",
     "exitFullscreen": "Exit Fullscreen",
     "close": "Close"
+  },
+  "narraErrors": {
+    "emptyResponse": "The service returned an empty response.",
+    "timeout": "The service is taking longer than usual. Please try again.",
+    "audioTooLarge": "The audio response is too large.",
+    "openRouterAuth": "OpenRouter rejected the API key.",
+    "rate": "Too many requests. Please try again later.",
+    "openRouterUnavailable": "OpenRouter is temporarily unavailable.",
+    "openRouterTimeout": "OpenRouter is taking longer than usual. Please try again.",
+    "openRouterConnection": "Couldn't reach OpenRouter. Check your connection.",
+    "openRouterConfig": "OpenRouter is not configured in this build.",
+    "providerUnavailable": "Narra's AI provider is unavailable. Please try again later.",
+    "config": "Narra is not configured in this build.",
+    "connection": "Couldn't reach Narra. Check your connection.",
+    "auth": "Narra could not authorize this request.",
+    "request": "Couldn't prepare the request.",
+    "bookText": "Couldn't read the book text. Please try again.",
+    "characters": "The service couldn't identify characters in its response. Please try again.",
+    "service": "Something went wrong. Please try again.",
+    "speech": "Couldn't read this passage aloud.",
+    "speechConfig": "Read aloud is not configured in this build.",
+    "speechText": "Couldn't prepare this passage for read aloud.",
+    "audioFormat": "The service returned an unsupported audio format.",
+    "audioInvalid": "The service returned empty or damaged audio.",
+    "audioSave": "Couldn't save the audio on this device.",
+    "speechLimit": "The daily read aloud limit has been reached. Try again when the limit resets.",
+    "safety": "The service declined this scene under its safety rules. Try another page.",
+    "sceneSafety": "The service declined this scene under its safety rules. Tap Redo to try a softer version, or choose another page."
   }
 }

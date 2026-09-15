@@ -311,27 +311,20 @@ function NarraCharactersList({
   const openingChatRef = useRef(false);
   const storedCharacters = bookState?.characters ?? [];
   const analysisAvailability = backendStatus?.manifest?.availability;
-  const charactersStatus = backendStatus?.manifest?.charactersStatus;
-  const fullMarkupReady =
-    charactersStatus === "full_ready" ||
-    (!charactersStatus && bookState?.backendManifest?.availability === "ready");
   const visibleCharacters = useMemo(
-    () =>
-      fullMarkupReady
-        ? storedCharacters.filter(
-            (character) =>
-              character.backendManaged && isCharacterUnlocked(book?.progress ?? 0, character),
-          )
-        : [],
-    [fullMarkupReady, storedCharacters, book?.progress],
+    () => storedCharacters.filter(
+      (character) => character.backendManaged && isCharacterUnlocked(book?.progress ?? 0, character),
+    ),
+    [storedCharacters, book?.progress],
   );
   const preliminaryCharacters = useMemo(
     () =>
+      visibleCharacters.length === 0 &&
       backendStatus?.manifest?.charactersStatus === "preview_ready" &&
       backendStatus.preview?.status === "preview_ready"
         ? backendStatus.preview.characters
         : [],
-    [backendStatus?.manifest?.charactersStatus, backendStatus?.preview],
+    [visibleCharacters.length, backendStatus?.manifest?.charactersStatus, backendStatus?.preview],
   );
   const isFindingCharacters = analysisAvailability === "processing";
   const analysisTerminal =

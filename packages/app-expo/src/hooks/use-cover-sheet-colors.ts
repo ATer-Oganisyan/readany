@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import ReadAnyNativeControls from "../../modules/native-controls";
 
+const coverColors = new Map<string, { uri: string; color: string; accent: string }>();
+
 /** The same cover-derived palette for book details and the audiobook sheet. */
 export function useCoverSheetColors(artwork: string | undefined) {
-  const [coverColor, setCoverColor] = useState<{ uri: string; color: string; accent: string }>();
+  const [coverColor, setCoverColor] = useState(() => artwork ? coverColors.get(artwork) : undefined);
   useEffect(() => {
-    if (!artwork || !ReadAnyNativeControls.averageTopImageColor) {
+    if (!artwork || coverColors.has(artwork) || !ReadAnyNativeControls.averageTopImageColor) {
       return;
     }
     let cancelled = false;
@@ -28,12 +30,15 @@ export function useCoverSheetColors(artwork: string | undefined) {
               .padStart(2, "0"),
           )
           .join("")}`;
-        setCoverColor({ uri: artwork, color: darker, accent });
+        const palette = { uri: artwork, color: darker, accent };
+        coverColors.set(artwork, palette);
+        setCoverColor(palette);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [artwork]);
-  return coverColor?.uri === artwork ? coverColor : undefined;
+  return (artwork ? coverColors.get(artwork) : undefined) ??
+    (coverColor?.uri === artwork ? coverColor : undefined);
 }

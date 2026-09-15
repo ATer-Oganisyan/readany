@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { IPlatformService } from "../services/platform";
 import { setPlatformService } from "../services/platform";
@@ -50,6 +52,49 @@ function placeholders(value: string): string[] {
 }
 
 describe("interface localization", () => {
+  it("translates chat presence immediately when switching languages", async () => {
+    await i18nReady;
+    for (const [language, online, typing] of [
+      ["en", "online", "Typing…"],
+      ["ru", "онлайн", "Печатает..."],
+      ["en", "online", "Typing…"],
+    ]) {
+      await i18n.changeLanguage(language);
+      expect(i18n.t("narra.characterOnline", "онлайн")).toBe(online);
+      expect(i18n.t("narra.characterTyping", "Печатает...")).toBe(typing);
+    }
+  });
+
+  it("provides both translations for every literal mobile interface key", async () => {
+    await i18nReady;
+    const root = fileURLToPath(new URL("../../../app-expo/src", import.meta.url));
+    const missing: string[] = [];
+    function scan(directory: string) {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) {
+          scan(path);
+          continue;
+        }
+        if (!/\.tsx?$/.test(path) || /\.(test|stories)\./.test(path)) continue;
+        const source = readFileSync(path, "utf8");
+        for (const match of source.matchAll(/\bt\(\s*["']([^"']+)["']/g)) {
+          const key = match[1];
+          for (const language of ["ru", "en"]) {
+            if (
+              ![key, `${key}_one`, `${key}_other`].some(
+                (candidate) => i18n.getResource(language, "translation", candidate) !== undefined,
+              )
+            )
+              missing.push(`${language}: ${key} (${path.slice(root.length + 1)})`);
+          }
+        }
+      }
+    }
+    scan(root);
+    expect(missing).toEqual([]);
+  });
+
   it("supports only Russian and English locale variants", () => {
     expect(resolveInterfaceLanguage("ru-RU")).toBe("ru");
     expect(resolveInterfaceLanguage("ru")).toBe("ru");

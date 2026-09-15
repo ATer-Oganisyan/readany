@@ -8,7 +8,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-it("opens the sheet only for an active session and preserves pause when reopening", async () => {
+it("starts from the visible page even when the book already has a session", async () => {
   vi.stubEnv("EXPO_PUBLIC_AUDIOBOOK_PLAYER_ENABLED", "true");
   const { openAudiobookPlayerFromReader, AUDIOBOOK_PLAYER_ENABLED } = await import(
     "../audiobook-player"
@@ -19,23 +19,23 @@ it("opens the sheet only for an active session and preserves pause when reopenin
   state.currentBookId = "book";
   for (const playState of ["playing", "paused", "loading"]) {
     state.playState = playState;
-    await openAudiobookPlayerFromReader("book", toggle, open);
+    await openAudiobookPlayerFromReader("book", toggle, open, toggle);
   }
   expect(open).toHaveBeenCalledTimes(3);
-  expect(toggle).not.toHaveBeenCalled();
+  expect(toggle).toHaveBeenCalledTimes(3);
   state.playState = "stopped";
-  await openAudiobookPlayerFromReader("book", toggle, open);
-  expect(toggle).toHaveBeenCalledTimes(1);
+  await openAudiobookPlayerFromReader("book", toggle, open, toggle);
+  expect(toggle).toHaveBeenCalledTimes(4);
   expect(open).toHaveBeenCalledTimes(3);
   toggle.mockImplementation(() => {
     state.playState = "loading";
     state.currentBookId = "other";
   });
-  await openAudiobookPlayerFromReader("other", toggle, open);
+  await openAudiobookPlayerFromReader("other", toggle, open, toggle);
   expect(open).toHaveBeenCalledTimes(4);
 });
 
-it("keeps the old toggle action without opening a sheet when disabled", async () => {
+it("uses the legacy toggle without starting a page or opening a sheet when disabled", async () => {
   vi.stubEnv("EXPO_PUBLIC_AUDIOBOOK_PLAYER_ENABLED", "false");
   const { openAudiobookPlayerFromReader, AUDIOBOOK_PLAYER_ENABLED } = await import(
     "../audiobook-player"
@@ -43,7 +43,9 @@ it("keeps the old toggle action without opening a sheet when disabled", async ()
   expect(AUDIOBOOK_PLAYER_ENABLED).toBe(false);
   const toggle = vi.fn();
   const open = vi.fn();
-  await openAudiobookPlayerFromReader("book", toggle, open);
+  const start = vi.fn();
+  await openAudiobookPlayerFromReader("book", start, open, toggle);
+  expect(start).not.toHaveBeenCalled();
   expect(toggle).toHaveBeenCalledTimes(1);
   expect(open).not.toHaveBeenCalled();
 });

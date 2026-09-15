@@ -6,17 +6,15 @@ export const AUDIOBOOK_PLAYER_ENABLED =
 
 export async function openAudiobookPlayerFromReader(
   bookId: string,
-  togglePlayback: () => void | Promise<void>,
+  startPagePlayback: () => void | Promise<void>,
   openSheet: () => void,
+  toggleLegacyPlayback: () => void | Promise<void>,
 ) {
   if (!AUDIOBOOK_PLAYER_ENABLED) {
-    await togglePlayback();
+    await toggleLegacyPlayback();
     return;
   }
-  const current = useTTSStore.getState();
-  if (current.currentBookId !== bookId || current.playState === "stopped") {
-    await togglePlayback();
-  }
+  await startPagePlayback();
   const started = useTTSStore.getState();
   if (started.currentBookId === bookId && started.playState !== "stopped") openSheet();
 }

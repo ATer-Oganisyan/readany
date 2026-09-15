@@ -66,6 +66,7 @@
     "noteFallback": "Note",
     "chooseBook": "Choose a book",
     "saveFailed": "Couldn't save the note",
-    "editNote": "Edit note"
+    "editNote": "Edit note",
+    "bookNote": "Book note"
   }
 }

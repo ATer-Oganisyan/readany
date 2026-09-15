@@ -1,4 +1,4 @@
-import { NativeSettingsPicker } from "@/components/settings/NativeSettingsPicker.android";
+import type { NativeSettingsPickerProps } from "@/components/settings/NativeSettingsPicker.types";
 import { SCENE_SUGGESTION_INTERVALS } from "@/lib/narra/scene-suggestion";
 import { READER_PAGE_THEMES } from "@/lib/reader/reader-themes";
 import { useNarraStore } from "@/stores";
@@ -11,7 +11,8 @@ import {
   LazyColumn,
   ListItem,
   ModalBottomSheet,
-  RNHostView,
+  DropdownMenu,
+  DropdownMenuItem,
   Row,
   SegmentedButton,
   Shape,
@@ -30,6 +31,7 @@ import {
   weight,
   width,
 } from "@expo/ui/jetpack-compose/modifiers";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { READER_TEXT_SETTINGS, type ReaderSettingsPanelProps } from "./reader-settings-options";
 
@@ -41,6 +43,39 @@ const sectionShape = Shape.RoundedCorner({
     bottomEnd: radius.lg,
   },
 });
+
+function SettingsChoice({ label, selectedValue, options, onValueChange }: NativeSettingsPickerProps) {
+  const { colors } = useTheme();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <ListItem colors={{ containerColor: "transparent" }}>
+      <ListItem.HeadlineContent>
+        <Text style={bodyTypography}>{label}</Text>
+      </ListItem.HeadlineContent>
+      <ListItem.TrailingContent>
+        <DropdownMenu expanded={expanded} onDismissRequest={() => setExpanded(false)} color={colors.card}>
+          <TextButton onClick={() => setExpanded(true)} colors={{ contentColor: colors.primary }}>
+            <Text>{options.find((option) => option.value === selectedValue)?.label ?? ""}</Text>
+          </TextButton>
+          <DropdownMenu.Items>
+            {options.map((option) => (
+              <DropdownMenuItem key={option.value} onClick={() => {
+                setExpanded(false);
+                onValueChange(option.value);
+              }}>
+                <DropdownMenuItem.Text>
+                  <Text color={option.value === selectedValue ? colors.primary : colors.foreground}>
+                    {option.label}
+                  </Text>
+                </DropdownMenuItem.Text>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenu.Items>
+        </DropdownMenu>
+      </ListItem.TrailingContent>
+    </ListItem>
+  );
+}
 
 export function ReaderSettingsPanel({
   visible,
@@ -193,8 +228,7 @@ export function ReaderSettingsPanel({
               modifiers={[padding(16, 0, 16, 0), fillMaxWidth()]}
             >
               <Column>
-                <RNHostView matchContents modifiers={[fillMaxWidth()]}>
-                  <NativeSettingsPicker
+                  <SettingsChoice
                     label={t("reader.viewMode", "Режим чтения")}
                     selectedValue={readSettings.viewMode}
                     colorScheme={isDark ? "dark" : "light"}
@@ -206,7 +240,6 @@ export function ReaderSettingsPanel({
                       onUpdateSetting("viewMode", value === "scroll" ? "scroll" : "paginated")
                     }
                   />
-                </RNHostView>
                 {(["volumeButtonsPageTurn", "showTopTitleProgress"] as const).map((key) => (
                   <Column key={key}>
                     <HorizontalDivider color={colors.border} />
@@ -233,8 +266,7 @@ export function ReaderSettingsPanel({
                   </Column>
                 ))}
                 <HorizontalDivider color={colors.border} />
-                <RNHostView matchContents modifiers={[fillMaxWidth()]}>
-                  <NativeSettingsPicker
+                  <SettingsChoice
                     label={t("narra.sceneFrequencyTitle", "Частота врезок")}
                     selectedValue={String(sceneInterval)}
                     colorScheme={isDark ? "dark" : "light"}
@@ -251,10 +283,9 @@ export function ReaderSettingsPanel({
                       if (interval !== undefined) setSceneInterval(interval);
                     }}
                   />
-                </RNHostView>
               </Column>
             </Surface>
-            <Text style={bodyTypography} modifiers={[padding(16, 8, 16, 16)]}>
+            <Text color={colors.primary40} style={{ typography: "bodyMedium" }} modifiers={[padding(16, 8, 16, 16)]}>
               {t("narra.sceneFrequencyDesc", "Как часто предлагать нарисовать сцену")}
             </Text>
           </LazyColumn>

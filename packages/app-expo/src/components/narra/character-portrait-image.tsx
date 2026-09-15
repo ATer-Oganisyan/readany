@@ -23,6 +23,7 @@ interface CharacterPortraitImageProps {
     "portraitAssetId" | "portraitUri" | "portraitUriOverridesAsset" | "backendMedia"
   >;
   fallback: ReactNode;
+  onUnavailable?: () => void;
   staticOnly?: boolean;
   resizeMode?: ImageResizeMode;
   /**
@@ -38,6 +39,7 @@ interface CharacterPortraitImageProps {
 export function CharacterPortraitImage({
   character,
   fallback,
+  onUnavailable,
   staticOnly = false,
   resizeMode = "cover",
   cropAnchor = "center",
@@ -93,6 +95,11 @@ export function CharacterPortraitImage({
       cancelled = true;
     };
   }, [sourceKey, videoAsset, backendVideo]);
+
+  const exhausted = !sources[sourceIndex] && !videoUri;
+  useEffect(() => {
+    if (exhausted) onUnavailable?.();
+  }, [exhausted, onUnavailable]);
 
   if (videoUri) {
     const source = sources[sourceIndex];

@@ -2,7 +2,7 @@
  * Врезки «Нарисовать сцену» — логика «когда предложить».
  *
  * Читалка шлёт события relocate из foliate (см. use-reader-bridge.ts);
- * здесь считаем перелистывания вперёд и раз в N страниц (настройка
+ * здесь считаем перелистывания или пройденные экраны прокрутки и раз в N страниц (настройка
  * пользователя) предлагаем визуализировать текущую сцену. Собственной
  * пагинации нет — только интерпретация полей relocate.
  */
@@ -21,13 +21,16 @@ export const FIRST_SCENE_SUGGESTION_PAGES = 2;
 /** Подмножество RelocateEvent, достаточное для счётчика. */
 export interface SceneSuggestionRelocate {
   fraction?: number;
+  reason?: string;
   section?: { current: number; total: number };
   page?: { current: number; total: number };
+  scroll?: { offset: number; viewport: number };
 }
 
 /** Позиция чтения в терминах пагинации foliate. */
 type SceneSuggestionStep =
   | { mode: "page"; section: number; page: number }
+  | { mode: "scroll"; section: number; page: number; viewport: number }
   | { mode: "fraction"; fraction: number };
 
 export interface SceneSuggestionState {
@@ -64,6 +67,12 @@ const MAX_FRACTION_PAGE_STEP = 0.08;
 const MAX_PAGE_TURN_STEP = 3;
 
 function stepFromRelocate(detail: SceneSuggestionRelocate): SceneSuggestionStep | null {
+  if (detail.scroll && detail.section) {
+    const { offset, viewport } = detail.scroll;
+    if (Number.isFinite(offset) && Number.isFinite(viewport) && viewport > 0) {
+      return { mode: "scroll", section: detail.section.current, page: offset / viewport, viewport };
+    }
+  }
   if (detail.page && detail.section) {
     return { mode: "page", section: detail.section.current, page: detail.page.current };
   }
@@ -74,6 +83,9 @@ function stepFromRelocate(detail: SceneSuggestionRelocate): SceneSuggestionStep 
 }
 
 function sameStep(a: SceneSuggestionStep, b: SceneSuggestionStep): boolean {
+  if (a.mode === "scroll" && b.mode === "scroll") {
+    return a.section === b.section && a.page === b.page && a.viewport === b.viewport;
+  }
   if (a.mode === "page" && b.mode === "page") {
     return a.section === b.section && a.page === b.page;
   }
@@ -92,12 +104,21 @@ function classifyMove(
   previous: SceneSuggestionStep,
   next: SceneSuggestionStep,
 ): "forward" | "backward" | "jump" {
-  if (previous.mode === "page" && next.mode === "page") {
+  if (previous.mode !== "fraction" && next.mode !== "fraction" && previous.mode === next.mode) {
+    // Поворот экрана меняет число экранов до той же позиции, но не означает чтение.
+    if (
+      previous.mode === "scroll" &&
+      next.mode === "scroll" &&
+      previous.viewport !== next.viewport
+    ) {
+      return "jump";
+    }
     if (next.section === previous.section) {
       const delta = next.page - previous.page;
       // Быстрые свайпы приходят одним relocate с шагом 2–3 — это чтение вперёд
-      if (delta >= 1 && delta <= MAX_PAGE_TURN_STEP) return "forward";
-      if (delta <= -1 && delta >= -MAX_PAGE_TURN_STEP) return "backward";
+      const limit = previous.mode === "scroll" ? Number.POSITIVE_INFINITY : MAX_PAGE_TURN_STEP;
+      if (delta > 0 && delta <= limit) return "forward";
+      if (delta < 0 && delta >= -limit) return "backward";
       return "jump";
     }
     if (next.section === previous.section + 1) return "forward";
@@ -149,7 +170,9 @@ export function advanceSceneSuggestion(
     };
   }
 
-  if (suppressed) {
+  const programmaticScroll =
+    step.mode === "scroll" && detail.reason != null && detail.reason !== "scroll";
+  if (suppressed || programmaticScroll) {
     // Программный переход (восстановление позиции, оглавление): перепривязываемся
     // к новой позиции, сам переход страницей не считаем, но накопленный счётчик
     // НЕ обнуляем — иначе guard-окно после каждой программной навигации
@@ -174,10 +197,15 @@ export function advanceSceneSuggestion(
     };
   }
 
-  const pagesTurned = state.pagesTurned + 1;
+  // Короткий свайп — часть экрана, а не ещё одна целая страница.
+  const distance =
+    previous.mode === "scroll" && step.mode === "scroll" && previous.section === step.section
+      ? step.page - previous.page
+      : 1;
+  const pagesTurned = state.pagesTurned + distance;
   // Первая врезка сессии — раньше обычного интервала (но не позже него)
   const threshold = firstSuggested ? interval : Math.min(FIRST_SCENE_SUGGESTION_PAGES, interval);
-  if (pagesTurned >= threshold) {
+  if (pagesTurned >= threshold - 1e-6) {
     return { state: { step, pagesTurned: 0, firstSuggested: true }, suggest: true, moved: true };
   }
   return { state: { step, pagesTurned, firstSuggested }, suggest: false, moved: true };

@@ -256,7 +256,10 @@ describe("book TTS playback integration", () => {
     expect(runtime.synth).toHaveBeenCalledTimes(3);
     expect(TrackPlayer.play).not.toHaveBeenCalled();
     expect(state).toHaveBeenLastCalledWith("stopped");
-    expect(Alert.alert).toHaveBeenCalledExactlyOnceWith("Озвучка недоступна", message);
+    expect(Alert.alert).toHaveBeenCalledExactlyOnceWith(
+      "Read aloud unavailable",
+      "The daily read aloud limit has been reached. Try again when the limit resets.",
+    );
     expect(vi.getTimerCount()).toBe(0);
   });
   it.each([
@@ -285,6 +288,35 @@ describe("book TTS playback integration", () => {
 });
 
 describe("book TTS config changes", () => {
+  it("lets the reader replace a paused queue before resuming native audio", async () => {
+    const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+    const fake = {
+      speak: vi.fn(async () => {}),
+      append: vi.fn(),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+    };
+    setTTSPlayerFactories({ createEdgeTTS: () => fake });
+    const resumeFromReader = vi.fn(() => true);
+    try {
+      useTTSStore.setState({ config: { ...DEFAULT_TTS_CONFIG }, resumeFromReader });
+      useTTSStore.getState().play(["old page"]);
+      useTTSStore.setState({ playState: "playing" });
+      useTTSStore.getState().pause();
+      useTTSStore.getState().resume();
+      expect(resumeFromReader).toHaveBeenCalledOnce();
+      expect(fake.resume).not.toHaveBeenCalled();
+      resumeFromReader.mockReturnValue(false);
+      useTTSStore.getState().resume();
+      expect(fake.resume).toHaveBeenCalledOnce();
+    } finally {
+      useTTSStore.setState({ resumeFromReader: null });
+      useTTSStore.getState().stop();
+      setTTSPlayerFactories({});
+    }
+  });
+
   it.each([false, true])(
     "resumes with the correct SSML rate after a paused config change: %s",
     async (changed) => {
@@ -398,18 +430,22 @@ describe("full chapter timeline", () => {
   });
 });
 
-
 describe("replaying structured narration", () => {
   it.each(["end", "failure"])("preserves sentence coordinates after %s", async (reason) => {
     const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
     const fake = {
-      speak: vi.fn(async () => {}), stop: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+      speak: vi.fn(async () => {}),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
       onEnd: undefined as (() => void) | undefined,
       onStateChange: undefined as ((state: "stopped" | "playing" | "paused") => void) | undefined,
       onChunkChange: undefined as ((index: number) => void) | undefined,
     };
     const segments = [0, 1].map((i) => ({
-      text: `sentence ${i}`, cfi: `epubcfi(/6/2!/4/${i * 2 + 2},/1:0,/1:10)`, paragraphId: `p${i}`,
+      text: `sentence ${i}`,
+      cfi: `epubcfi(/6/2!/4/${i * 2 + 2},/1:0,/1:10)`,
+      paragraphId: `p${i}`,
     }));
     setTTSPlayerFactories({ createEdgeTTS: () => fake });
     useTTSStore.getState().stop();
@@ -423,10 +459,15 @@ describe("replaying structured narration", () => {
       else fake.onStateChange?.("stopped");
       expect(useTTSStore.getState().playState).toBe("stopped");
       useTTSStore.getState().toggle();
-      expect(fake.speak).toHaveBeenLastCalledWith(segments.map((s) => s.text), expect.anything());
+      expect(fake.speak).toHaveBeenLastCalledWith(
+        segments.map((s) => s.text),
+        expect.anything(),
+      );
       expect(useTTSStore.getState()).toMatchObject({
-        currentChunkIndex: 0, currentLocationCfi: segments[0].cfi,
-        segmentCfis: segments.map((s) => s.cfi), paragraphIds: ["p0", "p1"],
+        currentChunkIndex: 0,
+        currentLocationCfi: segments[0].cfi,
+        segmentCfis: segments.map((s) => s.cfi),
+        paragraphIds: ["p0", "p1"],
       });
       useTTSStore.getState().skipSentence(1);
       expect(useTTSStore.getState().currentLocationCfi).toBe(segments[1].cfi);
@@ -437,37 +478,48 @@ describe("replaying structured narration", () => {
   });
 });
 
-
 describe("seek playback intent", () => {
   it("keeps a paused chapter seek paused and invalidates an async seek on cancellation", async () => {
     const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
     const fake = { speak: vi.fn(), stop: vi.fn(), pause: vi.fn(), resume: vi.fn() };
     setTTSPlayerFactories({ createEdgeTTS: () => fake });
-    const segments = [{text:"one",cfi:"one"},{text:"two",cfi:"two"}];
+    const segments = [
+      { text: "one", cfi: "one" },
+      { text: "two", cfi: "two" },
+    ];
     try {
       useTTSStore.getState().stop();
       useTTSStore.setState({ config: DEFAULT_TTS_CONFIG });
-      useTTSStore.getState().setNarrationChapter({id:"c",title:"c",segments});
-      useTTSStore.setState({ playState:"paused" });
-      await useTTSStore.getState().seekChapterSegment("c",1);
+      useTTSStore.getState().setNarrationChapter({ id: "c", title: "c", segments });
+      useTTSStore.setState({ playState: "paused" });
+      await useTTSStore.getState().seekChapterSegment("c", 1);
       expect(useTTSStore.getState().playState).toBe("paused");
       expect(useTTSStore.getState().currentLocationCfi).toBe("two");
       expect(fake.speak).not.toHaveBeenCalled();
       useTTSStore.getState().resume();
-      expect(fake.speak).toHaveBeenLastCalledWith(["two"],expect.anything());
+      expect(fake.speak).toHaveBeenLastCalledWith(["two"], expect.anything());
       let finish!: () => void;
       const latePlayback = vi.fn();
-      useTTSStore.setState({ playState:"playing", onSeekChapterSegment: async (_,isCurrent) => {
-        await new Promise<void>(resolve => { finish=resolve; });
-        if (isCurrent?.()) latePlayback();
-      }});
-      const pending = useTTSStore.getState().seekChapterSegment("c",0);
+      useTTSStore.setState({
+        playState: "playing",
+        onSeekChapterSegment: async (_, isCurrent) => {
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+          if (isCurrent?.()) latePlayback();
+        },
+      });
+      const pending = useTTSStore.getState().seekChapterSegment("c", 0);
       await flush();
       expect(useTTSStore.getState().playState).toBe("loading");
       useTTSStore.getState().pause();
-      finish(); await pending;
+      finish();
+      await pending;
       expect(latePlayback).not.toHaveBeenCalled();
       expect(useTTSStore.getState().playState).toBe("paused");
-    } finally { useTTSStore.getState().stop(); setTTSPlayerFactories({}); }
+    } finally {
+      useTTSStore.getState().stop();
+      setTTSPlayerFactories({});
+    }
   });
 });

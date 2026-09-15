@@ -183,7 +183,12 @@
     "detailsNoTagsSelected": "No tags selected",
     "detailsManagedMetadataNote": "Narra maintains this metadata for library display, search, and sync naming. The original book file is not modified.",
     "bookNotFound": "Book not found",
-    "downloadInProgress": "The book is still downloading. Open it later"
+    "downloadInProgress": "The book is still downloading. Open it later",
+    "catalogLoadError": "Couldn't load the catalog",
+    "catalogLoadMoreError": "Couldn't load more books",
+    "catalogEmpty": "No books in the catalog yet",
+    "section": "Library section",
+    "catalogUncategorized": "Uncategorized"
   },
   "home": {
     "library": "Library",

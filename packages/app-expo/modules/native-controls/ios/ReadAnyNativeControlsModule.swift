@@ -188,6 +188,9 @@ public final class ReadAnyNativeControlsModule: Module {
       Prop("isPlaying") { (view, value: Bool) in view.isPlaying = value }
       Prop("isLoading") { (view, value: Bool) in view.isLoading = value }
       Prop("seekEnabled") { (view, value: Bool) in view.seekEnabled = value }
+      Prop("backwardLabel") { (view, value: String) in view.backwardLabel = value }
+      Prop("forwardLabel") { (view, value: String) in view.forwardLabel = value }
+      Prop("playPauseLabel") { (view, value: String) in view.playPauseLabel = value }
 
       OnViewDidUpdateProps { view in
         view.updateConfiguration()
@@ -725,6 +728,9 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
   var isPlaying = false
   var isLoading = false
   var seekEnabled = false
+  var backwardLabel = ""
+  var forwardLabel = ""
+  var playPauseLabel = ""
 
   private let toolbar = UIToolbar()
   private let playButton = UIButton(type: .system)
@@ -781,7 +787,7 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
       target: self,
       action: #selector(handleBackwardPress)
     )
-    backward.accessibilityLabel = "Назад на 15 секунд"
+    backward.accessibilityLabel = backwardLabel
     backward.isEnabled = seekEnabled
 
     let forward = UIBarButtonItem(
@@ -790,7 +796,7 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
       target: self,
       action: #selector(handleForwardPress)
     )
-    forward.accessibilityLabel = "Вперёд на 15 секунд"
+    forward.accessibilityLabel = forwardLabel
     forward.isEnabled = seekEnabled
 
     var configuration: UIButton.Configuration
@@ -809,9 +815,7 @@ final class ReadAnyTTSPlayerToolbar: ExpoView {
       ? nil
       : MishanaerIconAssets.image(isPlaying ? "pause" : "play")
     playButton.configuration = configuration
-    playButton.accessibilityLabel = isLoading
-      ? "Остановить загрузку"
-      : (isPlaying ? "Пауза" : "Воспроизвести")
+    playButton.accessibilityLabel = playPauseLabel
 
     let play = UIBarButtonItem(customView: playButton)
     let spacer = { UIBarButtonItem(systemItem: .flexibleSpace) }

@@ -590,6 +590,14 @@
           "fail": "Навык Narra не установлен в {{path}}"
         }
       }
-    }
+    },
+    "narraChatMode": "Режим чата Нары",
+    "narraChatModeDescription": "Ответы всегда идут через backend. Здесь выбирается источник контекста книги.",
+    "narraChatIndexFirst": "Сначала индекс",
+    "narraChatIndexFirstDescription": "Использовать серверный индекс книги; если он ещё не готов — читать локальный файл.",
+    "narraChatProxyFirst": "Через прокси",
+    "narraChatProxyFirstDescription": "Не использовать серверный индекс и читать исходный файл через инструменты чата.",
+    "temperatureLabel": "Температура",
+    "maxTokensLabel": "Максимум токенов"
   }
 }
