@@ -70,6 +70,52 @@ function compareText(left, right) {
  * нормализованного текста по этим же координатам, а его собственный хэш у
  * карточки записан отдельно.
  */
+/**
+ * Отпечаток набора цитат, ушедших в запрос.
+ *
+ * Ключ идемпотентности несёт прогон, персонажа, промпт, ревизию и окно — всё,
+ * что задумано. Но набор цитат при повторе задания может выйти другим: отбор
+ * равномерный по окну и с запасом по байтам, и достаточно появиться одному
+ * новому фрагменту, чтобы выборка сдвинулась. Кеш тогда отвечает 409 «этот
+ * ключ уже занят другим запросом», и повторы не лечат его никогда — на
+ * каталоге так и осталось 36 карточек. Отпечаток набора делает другой запрос
+ * другим ключом, а одинаковый — тем же.
+ */
+export function characterCardRequestFragmentsFingerprint(fragments) {
+  const canonical = (Array.isArray(fragments) ? fragments : [])
+    .map(({ id, startOffset, endOffset }) => [id, startOffset, endOffset].join(':'))
+    .sort(compareText)
+    .join('\n')
+  return sha256(canonical).slice(0, 16)
+}
+
+/**
+ * Ключ идемпотентности запроса карточки.
+ *
+ * Считается одинаково тем, кто запрос шлёт, и тем, кто его принимает: разойдись
+ * они — и каждый запрос отвергался бы как «ключ не соответствует запросу».
+ * В ключ входит всё, от чего зависит ответ: прогон, персонаж, версия промпта,
+ * ревизия состава, окно и набор цитат.
+ */
+export function characterCardIdempotencyKey({
+  runId,
+  characterKey,
+  promptVersion,
+  cardRevision = 1,
+  cardWindow,
+  fragments
+}) {
+  return [
+    runId,
+    'character-card',
+    characterKey,
+    promptVersion,
+    `rev-${Number.isSafeInteger(cardRevision) && cardRevision >= 1 ? cardRevision : 1}`,
+    `win-${cardWindow?.startOffset ?? 0}`,
+    `frag-${characterCardRequestFragmentsFingerprint(fragments)}`
+  ].join(':')
+}
+
 export function characterCardFragmentSetHash(fragments) {
   const canonical = [...fragments]
     .map(({ fragmentId, startOffset, endOffset }) =>

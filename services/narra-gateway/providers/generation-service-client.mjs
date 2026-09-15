@@ -1,3 +1,4 @@
+import { characterCardIdempotencyKey } from '../analysis/book-character-card.mjs'
 import { serviceUrl } from '../platform/service-url.mjs'
 
 const SAFE_GENERATOR_ERROR_CODES = new Set([
@@ -118,22 +119,9 @@ export function createGenerationServiceClient({
     },
     generateCharacterCard(input) {
       return post('internal/v1/book-analysis/synthesize-character-card', {
-        // Ревизия и окно — части ключа. Подтверждение состава по всей книге
-        // переиздаёт карточки тех, чей состав имён изменился, и это уже другой
-        // запрос: те же ключ и версия промпта давали HTTP 409, потому что под
-        // ключом лежал ответ на прежний набор имён и фрагментов. Окно — та же
-        // история: карточку персонажа, которому нечем обосноваться в окне
-        // первого упоминания, переносит в окно с цитатами, и запрос там идёт
-        // по другим фрагментам. Без окна в ключе все 34 переноса упирались в
-        // 409 и персонаж всё равно терялся.
-        idempotencyKey: [
-          input.runId,
-          'character-card',
-          input.characterKey,
-          input.promptVersion,
-          `rev-${input.cardRevision ?? 1}`,
-          `win-${input.cardWindow?.startOffset ?? 0}`
-        ].join(':'),
+        // Ключ считается одинаково клиентом и контрактом: см.
+        // `characterCardIdempotencyKey`.
+        idempotencyKey: characterCardIdempotencyKey(input),
         ...input
       })
     },

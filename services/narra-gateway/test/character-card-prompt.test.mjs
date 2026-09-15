@@ -7,6 +7,7 @@ import {
   normalizeCharacterCardRequest,
   normalizeCharacterCardResult
 } from '../generation/internal-generation-contracts.mjs'
+import { characterCardIdempotencyKey } from '../analysis/book-character-card.mjs'
 
 const WINDOW = { startOffset: 0, endOffset: 60_000, chapterIndexes: [0, 1] }
 
@@ -49,11 +50,7 @@ function request(overrides = {}) {
     ],
     ...overrides
   }
-  return {
-    idempotencyKey: `${body.runId}:character-card:${body.characterKey}:${body.promptVersion}`
-      + `:rev-${body.cardRevision ?? 1}:win-${body.cardWindow.startOffset}`,
-    ...body
-  }
+  return { idempotencyKey: characterCardIdempotencyKey(body), ...body }
 }
 
 test('the request normalizer accepts a well-formed card request', () => {
@@ -331,4 +328,38 @@ test('приветствие обращено к читателю, а не к г
   assert.match(system, /Приветствие обращено к читателю, а не к герою книги/)
   assert.match(system, /не называй собеседника по имени/)
   assert.match(system, /не приписывай ему общего с тобой прошлого/)
+})
+
+/**
+ * Ключ идемпотентности несёт набор цитат.
+ *
+ * Отбор цитат равномерный по окну и с запасом по байтам: достаточно появиться
+ * одному новому фрагменту, чтобы выборка при повторе задания сдвинулась. Пока
+ * набор в ключ не входил, кеш отвечал на такой повтор 409 «этот ключ уже занят
+ * другим запросом» — и вылечить это повторами было нельзя никогда: на каталоге
+ * так осталось 36 карточек, то есть 36 персонажей без карточки вовсе.
+ */
+test('a different set of quotes is a different request, not a conflict', () => {
+  const base = request()
+  const fewer = request({ fragments: base.fragments.slice(0, 2) })
+  assert.notEqual(base.idempotencyKey, fewer.idempotencyKey)
+  // Оба запроса при этом остаются валидными: контракт считает ключ так же.
+  assert.equal(normalizeCharacterCardRequest(base).fragments.length, 3)
+  assert.equal(normalizeCharacterCardRequest(fewer).fragments.length, 2)
+})
+
+test('the same set of quotes keeps the same key whatever their order', () => {
+  // Иначе повтор того же задания платил бы за модель второй раз.
+  const base = request()
+  const shuffled = request({ fragments: [...base.fragments].reverse() })
+  assert.equal(base.idempotencyKey, shuffled.idempotencyKey)
+})
+
+test('window and revision stay part of the key', () => {
+  const base = request()
+  assert.notEqual(
+    base.idempotencyKey,
+    request({ cardWindow: { ...WINDOW, startOffset: 12_000 } }).idempotencyKey
+  )
+  assert.notEqual(base.idempotencyKey, request({ cardRevision: 2 }).idempotencyKey)
 })

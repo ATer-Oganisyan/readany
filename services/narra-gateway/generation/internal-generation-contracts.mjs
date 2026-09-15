@@ -16,6 +16,7 @@ import {
   BOOK_TTS_MARKUP_VERSION
 } from '../tts/book-tts-markup.mjs'
 import { MAX_CARD_TRAITS } from '../analysis/book-character-card-contract.mjs'
+import { characterCardIdempotencyKey } from '../analysis/book-character-card.mjs'
 import {
   APPEARANCE_TRAIT_EVIDENCE,
   BLOCKED_TRAIT_KEYS,
@@ -1816,15 +1817,10 @@ export function normalizeCharacterCardRequest(input) {
   ) {
     invalid('cardWindow: invalid range')
   }
-  // Ключ идемпотентности проверяется после разбора окна: окно входит в ключ.
-  // Карточку персонажа, которому нечем обосноваться в окне первого упоминания,
-  // переносит в окно с цитатами — там другой набор фрагментов, и без окна в
-  // ключе кеш отвечал 409 «этот ключ уже занят другим запросом».
-  const expectedKey = `${runId}:character-card:${characterKey}:${promptVersion}`
-    + `:rev-${cardRevision}:win-${window.startOffset}`
-  if (body.idempotencyKey !== expectedKey) {
-    invalid('idempotencyKey does not match character card request')
-  }
+  // Ключ проверяется после разбора окна и фрагментов: в него входит и то, и
+  // другое. Карточку персонажа, которому нечем обосноваться в окне первого
+  // упоминания, переносит в окно с цитатами — там другой набор фрагментов, и
+  // без них в ключе кеш отвечал 409 «этот ключ уже занят другим запросом».
   if (!Array.isArray(body.fragments) || !body.fragments.length || body.fragments.length > 1_000) {
     invalid('fragments: invalid array')
   }
@@ -1853,6 +1849,18 @@ export function normalizeCharacterCardRequest(input) {
   })
   const ids = fragments.map(({ id }) => id)
   if (new Set(ids).size !== ids.length) invalid('fragments: duplicate ids')
+  // Ключ проверяется после разбора окна и фрагментов: в него входит и то, и
+  // другое. Карточку персонажа, которому нечем обосноваться в окне первого
+  // упоминания, переносит в окно с цитатами — там другой набор фрагментов, и
+  // без них в ключе кеш отвечал 409 «этот ключ уже занят другим запросом»:
+  // повтор задания давал чуть другую выборку под тем же ключом, и вылечить это
+  // повторами было нельзя никогда.
+  const expectedKey = characterCardIdempotencyKey({
+    runId, characterKey, promptVersion, cardRevision, cardWindow: window, fragments
+  })
+  if (body.idempotencyKey !== expectedKey) {
+    invalid('idempotencyKey does not match character card request')
+  }
   const character = exactKeys(
     body.character,
     new Set(['characterKey', 'name', 'aliases', 'mentionCount', 'firstMentionTextOffset']),

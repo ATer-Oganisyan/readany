@@ -44,6 +44,7 @@ import {
 } from '../analysis/book-roster-confirmation.mjs'
 import {
   buildCharacterCardRequest,
+  characterCardIdempotencyKey,
   finalizeCharacterCard
 } from '../analysis/book-character-card.mjs'
 import { characterCardProjection } from '../analysis/book-character-card-contract.mjs'
@@ -502,9 +503,7 @@ export async function runCardPipeline({
         inventoryVersion: inventory.inventoryVersion
       })
       const normalizedCard = normalizeCharacterCardRequest({
-        idempotencyKey:
-          `${runId}:character-card:${character.characterKey}:${cardRequest.promptVersion}`
-            + `:rev-${cardRequest.cardRevision ?? 1}:win-${cardRequest.cardWindow.startOffset}`,
+        idempotencyKey: characterCardIdempotencyKey(cardRequest),
         ...cardRequest
       })
       const raw = await complete(characterCardMessages(normalizedCard))
