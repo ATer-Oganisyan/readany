@@ -1805,11 +1805,6 @@ export function normalizeCharacterCardRequest(input) {
   const cardRevision = Number.isSafeInteger(body.cardRevision) && body.cardRevision >= 1
     ? body.cardRevision
     : 1
-  const expectedKey =
-    `${runId}:character-card:${characterKey}:${promptVersion}:rev-${cardRevision}`
-  if (body.idempotencyKey !== expectedKey) {
-    invalid('idempotencyKey does not match character card request')
-  }
   const window = exactKeys(
     body.cardWindow,
     new Set(['startOffset', 'endOffset', 'chapterIndexes']),
@@ -1820,6 +1815,15 @@ export function normalizeCharacterCardRequest(input) {
     !Number.isSafeInteger(window.endOffset) || window.endOffset <= window.startOffset
   ) {
     invalid('cardWindow: invalid range')
+  }
+  // Ключ идемпотентности проверяется после разбора окна: окно входит в ключ.
+  // Карточку персонажа, которому нечем обосноваться в окне первого упоминания,
+  // переносит в окно с цитатами — там другой набор фрагментов, и без окна в
+  // ключе кеш отвечал 409 «этот ключ уже занят другим запросом».
+  const expectedKey = `${runId}:character-card:${characterKey}:${promptVersion}`
+    + `:rev-${cardRevision}:win-${window.startOffset}`
+  if (body.idempotencyKey !== expectedKey) {
+    invalid('idempotencyKey does not match character card request')
   }
   if (!Array.isArray(body.fragments) || !body.fragments.length || body.fragments.length > 1_000) {
     invalid('fragments: invalid array')

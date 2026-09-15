@@ -2871,24 +2871,28 @@ export function createPostgresBookMarkupRepository(pool, {
                    WHERE run_id = $1 AND window_index = $3
                 )
            )
-           SELECT window.window_index, roster.canonical_name, roster.names,
+           -- window — зарезервированное слово SQL, и алиас с таким именем
+           -- делает запрос синтаксически неверным. Ошибка ловилась и уходила в
+           -- лог, а перенос молча не случался ни разу: 49 персонажей так и
+           -- остались без карточек при живых цитатах дальше по книге.
+           SELECT card_window.window_index, roster.canonical_name, roster.names,
                   roster.mention_count, roster.first_mention_text_offset,
                   count(fragment.fragment_id)::int AS fragment_count
-             FROM book_card_windows AS window
+             FROM book_card_windows AS card_window
              CROSS JOIN roster
              CROSS JOIN current
              LEFT JOIN book_character_fragments AS fragment
                ON fragment.run_id = $1
               AND fragment.character_key = ANY(roster.candidate_keys)
-              AND fragment.start_offset < window.end_offset
-            WHERE window.run_id = $1
-              AND window.window_index > $3
-              AND window.status <> 'cancelled'
-            GROUP BY window.window_index, roster.canonical_name, roster.names,
+              AND fragment.start_offset < card_window.end_offset
+            WHERE card_window.run_id = $1
+              AND card_window.window_index > $3
+              AND card_window.status <> 'cancelled'
+            GROUP BY card_window.window_index, roster.canonical_name, roster.names,
                      roster.mention_count, roster.first_mention_text_offset,
                      current.fragment_count
            HAVING count(fragment.fragment_id) > max(current.fragment_count)
-            ORDER BY window.window_index
+            ORDER BY card_window.window_index
             LIMIT 1`,
           [runId, characterKey, windowIndex]
         )

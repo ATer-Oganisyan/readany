@@ -51,7 +51,7 @@ function request(overrides = {}) {
   }
   return {
     idempotencyKey: `${body.runId}:character-card:${body.characterKey}:${body.promptVersion}`
-      + `:rev-${body.cardRevision ?? 1}`,
+      + `:rev-${body.cardRevision ?? 1}:win-${body.cardWindow.startOffset}`,
     ...body
   }
 }
