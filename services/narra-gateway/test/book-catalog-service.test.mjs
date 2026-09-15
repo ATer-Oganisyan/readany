@@ -1070,6 +1070,98 @@ test('a failed scene pack does not lose the reader position', async () => {
   }
 })
 
+/**
+ * Подогрев можно включить только загруженным книгам.
+ *
+ * Причина инцидента 31 августа была не в подогреве, а в объёме: у каталожной
+ * книги фронтир равен всей книге, и 45 слотов «Героя нашего времени» встали в
+ * очередь разом. У приватной фронтир другой по устройству — позиция читателя
+ * плюс десятая часть, — и включать его ей безопасно там, где каталогу нельзя.
+ */
+function warmupService(scope, calls) {
+  return createBookCatalogService({
+    repository: repository({
+      async advanceReaderPosition() {
+        return {
+          scope,
+          analysisVersion: 'book-markup-v3',
+          readerTextOffset: 36_000,
+          readingFraction: 0.36,
+          chapterKey: 'chapter-4',
+          charactersDue: []
+        }
+      },
+      async ensureBookScenesThrough(input) {
+        calls.push(input)
+        return { requested: 5, ready: 1, pending: 4, failed: 0 }
+      }
+    }),
+    analysisRepository: { async ensureLatestMediaProjection() { return { projected: true } } }
+  })
+}
+
+async function withScenePregeneration(env, body) {
+  const previous = {
+    all: process.env.BOOK_SCENE_PREGENERATION,
+    private: process.env.BOOK_SCENE_PREGENERATION_PRIVATE
+  }
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined) delete process.env[name]
+    else process.env[name] = value
+  }
+  try {
+    await body()
+  } finally {
+    for (const [name, value] of [
+      ['BOOK_SCENE_PREGENERATION', previous.all],
+      ['BOOK_SCENE_PREGENERATION_PRIVATE', previous.private]
+    ]) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+}
+
+test('the private setting warms up uploaded books and leaves the catalog alone', async () => {
+  await withScenePregeneration({
+    BOOK_SCENE_PREGENERATION: undefined,
+    BOOK_SCENE_PREGENERATION_PRIVATE: 'reader'
+  }, async () => {
+    const privateCalls = []
+    await warmupService('private', privateCalls)
+      .advanceProgress('reader-1', 'book-1', {
+        progressFraction: 0.36, textOffset: null, chapterKey: 'chapter-4'
+      })
+    assert.deepEqual(privateCalls, [{
+      subjectId: 'reader-1', bookEditionId: 'book-1', readerTextOffset: 36_000
+    }])
+
+    // Пятьсот книг каталога, которых никто не открывал, эта настройка не
+    // трогает: ровно ради этого она и заведена отдельно.
+    const catalogCalls = []
+    await warmupService('catalog', catalogCalls)
+      .advanceProgress('reader-1', 'book-2', {
+        progressFraction: 0.36, textOffset: null, chapterKey: 'chapter-4'
+      })
+    assert.deepEqual(catalogCalls, [])
+  })
+})
+
+test('the private setting can also switch warmup off where the common one is on', async () => {
+  // Путь отката в обе стороны: настройка области видимости сильнее общей.
+  await withScenePregeneration({
+    BOOK_SCENE_PREGENERATION: 'reader',
+    BOOK_SCENE_PREGENERATION_PRIVATE: 'none'
+  }, async () => {
+    const calls = []
+    await warmupService('private', calls)
+      .advanceProgress('reader-1', 'book-1', {
+        progressFraction: 0.36, textOffset: null, chapterKey: 'chapter-4'
+      })
+    assert.deepEqual(calls, [])
+  })
+})
+
 test('canonical progress never prefetches scenes automatically', async () => {
   const calls = []
   const service = createBookCatalogService({

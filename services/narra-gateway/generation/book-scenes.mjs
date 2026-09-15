@@ -197,16 +197,49 @@ export function bookSceneFrontier({
  *
  * `book` — прежнее «вся книга сразу», для тех, кто этого хочет осознанно.
  */
-export function bookScenePregenerationMode(env = process.env) {
-  const raw = String(env.BOOK_SCENE_PREGENERATION ?? '').trim().toLowerCase()
-  if (!raw) return 'none'
-  if (!['none', 'reader', 'book'].includes(raw)) {
+const SCENE_PREGENERATION_MODES = ['none', 'reader', 'book']
+
+function parseScenePregenerationMode(raw, name) {
+  const value = String(raw ?? '').trim().toLowerCase()
+  if (!value) return null
+  if (!SCENE_PREGENERATION_MODES.includes(value)) {
     throw Object.assign(
-      new TypeError('BOOK_SCENE_PREGENERATION must be none, reader or book'),
+      new TypeError(`${name} must be none, reader or book`),
       { code: 'BOOK_SCENE_PREGENERATION_INVALID' }
     )
   }
-  return raw
+  return value
+}
+
+export function bookScenePregenerationMode(env = process.env) {
+  return parseScenePregenerationMode(env.BOOK_SCENE_PREGENERATION, 'BOOK_SCENE_PREGENERATION')
+    ?? 'none'
+}
+
+/**
+ * Подогрев по области видимости книги.
+ *
+ * Причина инцидента 31 августа была не в подогреве самом по себе, а в том, что
+ * у каталожной книги фронтир равен всей книге: 45 слотов «Героя нашего
+ * времени» вставали в очередь разом, и по установке набралось 10 639 заданий.
+ * У приватной книги фронтир другой по устройству — позиция читателя плюс
+ * десятая часть книги, то есть 4–14 сцен за раз, — и включать подогрев ей
+ * безопасно там, где каталогу нельзя.
+ *
+ * Отсюда отдельная настройка: `BOOK_SCENE_PREGENERATION_PRIVATE=reader`
+ * разогревает только то, что человек загрузил сам, и не трогает пятьсот книг
+ * каталога, которых никто не открывал. Без неё приватные книги живут по общей
+ * настройке — поведение остаётся прежним.
+ */
+export function bookScenePregenerationModeForScope(scope, env = process.env) {
+  if (scope === 'private') {
+    const privateMode = parseScenePregenerationMode(
+      env.BOOK_SCENE_PREGENERATION_PRIVATE,
+      'BOOK_SCENE_PREGENERATION_PRIVATE'
+    )
+    if (privateMode) return privateMode
+  }
+  return bookScenePregenerationMode(env)
 }
 
 export function bookMediaFrontier({ scope, textLength: textLengthValue, readerTextOffset = 0 }) {

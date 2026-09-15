@@ -1,4 +1,4 @@
-import { bookScenePregenerationMode } from '../generation/book-scenes.mjs'
+import { bookScenePregenerationModeForScope } from '../generation/book-scenes.mjs'
 import {
   CHARACTER_BUNDLE_VERSION,
   LOCAL_MARKUP_ANALYSIS_VERSION,
@@ -1093,7 +1093,10 @@ export function createBookCatalogService({
       // Сбой подогрева не должен ронять запись позиции: читатель дочитал до
       // этого места независимо от того, получилось ли сделать ему картинки.
       let sceneWarmup = { requested: 0, ready: 0, pending: 0, failed: 0 }
-      if (bookScenePregenerationMode() !== 'none' &&
+      // Подогрев спрашивается по области видимости книги: у каталожной фронтир
+      // равен всей книге, у приватной — позиция читателя плюс десятая часть.
+      // Это разные объёмы работы, и включаются они порознь.
+      if (bookScenePregenerationModeForScope(progress.scope) !== 'none' &&
           typeof store.ensureBookScenesThrough === 'function') {
         try {
           sceneWarmup = await store.ensureBookScenesThrough({
