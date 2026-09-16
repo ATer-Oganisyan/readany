@@ -867,7 +867,11 @@
           style.id = TTS_CSS_HIGHLIGHT_STYLE_ID;
           (doc.head || doc.documentElement).append(style);
         }
-        style.textContent = `::highlight(${TTS_CSS_HIGHLIGHT_NAME}) { background-color: transparent !important; color: ${color || currentThemeColors.primary} !important; }`;
+        // A highlight repaints the originating element's decorations in its own
+        // colour and style, which turned the dashed character-name underline into a
+        // solid one. Pin the decoration to the character-name look; text without an
+        // underline is unaffected because the highlight adds no line of its own.
+        style.textContent = `::highlight(${TTS_CSS_HIGHLIGHT_NAME}) { background-color: transparent !important; text-decoration-style: dashed; text-decoration-color: rgba(127, 127, 127, 0.65); text-decoration-thickness: 1px; color: ${color || currentThemeColors.primary} !important; }`;
         highlightRegistry.set(TTS_CSS_HIGHLIGHT_NAME, new HighlightConstructor(range.cloneRange()));
         return true;
       } catch (error) {
