@@ -2869,8 +2869,17 @@ export function createPostgresBookMarkupRepository(pool, {
      * следующее по счёту: соседнее окно часто не добавляет ничего, и перенос в
      * него был бы тем же падением через минуту. Если такого окна нет — значит
      * больше про персонажа в книге и не сказано, и падение честное.
+     *
+     * Вместе с постановкой нового задания закрываем старое. Строку задания в
+     * готовые переводит тот, кто карточку записал, а у переноса записывать
+     * нечего — и задание оставалось `running` навсегда: воркер писал в лог
+     * «завершено», аренда истекала, задание захватывалось снова и переносилось
+     * опять. Девяносто четыре задания набрали так по 240–375 попыток за шесть
+     * дней, и окно, в котором они висели, не закрывалось никогда.
      */
-    async deferCharacterCard({ runId, bookEditionId, characterKey, windowIndex, priority = 50 }) {
+    async deferCharacterCard({
+      runId, bookEditionId, characterKey, windowIndex, priority = 50, jobId = null
+    }) {
       if (!runId || !bookEditionId || !characterKey) {
         throw new TypeError('runId, bookEditionId and characterKey are required')
       }
@@ -2947,6 +2956,19 @@ export function createPostgresBookMarkupRepository(pool, {
             runId, nextWindow
           ]
         )
+        if (jobId) {
+          await client.query(
+            `UPDATE generation_jobs
+             SET status = 'ready', result = $2::jsonb, last_error_code = NULL,
+                 locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
+             WHERE id = $1 AND job_type = 'character_card'`,
+            [jobId, JSON.stringify({
+              character_key: characterKey,
+              deferred_from_window: windowIndex,
+              deferred_to_window: nextWindow
+            })]
+          )
+        }
         return {
           deferred: true,
           windowIndex: nextWindow,

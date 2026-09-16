@@ -124,7 +124,8 @@ export function createCharacterCardRunner({
         bookEditionId: input.bookEditionId,
         characterKey: input.characterKey,
         windowIndex: input.windowIndex,
-        priority: job.priority ?? 50
+        priority: job.priority ?? 50,
+        jobId: job.id
       })
       if (!moved?.deferred) return null
       log.info('card.deferred', 'Карточка перенесена в окно с цитатами', {

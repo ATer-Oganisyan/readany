@@ -263,12 +263,15 @@ test('a character with nothing to cite here is moved to a window where there is'
   assert.equal(result.status, 'deferred')
   assert.equal(result.deferredToWindow, 4)
   assert.deepEqual(calls.published, [])
+  // Исходное задание закрывает сам перенос: без его номера строка осталась бы
+  // `running`, и по истечении аренды книга переносила бы карточку заново.
   assert.deepEqual(calls.deferred, [{
     runId: 'run-1',
     bookEditionId: 'edition-1',
     characterKey: 'char:elizabeth',
     windowIndex: 0,
-    priority: 50
+    priority: 50,
+    jobId: 'job-1'
   }])
   // Цепочка окон двигается и здесь: перенос — это завершение задания, а не
   // его исчезновение.
