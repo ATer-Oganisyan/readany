@@ -8,7 +8,10 @@ import {
   controlSize,
   frame,
   labelsHidden,
+  listRowBackground,
+  listRowInsets,
   pickerStyle,
+  presentationBackground,
   presentationDetents,
   presentationDragIndicator,
   tag,
@@ -70,7 +73,16 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
       style={{ position: "absolute", width: 1, height: 1 }}
     >
       <BottomSheet isPresented={visible} onIsPresentedChange={handlePresentationChange}>
-        <Group modifiers={[presentationDetents(["large"]), presentationDragIndicator("visible")]}>
+        {/* Половина экрана и не больше: выше шторка не тянется, длинный список
+            настроек прокручивается внутри. Фон — карточный, как у шторки героя,
+            иначе сквозь стекло просвечивает текст книги. */}
+        <Group
+          modifiers={[
+            presentationDetents(["medium"]),
+            presentationBackground(colors.card),
+            presentationDragIndicator("visible"),
+          ]}
+        >
           <NativeNavigationStack
             title={t("reader.settings", "Настройки чтения")}
             closeAccessibilityLabel={t("common.close", "Закрыть")}
@@ -87,6 +99,9 @@ export function ReaderSettingsPanel({ visible, readSettings, onClose, onUpdateSe
                     controlSize("large"),
                     frame({ maxWidth: 10_000, height: spacingPixels[44] }),
                     labelsHidden(),
+                    // Сегмент-контрол сам себе фон: строка списка под ним не нужна.
+                    listRowBackground("clear"),
+                    listRowInsets({ top: 0, leading: 0, bottom: 0, trailing: 0 }),
                   ]}
                 >
                   {READER_PAGE_THEMES.map((preset) => (

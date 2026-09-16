@@ -276,12 +276,13 @@ export function NotesView({
           text: t("common.delete", "删除"),
           style: "destructive",
           onPress: () => {
-            updateHighlight(highlight.id, { note: undefined });
+            // Заметка и её выделение — одна запись: удаление заметки снимает подсветку в тексте.
+            removeHighlight(highlight.id);
           },
         },
       ]);
     },
-    [updateHighlight, t],
+    [removeHighlight, t],
   );
 
   const handleDeleteHighlight = useCallback(
@@ -311,11 +312,13 @@ export function NotesView({
 
   const saveNote = useCallback(
     (id: string) => {
-      updateHighlight(id, { note: editNote || undefined });
+      // Заметка и её выделение — одна запись: пустой текст удаляет её целиком.
+      if (editNote.trim()) updateHighlight(id, { note: editNote });
+      else removeHighlight(id);
       setEditingId(null);
       setEditNote("");
     },
-    [updateHighlight, editNote],
+    [updateHighlight, removeHighlight, editNote],
   );
 
   const cancelEdit = useCallback(() => {
@@ -583,8 +586,8 @@ export function NotesView({
       onDelete={(id) => {
         const note = allNotes.find((item) => item.id === id);
         if (!note) return;
-        if (note.cfi) updateHighlight(id, { note: undefined });
-        else removeHighlight(id);
+        // Заметка и её выделение — одна запись: удаление заметки снимает подсветку в тексте.
+        removeHighlight(id);
       }}
       onPress={(id) => {
         nav.navigate({

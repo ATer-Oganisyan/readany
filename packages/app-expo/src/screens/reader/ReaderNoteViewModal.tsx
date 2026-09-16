@@ -105,6 +105,13 @@ export function ReaderNoteViewModal({
                     <TouchableOpacity
                       style={s.noteViewSaveBtn}
                       onPress={() => {
+                        // Пустой текст = заметки больше нет, а заметка и выделение — одна
+                        // запись: иначе в тексте осталась бы подсветка без содержимого.
+                        if (!editContent.trim()) {
+                          useAnnotationStore.getState().removeHighlight(highlight.id);
+                          onClose();
+                          return;
+                        }
                         const mutation = createSelectionNoteMutation({
                           bookId,
                           cfi: highlight.cfi,

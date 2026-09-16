@@ -530,6 +530,8 @@ function ReaderContent({ route, navigation }: Props) {
   const [noteViewEditing, setNoteViewEditing] = useState(false);
   const [noteViewContent, setNoteViewContent] = useState("");
   const suppressReaderTapUntilRef = useRef(0);
+  // Аннотации, уже отданные в WebView: cfi → как они там выглядят.
+  const appliedAnnotationsRef = useRef<Map<string, { color: string; note?: string }>>(new Map());
   // Mediator ref so onRelocate can fire TTS continuation without direct hook dependency
   const ttsPendingContinueRef = useRef<{
     pendingTTSContinueCallbackRef: React.RefObject<(() => void) | null>;
@@ -618,6 +620,19 @@ function ReaderContent({ route, navigation }: Props) {
   const readerThemeColors = useReaderPaperColors();
   const readerThemeColorsRef = useRef(readerThemeColors);
   readerThemeColorsRef.current = readerThemeColors;
+  // Цвета, уже применённые к тексту внутри WebView. Подложка, рамка и лейблы
+  // красятся ими, а не readerThemeColors напрямую: команда в WebView идёт через
+  // мост ~0.3 с, и если фон поменять сразу, всё это время текст сливается с бумагой.
+  const [paintedThemeColors, setPaintedThemeColors] = useState(readerThemeColors);
+  const pendingThemeColorsRef = useRef(readerThemeColors);
+  const themeAckFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commitPaintedThemeColors = useCallback(() => {
+    if (themeAckFallbackRef.current) {
+      clearTimeout(themeAckFallbackRef.current);
+      themeAckFallbackRef.current = null;
+    }
+    setPaintedThemeColors(pendingThemeColorsRef.current);
+  }, []);
   const isReaderThemeDark =
     readSettings.readerTheme === "dark" || (!readSettings.readerTheme && isDark);
 
@@ -765,14 +780,13 @@ function ReaderContent({ route, navigation }: Props) {
         }
         const previous = bookState?.sceneRequests?.[sourceKey] ?? cached?.backendScene;
         const manifest = bookState?.backendManifest;
+        const markupIdentity = backendSceneMarkupIdentity(manifest, bookState?.backendBinding);
+        // A kept scene may carry an intent from an older markup; its grid is
+        // gone, so only an intent for the current markup is reused.
         const intent =
-          previous?.bookEditionId === edition
+          previous?.bookEditionId === edition && previous.markupIdentity === markupIdentity
             ? previous
-            : {
-                bookEditionId: edition,
-                requestedProgress,
-                markupIdentity: backendSceneMarkupIdentity(manifest, bookState?.backendBinding),
-              };
+            : { bookEditionId: edition, requestedProgress, markupIdentity };
         await generateBackendReaderScene(
           {
             bookId,
@@ -1010,11 +1024,11 @@ function ReaderContent({ route, navigation }: Props) {
   useEffect(() => {
     if (Platform.OS === "android" && isFocused) {
       void ReadAnyNativeControls.setNavigationBarTheme?.(
-        readerThemeColors.background,
+        paintedThemeColors.background,
         isReaderThemeDark,
       );
     }
-  }, [isFocused, readerThemeColors.background, isReaderThemeDark]);
+  }, [isFocused, paintedThemeColors.background, isReaderThemeDark]);
   useReaderErrorToast(error, isFocused, navigation, `${bookId}:${loadAttempt}`);
   useBackendBook(book, isFocused, progress);
   const [appActive, setAppActive] = useState(true);
@@ -1104,8 +1118,12 @@ function ReaderContent({ route, navigation }: Props) {
 
   const copySelection = useReaderCopy();
   const bridge = useReaderBridge({
+    // Текст в WebView уже в новой теме — теперь красим подложку тем же кадром.
+    onThemeApplied: () => commitPaintedThemeColors(),
     onDiagnosticPong: (id) => {
       if (id !== diagnosticPingRef.current) return;
+      // diag: базовая задержка моста RN → WebView → RN в спокойном состоянии
+      console.log(`[bridge] pong ${Date.now() - id}ms`);
       if (diagnosticUnresponsiveRef.current) recordDiagnostic("webview_responsive");
       diagnosticUnresponsiveRef.current = false;
       diagnosticPingRef.current = 0;
@@ -1938,9 +1956,21 @@ function ReaderContent({ route, navigation }: Props) {
 
   // Apply theme colors when theme changes
   useEffect(() => {
-    if (!webViewReady) return;
+    pendingThemeColorsRef.current = readerThemeColors;
+    if (!webViewReady) {
+      // WebView ещё нет (или он перезагружается) — подтверждать некому, красим сразу.
+      commitPaintedThemeColors();
+      return;
+    }
+    // diag: сколько прошло от записи настройки до отправки цветов в WebView
+    const updatedAt = useSettingsStore.getState().settingsUpdatedAt;
+    if (updatedAt) console.log(`[themeColors] store→effect ${Date.now() - updatedAt}ms`);
     bridge.setThemeColors(readerThemeColors);
-  }, [themeMode, readerThemeColors, webViewReady]);
+    // Страховка: если WebView не ответит themeApplied (старая сборка ридера, сбой
+    // моста), подложку всё равно перекрасим — лучше поздно, чем застрять в старой теме.
+    if (themeAckFallbackRef.current) clearTimeout(themeAckFallbackRef.current);
+    themeAckFallbackRef.current = setTimeout(commitPaintedThemeColors, 800);
+  }, [themeMode, readerThemeColors, webViewReady, commitPaintedThemeColors]);
 
   // The book always uses the bundled SB Serif family.
   useEffect(() => {
@@ -1980,12 +2010,37 @@ function ReaderContent({ route, navigation }: Props) {
     computeEffectiveFontSize,
   ]);
 
-  // Load annotations into reader when ready
+  // Load annotations into reader when ready and keep the WebView in sync with the store:
+  // удалённые выделения нужно снимать, иначе подсветка остаётся в тексте до перезагрузки книги.
   useEffect(() => {
-    if (!webViewReady || loading || highlights.length === 0) return;
-    for (const h of highlights) {
-      bridge.addAnnotation({ value: h.cfi, type: "highlight", color: h.color, note: h.note });
+    if (!webViewReady || loading) {
+      // WebView перезагружается — его аннотации пропали вместе с содержимым.
+      appliedAnnotationsRef.current = new Map();
+      return;
     }
+    const applied = appliedAnnotationsRef.current;
+    const next = new Map<string, { color: string; note?: string }>();
+    for (const h of highlights) {
+      if (!h.cfi) continue;
+      next.set(h.cfi, { color: h.color, note: h.note });
+    }
+    for (const cfi of applied.keys()) {
+      if (!next.has(cfi)) bridge.removeAnnotation({ value: cfi });
+    }
+    for (const [cfi, annotation] of next) {
+      const current = applied.get(cfi);
+      if (current && current.color === annotation.color && current.note === annotation.note) {
+        continue;
+      }
+      if (current) bridge.removeAnnotation({ value: cfi });
+      bridge.addAnnotation({
+        value: cfi,
+        type: "highlight",
+        color: annotation.color,
+        note: annotation.note,
+      });
+    }
+    appliedAnnotationsRef.current = next;
   }, [webViewReady, loading, highlights]);
 
   // Reset last navigated CFI when book changes
@@ -2054,7 +2109,7 @@ function ReaderContent({ route, navigation }: Props) {
       ]}
     >
       <ReaderTopBar
-        tintColor={readerThemeColors.foreground}
+        tintColor={paintedThemeColors.foreground}
         isDark={isReaderThemeDark}
         actions={readerActions}
         onClosePress={() => navigation.goBack()}
@@ -2083,7 +2138,7 @@ function ReaderContent({ route, navigation }: Props) {
         ]}
       >
         <ReaderToolbar
-          tintColor={readerThemeColors.foreground}
+          tintColor={paintedThemeColors.foreground}
           isDark={isReaderThemeDark}
           charactersSheetSourceId={charactersSheetSourceId}
           speechSheetSourceId={speechSheetSourceId}
@@ -2159,7 +2214,7 @@ function ReaderContent({ route, navigation }: Props) {
           s.container,
           {
             paddingBottom: isScrollMode ? 0 : insets.bottom,
-            backgroundColor: readerThemeColors.background,
+            backgroundColor: paintedThemeColors.background,
           },
         ]}
       >
@@ -2231,7 +2286,7 @@ function ReaderContent({ route, navigation }: Props) {
           {/* Loading overlay */}
           {loading && (
             <View
-              style={[s.loadingOverlay, { backgroundColor: readerThemeColors.background }]}
+              style={[s.loadingOverlay, { backgroundColor: paintedThemeColors.background }]}
               pointerEvents="none"
             >
               <ReaderLoadingIndicator color={readerThemeColors.foreground} />
@@ -2244,13 +2299,16 @@ function ReaderContent({ route, navigation }: Props) {
               style={[s.topInfoBar, { top: layoutTopInset, paddingHorizontal: readerContentInset }]}
             >
               <View style={s.topInfoRow}>
-                <Text style={[s.topInfoText, { color: readerThemeColors.muted }]} numberOfLines={1}>
+                <Text
+                  style={[s.topInfoText, { color: paintedThemeColors.muted }]}
+                  numberOfLines={1}
+                >
                   {currentChapter || bookTitle}
                 </Text>
                 {/* Номер страницы по всей книге (как в Apple Books); без
                     location (scrolled/fixed-layout) — процент прогресса */}
                 {bookLocation ? (
-                  <Text style={[s.topInfoPageText, { color: readerThemeColors.muted }]}>
+                  <Text style={[s.topInfoPageText, { color: paintedThemeColors.muted }]}>
                     {t("reader.pageOfBook", "стр. {{current}} из {{total}}", {
                       current: Math.min(bookLocation.current + 1, bookLocation.total),
                       total: bookLocation.total,
@@ -2258,7 +2316,7 @@ function ReaderContent({ route, navigation }: Props) {
                   </Text>
                 ) : (
                   <Text
-                    style={[s.topInfoPageText, { color: readerThemeColors.muted }]}
+                    style={[s.topInfoPageText, { color: paintedThemeColors.muted }]}
                   >{`${percent}%`}</Text>
                 )}
               </View>

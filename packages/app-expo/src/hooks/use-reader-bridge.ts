@@ -79,6 +79,8 @@ export interface ReaderSearchResultItem {
 
 export interface ReaderBridgeCallbacks {
   onDiagnosticPong?: (id: number) => void;
+  /** WebView перекрасил текст под новую тему — RN может перекрашивать подложку. */
+  onThemeApplied?: (detail: { background?: string; foreground?: string }) => void;
   onRelocate?: (detail: RelocateEvent) => void;
   onBookTextMetrics?: (detail: { totalCharacters: number }) => void;
   onTocReady?: (items: TOCItem[]) => void;
@@ -347,7 +349,8 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       elevation1?: string;
       elevation2?: string;
     }) => {
-      const msg = JSON.stringify({ type: "setThemeColors", colors });
+      // sentAt — для замера задержки моста RN → WebView (см. [themeColors] в логе).
+      const msg = JSON.stringify({ type: "setThemeColors", colors, sentAt: Date.now() });
       inject(`handleCommand(${msg})`);
     },
     [inject],
@@ -874,6 +877,9 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       switch (msg.type) {
         case "diagnosticPong":
           if (typeof msg.id === "number") cb.onDiagnosticPong?.(msg.id);
+          break;
+        case "themeApplied":
+          cb.onThemeApplied?.({ background: msg.background, foreground: msg.foreground });
           break;
         case "ready":
           cb.onReady?.();

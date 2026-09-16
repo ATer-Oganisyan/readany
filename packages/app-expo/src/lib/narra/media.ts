@@ -148,6 +148,14 @@ export function normalizePersistedNarraMediaUri(uri: string): string {
   return `${MEDIA_DIR}/${filename}`;
 }
 
+/** Убирает файл из narra-media: старый портрет после удачной перегенерации. */
+export async function deleteNarraMediaFile(uri: string | undefined): Promise<void> {
+  if (!uri) return;
+  const path = normalizePersistedNarraMediaUri(uri);
+  if (!path.startsWith(MEDIA_DIR)) return;
+  await FileSystem.deleteAsync(path, { idempotent: true }).catch(() => undefined);
+}
+
 async function ensureMediaDir(): Promise<void> {
   const info = await FileSystem.getInfoAsync(MEDIA_DIR);
   if (!info.exists) await FileSystem.makeDirectoryAsync(MEDIA_DIR, { intermediates: true });
@@ -409,7 +417,11 @@ async function generateCharacterPortraitRequest(
     throw new Error(payload.error || `Portrait generation failed (${response.status})`);
   }
   await ensureMediaDir();
-  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}.jpg`;
+  // Каждая генерация кладёт портрет в новый файл. Путь — это и ключ картинки в UI
+  // (по его смене запускается смена кадра), и ключ кэша RN Image: перезапись того
+  // же пути оставляла на экране старый портрет. Прошлый файл чистит вызывающий —
+  // здесь его уже не видно, force-генерация приходит с обнулённым portraitUri.
+  const path = `${MEDIA_DIR}/${safeKey(`${bookId}-${character.id}-portrait`)}-${Date.now()}.jpg`;
   return persistGeneratedImage(path, payload);
 }
 

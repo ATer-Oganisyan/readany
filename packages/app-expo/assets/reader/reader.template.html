@@ -306,6 +306,9 @@
     };
     let lastRendererStyles = '';
     let currentViewMode = 'paginated';
+    // The latest settings RN sent, merged over the ones from openBook.
+    // Section loads re-apply these, never the stale openBook snapshot.
+    let currentSettings = {};
     let currentSectionUsesVerticalWriting = false;
     let currentPaginatedLayout = 'double';
     let currentFontSize = 16;
@@ -330,6 +333,57 @@
     const TTS_CSS_HIGHLIGHT_NAME = 'readany-tts-active';
     const TTS_CSS_HIGHLIGHT_STYLE_ID = 'readany-tts-active-style';
     const TTS_ANNOTATION_PREFIX = 'foliate-tts:';
+
+    // ─── Жёлтое выделение-маркер ───
+    // Рисуется поверх Overlayer.highlight: непрозрачность задаём сами (иначе её гасит
+    // --overlayer-highlight-opacity), строки наклоняем вправо и проявляем по очереди.
+    // Оттенок один: в приложении выделение всегда создаётся вместе с заметкой.
+    const MARKER_YELLOW = 'rgba(250, 196, 10, 0.42)';
+    const MARKER_SKEW_DEG = 3;
+    const MARKER_FADE_MS = 500;
+    const MARKER_LINE_STAGGER_MS = 90;
+    const MARKER_SKEW_TAN = Math.tan((MARKER_SKEW_DEG * Math.PI) / 180);
+
+    // Проявление маркера показываем один раз на выделение. Overlayer.redraw()
+    // переиспользует функцию при ресайзе и прокрутке, а перезагрузка секции и
+    // refreshUserAnnotations рисуют аннотацию заново — уже показанное выделение
+    // не должно анимироваться повторно, поэтому память живёт вне замыкания.
+    const animatedMarkerValues = new Set();
+    function makeMarkerDraw(annotationValue) {
+      return function drawMarker(rects, options) {
+        const g = Overlayer.highlight(rects, options);
+        if (options && options.opacity != null) g.style.opacity = String(options.opacity);
+        const lines = g.children;
+        const shouldAnimate = !animatedMarkerValues.has(annotationValue);
+        animatedMarkerValues.add(annotationValue);
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const y = parseFloat(line.getAttribute('y')) || 0;
+          const height = parseFloat(line.getAttribute('height')) || 0;
+          // skewX смещает точку тем сильнее, чем больше её y, поэтому компенсируем сдвиг
+          // по середине строки — иначе выделение уедет вбок на длину всей страницы.
+          const shift = (y + height / 2) * MARKER_SKEW_TAN;
+          line.setAttribute(
+            'transform',
+            'translate(' + shift.toFixed(2) + ' 0) skewX(' + -MARKER_SKEW_DEG + ')'
+          );
+          if (!shouldAnimate || typeof line.animate !== 'function') continue;
+          const width = parseFloat(line.getAttribute('width')) || 0;
+          try {
+            line.animate(
+              [{ width: '0px' }, { width: width + 'px' }],
+              {
+                duration: MARKER_FADE_MS,
+                delay: i * MARKER_LINE_STAGGER_MS,
+                easing: 'cubic-bezier(0, 0, 0.2, 1)',
+                fill: 'backwards',
+              }
+            );
+          } catch (err) {}
+        }
+        return g;
+      };
+    }
     let ttsHighlightState = {
       cfi: null,
       color: null,
@@ -395,32 +449,44 @@
     function applyMobileReflowRendererSizing(renderer) {
       if (!renderer) return;
       renderer.setAttribute('max-column-count', '1');
-      renderer.setAttribute('max-block-size', '1440px');
-      renderer.setAttribute('max-inline-size', getMobileReflowMaxInlineSize() + 'px');
+      setRendererAttr(renderer, 'max-block-size', '1440px');
+      setRendererAttr(renderer, 'max-inline-size', getMobileReflowMaxInlineSize() + 'px');
+    }
+
+    // attributeChangedCallback fires even when the value is unchanged, and the
+    // paginator answers it with a full render(). Settings are re-applied on
+    // every section load, so only a real change may touch an attribute.
+    function setRendererAttr(renderer, name, value) {
+      if (renderer.getAttribute(name) === value) return;
+      renderer.setAttribute(name, value);
+    }
+    function removeRendererAttr(renderer, name) {
+      if (!renderer.hasAttribute(name)) return;
+      renderer.removeAttribute(name);
     }
 
     function applyRendererFlowMode(renderer) {
       if (!renderer || !view) return;
 
       if (view.isFixedLayout) {
-        renderer.removeAttribute('no-continuous-scroll');
+        removeRendererAttr(renderer, 'no-continuous-scroll');
         return;
       }
 
       if (currentViewMode === 'scroll') {
-        renderer.removeAttribute('no-continuous-scroll');
-        renderer.setAttribute('flow', 'scrolled');
-        renderer.setAttribute('max-inline-size', '9999px');
+        removeRendererAttr(renderer, 'no-continuous-scroll');
+        setRendererAttr(renderer, 'flow', 'scrolled');
+        setRendererAttr(renderer, 'max-inline-size', '9999px');
         return;
       }
 
       applyMobileReflowRendererSizing(renderer);
       if (currentSectionUsesVerticalWriting) {
-        renderer.setAttribute('flow', 'scrolled');
-        renderer.setAttribute('no-continuous-scroll', '');
+        setRendererAttr(renderer, 'flow', 'scrolled');
+        setRendererAttr(renderer, 'no-continuous-scroll', '');
       } else {
-        renderer.removeAttribute('no-continuous-scroll');
-        renderer.removeAttribute('flow');
+        removeRendererAttr(renderer, 'no-continuous-scroll');
+        removeRendererAttr(renderer, 'flow');
       }
     }
 
@@ -1514,7 +1580,10 @@
           }
           break;
         case 'applySettings':
-          if (view && msg.settings) applySettings(msg.settings);
+          if (msg.settings) {
+            Object.assign(currentSettings, msg.settings);
+            if (view) applySettings(currentSettings);
+          }
           break;
         case 'setTTSHighlight':
           if (msg.fade) { fadeTTSHighlight(); break; }
@@ -1524,7 +1593,7 @@
           await clearTTSHighlight();
           break;
         case 'setThemeColors':
-          if (msg.colors) setThemeColors(msg.colors);
+          if (msg.colors) setThemeColors(msg.colors, msg.sentAt);
           break;
         case 'extractChapters':
           await handleExtractChapters();
@@ -1554,6 +1623,7 @@
     // ─── Book loading ───
     async function openBook(msg) {
       _readerCopyText = '';
+      currentSettings = Object.assign({}, msg.settings || {});
       _characterReaderLoadId = msg.loadId;
       _encounteredCharacterIds = new Set();
       const container = document.getElementById('reader-container');
@@ -1714,16 +1784,12 @@
             applyRendererFlowMode(el.renderer);
           }
           // Inject typography before the first visible frame.
-          if (msg.settings) {
-            updateSettingsState({
-              customFontFaceCSS: msg.settings.customFontFaceCSS,
-              customFontFamily: msg.settings.customFontFamily,
-            });
-          }
+          updateSettingsState({
+            customFontFaceCSS: currentSettings.customFontFaceCSS,
+            customFontFamily: currentSettings.customFontFamily,
+          });
           applyDocStyles(doc);
-          if (msg.settings) {
-            applySettings(msg.settings);
-          }
+          applySettings(currentSettings);
 
           // The fixed SB Serif family is warmed once in the outer document
           // before Foliate creates its section documents. Every section still
@@ -1829,7 +1895,11 @@
             violet: 'rgba(167, 139, 250, 0.4)',
             orange: 'rgba(251, 146, 60, 0.5)',
           };
-          
+          // Жёлтое выделение рисуем маркером: непрозрачнее обычного, с наклоном и построчным
+          // проявлением. Overlayer множит цвет на --overlayer-highlight-opacity (.3), поэтому
+          // для жёлтого задаём opacity явно и держим контраст в самой rgba.
+          const drawYellowMarker = makeMarkerDraw(annotation.value);
+
           if (annotation.type === 'tts-highlight') {
             postToRN('debug', {
               message: `[ttsHighlight] draw-annotation ${JSON.stringify({
@@ -1841,7 +1911,7 @@
             drawTTSHighlightWithCSS(range, annotation.color);
           } else if (annotation.note) {
             console.log('[draw-annotation] has note:', annotation.note);
-            draw(Overlayer.highlight, { color: 'rgba(250, 204, 21, 0.65)' });
+            draw(drawYellowMarker, { color: MARKER_YELLOW, opacity: 1 });
             // Register for long-press tooltip
             if (doc && range && annotation.value) {
               registerAnnotationRange(doc, annotation.value, range);
@@ -1849,7 +1919,8 @@
               console.log('[draw-annotation] registered note range for:', annotation.value);
             }
           } else {
-            draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
+            if (color === 'yellow') draw(drawYellowMarker, { color: MARKER_YELLOW, opacity: 1 });
+            else draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
             if (doc && range && isUserTapAnnotation(annotation)) {
               registerAnnotationRange(doc, annotation.value, range);
             } else if (doc && annotation.value) {
@@ -2064,9 +2135,13 @@
         currentPaginatedLayout =
           settings.paginatedLayout === 'single' ? 'single' : 'double';
       }
+      if (settings.viewMode) {
+        currentViewMode = settings.viewMode;
+      }
     }
 
     function applySettings(settings) {
+      if (settings !== currentSettings) Object.assign(currentSettings, settings);
       updateSettingsState(settings);
       if (!view || !view.renderer) return;
       const renderer = view.renderer;
@@ -2185,8 +2260,8 @@
         const layoutScale = currentFontSize / BASELINE_FONT_SIZE;
         const margin = Math.round(settings.pageMargin * layoutScale);
         const gapPercent = Math.max(1, Math.round((margin / 393) * 100));
-        renderer.setAttribute('gap', gapPercent + '%');
-        renderer.setAttribute('margin', margin + 'px');
+        setRendererAttr(renderer, 'gap', gapPercent + '%');
+        setRendererAttr(renderer, 'margin', margin + 'px');
       }
 
       if (view && view.isFixedLayout) {
@@ -2388,7 +2463,11 @@
       return red * 0.2126 + green * 0.7152 + blue * 0.0722 < 128;
     }
 
-    function setThemeColors(colors) {
+    let themeStyleRefreshToken = 0;
+
+    function setThemeColors(colors, sentAt) {
+      const receivedAt = Date.now();
+      const t0 = performance.now();
       const bg = colors.background || '#1c1c1e';
       const fg = colors.foreground || '#e8e8ed';
       const muted = colors.muted || '#7c7c82';
@@ -2414,21 +2493,51 @@
       document.body.style.backgroundColor = 'transparent';
       document.body.style.color = fg;
 
-      if (view && view.renderer && view.renderer.setStyles) {
-        const currentStyles = lastRendererStyles || '';
-        const themedStyles = injectThemeIntoStyles(currentStyles, bg, fg, primary);
-        view.renderer.setStyles(themedStyles);
-        syncReaderOverrideStylesForAllDocs(themedStyles);
-      }
+      // Дешёвая перекраска уже открытых секций: только CSS-переменные, никакой
+      // пересборки таблиц стилей. Фон страницы рисует нативная подложка под
+      // WebView и меняется в том же кадре, что и стейт; текст должен успеть в тот же
+      // кадр, поэтому до первой отрисовки здесь больше ничего не делаем.
+      applyThemeVarsToAllDocs(fg, primary);
+      const t1 = performance.now();
+      // Текст перекрашен — теперь RN может перекрасить нативную подложку и рамку
+      // в том же кадре. Пока подтверждения нет, RN держит прежние цвета: иначе фон
+      // уезжает вперёд текста на всю задержку моста и текст сливается с бумагой.
+      postToRN('themeApplied', { background: bg, foreground: fg });
 
-      if (view && view.setSearchIndicator) {
-        view.setSearchIndicator('highlight', { color: 'rgba(250, 204, 21, 0.4)' });
-      }
-
-      // Врезки сцен рисуются в цветах темы — обновить их стили в секциях
-      try { sceneSlotSyncStyles(); } catch (e) {}
+      // Всё тяжёлое — после того как браузер покажет перекрашенный кадр.
+      // Перезапись стилей секции заставляет её пересчитать вёрстку, и если сделать
+      // это в той же задаче, кадр с новым цветом текста выйдет только после неё.
+      const token = ++themeStyleRefreshToken;
+      requestAnimationFrame(function () {
+        setTimeout(function () {
+          if (token !== themeStyleRefreshToken) return;
+          const t2 = performance.now();
+          if (view && view.renderer && view.renderer.setStyles) {
+            const themedStyles = injectThemeIntoStyles(lastRendererStyles || '', bg, fg, primary);
+            view.renderer.setStyles(themedStyles);
+            syncReaderOverrideStylesForAllDocs(themedStyles);
+          }
+          if (view && view.setSearchIndicator) {
+            view.setSearchIndicator('highlight', { color: 'rgba(250, 204, 21, 0.4)' });
+          }
+          // Врезки сцен рисуются в цветах темы — обновить их стили в секциях
+          try { sceneSlotSyncStyles(); } catch (e) {}
+          const t3 = performance.now();
+          // diag: тайминги смены темы — читаются из лога Metro как [WebView] [themeColors]
+          postToRN('debug', {
+            message: '[themeColors] bridge ' + (sentAt ? receivedAt - sentAt : -1) + 'ms'
+              + ', vars ' + (t1 - t0).toFixed(1) + 'ms'
+              + ', до кадра ' + (t2 - t1).toFixed(1) + 'ms'
+              + ', стили ' + (t3 - t2).toFixed(1) + 'ms'
+              + ', секций ' + getRendererContents().length,
+          });
+        }, 0);
+      });
     }
 
+    // Цвета текста живут в CSS-переменных, а не в самом правиле: подмена
+    // переменной перекрашивает страницу сразу, тогда как перезапись всего
+    // стиля (renderer.setStyles) заставляет секцию пересчитать вёрстку.
     function injectThemeIntoStyles(baseStyles, bg, fg, primary) {
       const cleaned = baseStyles.replace(
         /\/\* __theme_colors__ \*\/[\s\S]*?\/\* __end_theme_colors__ \*\//g,
@@ -2437,15 +2546,29 @@
       const themeBlock = `/* __theme_colors__ */
 html, body {
   background-color: transparent !important;
-  color: ${fg} !important;
+  color: var(--readany-fg, ${fg}) !important;
 }
 p, div, span, blockquote, li, dd, dt, h1, h2, h3, h4, h5, h6, td, th, caption, figcaption, label, a {
   color: inherit !important;
 }
-a { color: ${primary} !important; }
+a { color: var(--readany-link, ${primary}) !important; }
 ::selection { background: rgba(59, 130, 246, 0.3) !important; }
 /* __end_theme_colors__ */`;
       return themeBlock + '\n' + cleaned;
+    }
+
+    function applyThemeVarsToDoc(doc, fg, primary) {
+      const root = doc && doc.documentElement;
+      if (!root || !root.style) return;
+      root.style.setProperty('--readany-fg', fg);
+      root.style.setProperty('--readany-link', primary);
+    }
+
+    function applyThemeVarsToAllDocs(fg, primary) {
+      applyThemeVarsToDoc(document, fg, primary);
+      for (const content of getRendererContents()) {
+        if (content && content.doc) applyThemeVarsToDoc(content.doc, fg, primary);
+      }
     }
 
     // ─── Document styles ───
@@ -2588,6 +2711,9 @@ a { color: ${primary} !important; }
       }
       const style = doc.createElement('style');
       const { bg, fg, primary } = currentThemeColors;
+      // Переменные темы живут на документе: новая секция должна открыться уже в
+      // актуальном цвете, даже если пересборка стилей после смены темы ещё не дошла.
+      applyThemeVarsToDoc(doc, fg, primary);
       style.textContent = `
         * { -webkit-user-select: text !important; user-select: text !important; }
         html, body { background-color: transparent !important; color: ${fg} !important; }

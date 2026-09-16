@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ consumeNarraGatewayResponse: vi.fn() }));
-import type { BackendSceneIntent } from "./backend-scene-identity";
+import { type BackendSceneIntent, backendSceneId } from "./backend-scene-identity";
 import {
   backendSceneForAnchor,
   invalidateBackendScenes,
   migrateBackendSceneState,
   withBackendSceneAsset,
+  withBackendSceneIntent,
 } from "./backend-scene-state";
 import { emptyNarraBookState } from "./domain";
 import type { NarraBookState, NarraSceneImage } from "./types";
@@ -113,12 +114,30 @@ describe("backend scene state", () => {
     expect(Object.keys(migrated.sceneRequests ?? {}).sort()).toEqual(["page:a", "page:z"]);
   });
 
-  it("invalidates backend bindings when edition or markup changes", () => {
+  it("keeps drawn scenes but drops pending requests when markup changes", () => {
+    const old = intent("same", "old-markup");
+    const pending = intent("pending", "old-markup");
+    let book = withBackendSceneAsset(
+      emptyNarraBookState("book"),
+      "anchor",
+      scene("anchor", old),
+      old,
+    ).book;
+    book = withBackendSceneIntent(book, "pending-anchor", pending).book;
+    const invalidated = invalidateBackendScenes(book, "edition", "new-markup");
+    const id = backendSceneId(old) as string;
+    expect(Object.keys(invalidated.scenesByBackendId ?? {})).toEqual([id]);
+    expect(invalidated.sceneAnchorBindings).toEqual({ anchor: id });
+    expect(invalidated.sceneRequests).toEqual({});
+    expect(backendSceneForAnchor(invalidated, "anchor")?.imageUri).toBe("file:///anchor.png");
+  });
+
+  it("drops a stale scene that never produced an image", () => {
     const old = intent("same", "old-markup");
     const book = withBackendSceneAsset(
       emptyNarraBookState("book"),
       "anchor",
-      scene("anchor", old),
+      { ...scene("anchor", old), imageUri: "" },
       old,
     ).book;
     const invalidated = invalidateBackendScenes(book, "edition", "new-markup");

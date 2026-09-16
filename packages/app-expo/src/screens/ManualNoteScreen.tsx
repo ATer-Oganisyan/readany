@@ -109,10 +109,10 @@ export function ManualNoteScreen({ navigation, route }: Props) {
 
   const deleteNote = useCallback(() => {
     if (!existingNote || saving) return;
-    if (existingNote.cfi) updateHighlight(existingNote.id, { note: undefined });
-    else removeHighlight(existingNote.id);
+    // Заметка и её выделение — одна запись: удаление заметки снимает подсветку в тексте.
+    removeHighlight(existingNote.id);
     navigation.goBack();
-  }, [existingNote, saving, updateHighlight, removeHighlight, navigation]);
+  }, [existingNote, saving, removeHighlight, navigation]);
 
   useLayoutEffect(() => {
     const canSave = Boolean(content.trim()) && !saving;

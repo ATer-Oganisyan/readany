@@ -117,7 +117,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 describe("book TTS playback integration", () => {
-  it("buffers only eight sentences, refills as playback advances, and preserves order and speed", async () => {
+  it("synthesises eight sentences ahead, starts after three, refills as playback advances, and preserves order and speed", async () => {
     const sentences = Array.from({ length: 10 }, (_, i) => `Sentence ${i}.`);
     await player.speak(sentences, { ...DEFAULT_TTS_CONFIG, rate: 1.5 });
     await flush();
@@ -159,7 +159,9 @@ describe("book TTS playback integration", () => {
     await flush();
     expect(runtime.queue.map((t) => t.id)).toEqual(["tts-chunk-0", "tts-chunk-1", "tts-chunk-2"]);
     expect(pending).toHaveLength(6);
-    expect(TrackPlayer.play).not.toHaveBeenCalled();
+    // Playback starts once the first wave of three chunks is queued; the
+    // look-ahead keeps synthesising up to eight chunks ahead.
+    expect(TrackPlayer.play).toHaveBeenCalledTimes(1);
     pending[3]("file:///3.wav");
     pending[4]("file:///4.wav");
     pending[5]("file:///5.wav");

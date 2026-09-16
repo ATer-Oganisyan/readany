@@ -38,7 +38,8 @@ export function ReaderCharacterActions(props: ReaderCharacterActionsProps) {
     ...(props.showRegenerate
       ? [
           {
-            icon: props.regenerating ? "pulse-circle" : "arrow-rotate-ccw-up",
+            // Иконка не меняется во время генерации: ожидание показывает шиммер портрета.
+            icon: "arrow-rotate-ccw-up",
             onPress: props.onRegenerate,
             enabled: !props.regenerating,
           },

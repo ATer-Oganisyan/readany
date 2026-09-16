@@ -122,17 +122,23 @@ export function invalidateBackendScenes(
   const valid = (intent?: BackendSceneIntent) =>
     intent?.bookEditionId === bookEditionId &&
     (!markupIdentity || intent.markupIdentity === markupIdentity);
+  // A drawn scene stays where the reader saw it: its anchor is a CFI into the
+  // local file, which a new server markup does not move. Every intent under the
+  // old markup is dropped, including the kept scene's own request, so a retry
+  // at that anchor builds a fresh intent instead of reusing a stale grid.
+  const scenesByBackendId = Object.fromEntries(
+    Object.entries(book.scenesByBackendId ?? {}).filter(
+      ([, scene]) => scene.imageUri || valid(scene.backendScene),
+    ),
+  );
+  const keptIds = new Set(Object.keys(scenesByBackendId));
   const requests = Object.fromEntries(
     Object.entries(book.sceneRequests ?? {}).filter(([, intent]) => valid(intent)),
   );
-  const scenesByBackendId = Object.fromEntries(
-    Object.entries(book.scenesByBackendId ?? {}).filter(([, scene]) => valid(scene.backendScene)),
-  );
-  const validIds = new Set(Object.keys(scenesByBackendId));
   const pendingIds = new Set(Object.values(requests).map(backendSceneId).filter(Boolean));
   const sceneAnchorBindings = Object.fromEntries(
     Object.entries(book.sceneAnchorBindings ?? {}).filter(
-      ([, id]) => validIds.has(id) || pendingIds.has(id),
+      ([, id]) => keptIds.has(id) || pendingIds.has(id),
     ),
   );
   return { ...book, sceneRequests: requests, scenesByBackendId, sceneAnchorBindings };

@@ -216,8 +216,10 @@ describe("portrait prompt", () => {
       }),
     );
 
-    await expect(generateCharacterPortrait("book-1", anna)).resolves.toContain(
-      "book-1-anna-portrait.jpg",
+    // Имя файла несёт метку времени: каждая перегенерация — новый путь, иначе
+    // экран остался бы на старом кадре из кэша картинок.
+    await expect(generateCharacterPortrait("book-1", anna)).resolves.toMatch(
+      /\/book-1-anna-portrait-\d+\.jpg$/,
     );
 
     const [path, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];

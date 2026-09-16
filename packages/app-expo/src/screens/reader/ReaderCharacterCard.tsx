@@ -1,5 +1,5 @@
 import { NativeCharacterDetailsCells } from "@/components/narra/NativeCharacterDetailsCells";
-import { CharacterPortraitImage } from "@/components/narra/character-portrait-image";
+import { AnimatedCharacterPortrait } from "@/components/narra/animated-character-portrait";
 import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
 import { Text } from "@/components/ui/Typography";
 import { NarraAudioPlayer } from "@/lib/narra/audio-player";
@@ -8,6 +8,7 @@ import { characterBiography } from "@/lib/narra/character-profile";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import { localizeNarraErrorMessage, reportNarraError } from "@/lib/narra/errors";
 import {
+  deleteNarraMediaFile,
   ensureCharacterPortrait,
   generateCharacterPortrait,
   synthesizeNarraGatewaySpeech,
@@ -322,15 +323,20 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
       const target = force
         ? { ...character, portraitAssetId: undefined, portraitUri: undefined }
         : character;
+      const replacedPortraitUri = force ? character.portraitUri : undefined;
       void (
         force ? generateCharacterPortrait(bookId, target) : ensureCharacterPortrait(bookId, target)
       )
-        .then((uri) =>
+        .then((uri) => {
           updateCharacter(bookId, character.id, {
             portraitUri: uri,
             portraitUriOverridesAsset: force,
-          }),
-        )
+          });
+          // Новый портрет лежит в новом файле — старый больше не нужен.
+          if (replacedPortraitUri && replacedPortraitUri !== uri) {
+            void deleteNarraMediaFile(replacedPortraitUri);
+          }
+        })
         .catch((error) => reportNarraError("character_portrait_reader_card", error))
         .finally(() => setPortraitLoading(false));
     };
@@ -491,8 +497,9 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
           />
         ) : null}
         <View style={[styles.portrait, embedded && styles.embeddedPortrait]}>
-          <CharacterPortraitImage
+          <AnimatedCharacterPortrait
             character={liveCharacter}
+            busy={portraitBusy}
             staticOnly={staticPortraitOnly}
             onUnavailable={onPortraitUnavailable}
             style={styles.portraitImage}
@@ -543,11 +550,8 @@ export const ReaderCharacterCard = forwardRef<ReaderCharacterCardHandle, ReaderC
               </Pressable>
             </View>
           ) : null}
-          {portraitBusy && portraitUri ? (
-            <View style={styles.portraitOverlay}>
-              <ActivityIndicator color={colors.background} />
-            </View>
-          ) : null}
+          {/* Затемнения со спиннером тут нет намеренно: ожидание показывает
+              шиммер на самой картинке (AnimatedCharacterPortrait). */}
         </View>
       </PortraitBlurTarget>
     );
@@ -871,13 +875,6 @@ const makeStyles = (colors: ThemeColors) =>
       color: colors.mutedForeground,
       fontFamily: serifTextFontFamily.bold,
       fontSize: fontSize["2xl"],
-    },
-    portraitOverlay: {
-      ...StyleSheet.absoluteFill,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: spacing.xs,
-      backgroundColor: "rgba(0,0,0,0.3)",
     },
     // Ряд круглых кнопок на портрете: ↻ регенерация и ▶ «Оживить» (P18)
     portraitButtonsRow: {

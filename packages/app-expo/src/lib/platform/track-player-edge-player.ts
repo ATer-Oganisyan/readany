@@ -23,9 +23,15 @@ const DEFAULT_ARTWORK = (() => {
 })();
 
 export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
+  // How far ahead of the playing chunk synthesis runs.
   private static readonly INITIAL_BUFFER_CHUNKS = 8;
   // Three short Gateway/SaluteSpeech requests in flight; preserve sentence order.
   private static readonly FETCH_CONCURRENCY = 3;
+  // Playback starts once the first wave of requests is queued: they are in
+  // flight together, so waiting for the whole wave costs only the tail of its
+  // slowest request, and it leaves 15-25s of speech buffered while the next
+  // wave downloads.
+  private static readonly INITIAL_PLAY_CHUNKS = TrackPlayerEdgeTTSPlayer.FETCH_CONCURRENCY;
   private static readonly STARVE_RESUME_BUFFER_CHUNKS = 2;
   private static readonly MAX_RETRIES = 3;
   private static readonly MAX_CHUNK_FETCH_RETRIES = 4;
@@ -252,7 +258,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private async _runProducer(gen: number): Promise<void> {
     try {
       const initialBufferCount = Math.min(
-        TrackPlayerEdgeTTSPlayer.INITIAL_BUFFER_CHUNKS,
+        TrackPlayerEdgeTTSPlayer.INITIAL_PLAY_CHUNKS,
         this._chunks.length,
       );
 

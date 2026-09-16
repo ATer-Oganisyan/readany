@@ -6,13 +6,13 @@ import { bodyTypography, radius, spacing, useTheme } from "@/styles/theme";
 import {
   Box,
   Column,
+  DropdownMenu,
+  DropdownMenuItem,
   HorizontalDivider,
   Host,
   LazyColumn,
   ListItem,
   ModalBottomSheet,
-  DropdownMenu,
-  DropdownMenuItem,
   Row,
   SegmentedButton,
   Shape,
@@ -44,7 +44,12 @@ const sectionShape = Shape.RoundedCorner({
   },
 });
 
-function SettingsChoice({ label, selectedValue, options, onValueChange }: NativeSettingsPickerProps) {
+function SettingsChoice({
+  label,
+  selectedValue,
+  options,
+  onValueChange,
+}: NativeSettingsPickerProps) {
   const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
   return (
@@ -53,16 +58,23 @@ function SettingsChoice({ label, selectedValue, options, onValueChange }: Native
         <Text style={bodyTypography}>{label}</Text>
       </ListItem.HeadlineContent>
       <ListItem.TrailingContent>
-        <DropdownMenu expanded={expanded} onDismissRequest={() => setExpanded(false)} color={colors.card}>
+        <DropdownMenu
+          expanded={expanded}
+          onDismissRequest={() => setExpanded(false)}
+          color={colors.card}
+        >
           <TextButton onClick={() => setExpanded(true)} colors={{ contentColor: colors.primary }}>
             <Text>{options.find((option) => option.value === selectedValue)?.label ?? ""}</Text>
           </TextButton>
           <DropdownMenu.Items>
             {options.map((option) => (
-              <DropdownMenuItem key={option.value} onClick={() => {
-                setExpanded(false);
-                onValueChange(option.value);
-              }}>
+              <DropdownMenuItem
+                key={option.value}
+                onClick={() => {
+                  setExpanded(false);
+                  onValueChange(option.value);
+                }}
+              >
                 <DropdownMenuItem.Text>
                   <Text color={option.value === selectedValue ? colors.primary : colors.foreground}>
                     {option.label}
@@ -103,14 +115,17 @@ export function ReaderSettingsPanel({
       style={{ position: "absolute", width: 1, height: 1 }}
       colorScheme={isDark ? "dark" : "light"}
     >
+      {/* Высота шторки задана содержимым: половина экрана (см. fillMaxHeight ниже),
+          выше она не тянется, а список настроек прокручивается внутри.
+          Фон оставляем background: секции внутри нарисованы colors.card, и на одном
+          цвете они бы слились. */}
       <ModalBottomSheet
         onDismissRequest={onClose}
-        skipPartiallyExpanded
         showDragHandle
         containerColor={colors.background}
         contentColor={colors.foreground}
       >
-        <Column modifiers={[fillMaxHeight(0.9), fillMaxWidth()]}>
+        <Column modifiers={[fillMaxHeight(0.5), fillMaxWidth()]}>
           <Text style={{ typography: "titleLarge" }} modifiers={[padding(24, 0, 24, 16)]}>
             {t("reader.settings", "Настройки чтения")}
           </Text>
@@ -118,29 +133,22 @@ export function ReaderSettingsPanel({
             <Text style={bodyTypography} modifiers={[padding(16, 16, 16, 8)]}>
               {t("reader.pageTheme", "Тема страницы")}
             </Text>
-            <Surface
-              color={colors.card}
-              shape={sectionShape}
-              modifiers={[padding(16, 0, 16, 0), fillMaxWidth()]}
-            >
-              <Column>
-                <SingleChoiceSegmentedButtonRow modifiers={[padding(16, 8, 16, 8), fillMaxWidth()]}>
-                  {READER_PAGE_THEMES.map((preset) => (
-                    <SegmentedButton
-                      showIcon={false}
-                      key={preset.id}
-                      selected={(readSettings.readerTheme ?? "original") === preset.id}
-                      onClick={() => onUpdateSetting("readerTheme", preset.id)}
-                      colors={segmentColors}
-                    >
-                      <SegmentedButton.Label>
-                        <Text>{t(preset.labelKey, preset.labelDefault)}</Text>
-                      </SegmentedButton.Label>
-                    </SegmentedButton>
-                  ))}
-                </SingleChoiceSegmentedButtonRow>
-              </Column>
-            </Surface>
+            {/* Сегмент-контрол рисует собственный фон — подложка Surface тут лишняя. */}
+            <SingleChoiceSegmentedButtonRow modifiers={[padding(16, 8, 16, 8), fillMaxWidth()]}>
+              {READER_PAGE_THEMES.map((preset) => (
+                <SegmentedButton
+                  showIcon={false}
+                  key={preset.id}
+                  selected={(readSettings.readerTheme ?? "original") === preset.id}
+                  onClick={() => onUpdateSetting("readerTheme", preset.id)}
+                  colors={segmentColors}
+                >
+                  <SegmentedButton.Label>
+                    <Text>{t(preset.labelKey, preset.labelDefault)}</Text>
+                  </SegmentedButton.Label>
+                </SegmentedButton>
+              ))}
+            </SingleChoiceSegmentedButtonRow>
             <Text style={bodyTypography} modifiers={[padding(16, 16, 16, 8)]}>
               {t("reader.textSettings", "Текст")}
             </Text>
@@ -228,18 +236,18 @@ export function ReaderSettingsPanel({
               modifiers={[padding(16, 0, 16, 0), fillMaxWidth()]}
             >
               <Column>
-                  <SettingsChoice
-                    label={t("reader.viewMode", "Режим чтения")}
-                    selectedValue={readSettings.viewMode}
-                    colorScheme={isDark ? "dark" : "light"}
-                    options={[
-                      { value: "paginated", label: t("reader.paginated", "Перелистывание") },
-                      { value: "scroll", label: t("reader.scrollMode", "Прокрутка") },
-                    ]}
-                    onValueChange={(value) =>
-                      onUpdateSetting("viewMode", value === "scroll" ? "scroll" : "paginated")
-                    }
-                  />
+                <SettingsChoice
+                  label={t("reader.viewMode", "Режим чтения")}
+                  selectedValue={readSettings.viewMode}
+                  colorScheme={isDark ? "dark" : "light"}
+                  options={[
+                    { value: "paginated", label: t("reader.paginated", "Перелистывание") },
+                    { value: "scroll", label: t("reader.scrollMode", "Прокрутка") },
+                  ]}
+                  onValueChange={(value) =>
+                    onUpdateSetting("viewMode", value === "scroll" ? "scroll" : "paginated")
+                  }
+                />
                 {(["volumeButtonsPageTurn", "showTopTitleProgress"] as const).map((key) => (
                   <Column key={key}>
                     <HorizontalDivider color={colors.border} />
@@ -266,26 +274,30 @@ export function ReaderSettingsPanel({
                   </Column>
                 ))}
                 <HorizontalDivider color={colors.border} />
-                  <SettingsChoice
-                    label={t("narra.sceneFrequencyTitle", "Частота врезок")}
-                    selectedValue={String(sceneInterval)}
-                    colorScheme={isDark ? "dark" : "light"}
-                    options={SCENE_SUGGESTION_INTERVALS.map((value) => ({
-                      value: String(value),
-                      label: value
-                        ? t("narra.sceneFrequencyPages", "{{count}} стр.", { count: value })
-                        : t("narra.sceneFrequencyOff", "Выкл"),
-                    }))}
-                    onValueChange={(value) => {
-                      const interval = SCENE_SUGGESTION_INTERVALS.find(
-                        (option) => String(option) === value,
-                      );
-                      if (interval !== undefined) setSceneInterval(interval);
-                    }}
-                  />
+                <SettingsChoice
+                  label={t("narra.sceneFrequencyTitle", "Частота врезок")}
+                  selectedValue={String(sceneInterval)}
+                  colorScheme={isDark ? "dark" : "light"}
+                  options={SCENE_SUGGESTION_INTERVALS.map((value) => ({
+                    value: String(value),
+                    label: value
+                      ? t("narra.sceneFrequencyPages", "{{count}} стр.", { count: value })
+                      : t("narra.sceneFrequencyOff", "Выкл"),
+                  }))}
+                  onValueChange={(value) => {
+                    const interval = SCENE_SUGGESTION_INTERVALS.find(
+                      (option) => String(option) === value,
+                    );
+                    if (interval !== undefined) setSceneInterval(interval);
+                  }}
+                />
               </Column>
             </Surface>
-            <Text color={colors.primary40} style={{ typography: "bodyMedium" }} modifiers={[padding(16, 8, 16, 16)]}>
+            <Text
+              color={colors.primary40}
+              style={{ typography: "bodyMedium" }}
+              modifiers={[padding(16, 8, 16, 16)]}
+            >
               {t("narra.sceneFrequencyDesc", "Как часто предлагать нарисовать сцену")}
             </Text>
           </LazyColumn>
