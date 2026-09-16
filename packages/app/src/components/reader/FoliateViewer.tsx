@@ -2957,10 +2957,21 @@ function normalizeBrOnlyParagraphs(doc: Document) {
   docWithMarker.__readanyBrParagraphsNormalized = true;
 
   const body = doc.body;
-  if (!body || body.querySelectorAll("p").length > 2) return;
+  // Экспорт с фикбука ставит внутри полотна разделители <p>***</p> и заголовки.
+  // Короткий обрывок за абзац не считаем, иначе пара звёздочек отменяет разбивку.
+  if (!body) return;
+  const realParagraphs = Array.from(body.querySelectorAll("p")).filter(
+    (paragraph) => (paragraph.textContent || "").trim().length > BR_PARAGRAPH_MIN_TEXT,
+  );
+  if (realParagraphs.length > 2) return;
 
-  const containers: Element[] = Array.from(body.querySelectorAll("div, section, article, main")).filter(
+  const candidates: Element[] = Array.from(body.querySelectorAll("div, section, article, main")).filter(
     shouldNormalizeBrParagraphContainer,
+  );
+  // Раньше блочный потомок с текстом отсекал обёртку сам собой. Теперь берём
+  // самый внутренний контейнер, иначе обёртка съест главу целиком одним блоком.
+  const containers: Element[] = candidates.filter(
+    (candidate) => !candidates.some((other) => other !== candidate && candidate.contains(other)),
   );
   if (shouldNormalizeBrParagraphContainer(body)) containers.push(body);
 
@@ -2969,50 +2980,60 @@ function normalizeBrOnlyParagraphs(doc: Document) {
   }
 }
 
-function shouldNormalizeBrParagraphContainer(container: Element) {
-  if (container.querySelector("p")) return false;
+const BR_PARAGRAPH_MIN_TEXT = 40;
+// Белый список: незнакомый тег считаем строчным и оставляем внутри абзаца.
+// Обратная полярность рвала бы абзац на <tt>, <strike>, <wbr>, <svg> и прочем.
+const BR_BLOCK_TAGS = new Set([
+  "address",
+  "article",
+  "aside",
+  "blockquote",
+  "dd",
+  "div",
+  "dl",
+  "dt",
+  "fieldset",
+  "figcaption",
+  "figure",
+  "footer",
+  "form",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "hr",
+  "li",
+  "main",
+  "nav",
+  "ol",
+  "p",
+  "pre",
+  "section",
+  "table",
+  "ul",
+]);
 
-  const inlineTags = new Set([
-    "a",
-    "abbr",
-    "b",
-    "bdi",
-    "bdo",
-    "br",
-    "cite",
-    "code",
-    "em",
-    "font",
-    "i",
-    "img",
-    "kbd",
-    "mark",
-    "q",
-    "ruby",
-    "rb",
-    "rp",
-    "rt",
-    "s",
-    "small",
-    "span",
-    "strong",
-    "sub",
-    "sup",
-    "time",
-    "u",
-    "var",
-  ]);
+function isBlockNode(node: Node) {
+  return (
+    node.nodeType === Node.ELEMENT_NODE &&
+    BR_BLOCK_TAGS.has((node as Element).localName.toLowerCase())
+  );
+}
+
+function shouldNormalizeBrParagraphContainer(container: Element) {
   let brCount = 0;
   let textLength = 0;
 
+  // Блочный сосед (заголовок, <p>***</p>) больше не отменяет разбивку:
+  // normalizeBrParagraphContainer оставит его на месте и нарежет текст вокруг.
   for (const node of Array.from(container.childNodes)) {
     if (isBrNode(node)) {
       brCount += 1;
     } else if (node.nodeType === Node.TEXT_NODE) {
       textLength += node.nodeValue?.trim().length ?? 0;
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const tag = (node as Element).localName.toLowerCase();
-      if (!inlineTags.has(tag) && (node.textContent || "").trim()) return false;
     }
   }
 
@@ -3057,6 +3078,12 @@ function normalizeBrParagraphContainer(doc: Document, container: Element) {
       breakCount += 1;
     } else if (isBlankTextNode(node) && breakCount > 0) {
       breakNodes.push(node);
+    } else if (isBlockNode(node)) {
+      // Блок и так рвёт строку: закрываем абзац и оставляем блок как есть.
+      breakNodes = [];
+      breakCount = 0;
+      flushPending();
+      fragment.appendChild(node);
     } else {
       commitBreak();
       pending.push(node);
