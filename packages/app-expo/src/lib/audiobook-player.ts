@@ -14,7 +14,12 @@ export async function openAudiobookPlayerFromReader(
     await toggleLegacyPlayback();
     return;
   }
-  await startPagePlayback();
-  const started = useTTSStore.getState();
-  if (started.currentBookId === bookId && started.playState !== "stopped") openSheet();
+  // Opening the player is navigation, not a transport control: a live session
+  // keeps playing instead of being re-synthesized from the visible page.
+  const hasLiveSession = () => {
+    const s = useTTSStore.getState();
+    return s.currentBookId === bookId && s.playState !== "stopped";
+  };
+  if (!hasLiveSession()) await startPagePlayback();
+  if (hasLiveSession()) openSheet();
 }

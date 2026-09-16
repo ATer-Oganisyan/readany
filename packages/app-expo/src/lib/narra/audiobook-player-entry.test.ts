@@ -8,31 +8,42 @@ afterEach(() => {
   vi.resetModules();
 });
 
-it("starts from the visible page even when the book already has a session", async () => {
+it("opens the sheet without restarting a live session of the same book", async () => {
   vi.stubEnv("EXPO_PUBLIC_AUDIOBOOK_PLAYER_ENABLED", "true");
   const { openAudiobookPlayerFromReader, AUDIOBOOK_PLAYER_ENABLED } = await import(
     "../audiobook-player"
   );
   expect(AUDIOBOOK_PLAYER_ENABLED).toBe(true);
   const open = vi.fn();
-  const toggle = vi.fn();
+  const start = vi.fn();
   state.currentBookId = "book";
+  // Playing, loading and paused sessions keep their audio: the sheet only shows them.
   for (const playState of ["playing", "paused", "loading"]) {
     state.playState = playState;
-    await openAudiobookPlayerFromReader("book", toggle, open, toggle);
+    await openAudiobookPlayerFromReader("book", start, open, vi.fn());
   }
   expect(open).toHaveBeenCalledTimes(3);
-  expect(toggle).toHaveBeenCalledTimes(3);
+  expect(start).not.toHaveBeenCalled();
+
+  // A stopped session has nothing to show, so it starts from the visible page.
   state.playState = "stopped";
-  await openAudiobookPlayerFromReader("book", toggle, open, toggle);
-  expect(toggle).toHaveBeenCalledTimes(4);
-  expect(open).toHaveBeenCalledTimes(3);
-  toggle.mockImplementation(() => {
+  start.mockImplementation(() => {
     state.playState = "loading";
-    state.currentBookId = "other";
   });
-  await openAudiobookPlayerFromReader("other", toggle, open, toggle);
+  await openAudiobookPlayerFromReader("book", start, open, vi.fn());
+  expect(start).toHaveBeenCalledTimes(1);
   expect(open).toHaveBeenCalledTimes(4);
+
+  // Another book's session is replaced by this book's visible page.
+  state.playState = "playing";
+  state.currentBookId = "other";
+  start.mockImplementation(() => {
+    state.playState = "loading";
+    state.currentBookId = "book";
+  });
+  await openAudiobookPlayerFromReader("book", start, open, vi.fn());
+  expect(start).toHaveBeenCalledTimes(2);
+  expect(open).toHaveBeenCalledTimes(5);
 });
 
 it("uses the legacy toggle without starting a page or opening a sheet when disabled", async () => {
