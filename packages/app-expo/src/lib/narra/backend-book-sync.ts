@@ -340,7 +340,7 @@ export async function retryBackendBookAnalysis(bookId: string): Promise<void> {
   const binding = useNarraStore.getState().books[bookId]?.backendBinding;
   if (!binding || binding.resolution !== "private") {
     status(bookId, { error: "ANALYSIS_RETRY_UNAVAILABLE", analysisRetrying: false });
-    return;
+    throw new Error("ANALYSIS_RETRY_UNAVAILABLE");
   }
   status(bookId, { error: undefined, analysisRetrying: true });
   try {
