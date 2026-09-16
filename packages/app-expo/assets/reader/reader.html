@@ -6251,10 +6251,6 @@ a { color: ${primary} !important; }
           return;
         }
         if (doc.documentElement && doc.documentElement.hasAttribute('data-readany-pdf')) {
-          if (!_sceneSlotsEnabled) {
-            sceneSlotLog('skip: PDF scene generation is unavailable');
-            return;
-          }
           var pdfAnchor = pdfSceneAnchorForPage(content.index);
           if (
             _sceneRestoreAnchors.indexOf(pdfAnchor) >= 0 ||
@@ -6263,8 +6259,8 @@ a { color: ${primary} !important; }
             sceneSlotLog('skip: PDF scene page already exists at ' + pdfAnchor);
             return;
           }
-          _pdfSceneProposals.push(pdfAnchor);
           if (Number.isFinite(progressFraction)) _pdfSceneProgress[pdfAnchor] = progressFraction;
+          _pdfSceneProposals.push(pdfAnchor);
           syncPDFScenePages();
           sceneSlotLog('inserted PDF scene page at ' + pdfAnchor);
           return;
