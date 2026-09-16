@@ -4444,19 +4444,46 @@ export function createPostgresBookMarkupRepository(pool, {
       })
     },
 
+    /**
+     * Медиа персонажа повторяется дольше и дальше остальных заданий.
+     *
+     * Общая политика — три попытки с паузами 8 и 64 секунды: вся жизнь задания
+     * укладывалась в минуту, и заминки провайдера длиннее этой минуты хватало,
+     * чтобы персонаж остался без портрета навсегда. Навсегда — потому что
+     * `ensureCharacterMediaJobs` натыкается на ключ идемпотентности упавшего
+     * задания и статус ему не сбрасывает, а карточный конвейер, в отличие от
+     * v3, не зовёт проекцию с `retryFailedBundles`. Оттого на одной и той же
+     * книге у одного читателя портреты есть, а у другого нет: у каждого свой
+     * прогон, и кому-то он пришёлся на неудачные полминуты.
+     *
+     * Растягивать повторы карточкам и разметке нельзя: цепочка окон ждёт, пока
+     * у окна не останется заданий в работе, и отложенная на час карточка
+     * останавливает книгу целиком. Медиа цепочку не держит.
+     *
+     * Отказ модерации не повторяется вовсе: промпт тот же, ответ будет тот же,
+     * а стоит он как удачная генерация.
+     */
     async failGenerationJob(job, errorCode, { maxAttempts = 3 } = {}) {
+      const media = Object.values(CHARACTER_MEDIA_JOB_TYPES).includes(job.type)
       return transaction(pool, async (client) => {
         const result = await client.query(
           `UPDATE generation_jobs
-           SET status = CASE WHEN attempts < $4 THEN 'queued' ELSE 'failed' END,
+           SET status = CASE
+                 WHEN attempts < $4 AND $3 <> 'CENSOR' THEN 'queued'
+                 ELSE 'failed'
+               END,
                last_error_code = $3,
                available_at = now() + make_interval(
-                 secs => LEAST(300, power(2, attempts)::int)
+                 secs => LEAST($5::int, power(8, attempts)::int)
                ),
                locked_at = NULL, locked_by = NULL, lease_token = NULL, updated_at = now()
            WHERE id = $1 AND status = 'running' AND lease_token = $2::uuid
            RETURNING status, book_edition_id, character_key, target_version`,
-          [job.id, job.leaseToken, errorCode, maxAttempts]
+          [
+            job.id, job.leaseToken, errorCode,
+            media ? 6 : maxAttempts,
+            media ? 21_600 : 300
+          ]
         )
         if (!result.rows[0]) throw leaseLost(job.id)
         const failed = result.rows[0]
