@@ -79,6 +79,120 @@ function claimFrom(claim, type, allowed) {
 }
 
 /**
+ * Одного человека, разошедшегося на несколько карточек, выдаёт его же биография.
+ *
+ * Состав книги закрепляется до того, как модель напишет карточки, и голое имя
+ * успевает стать отдельным персонажем. Но, сочиняя биографию для «Роберта»,
+ * модель начинает её словами «Роберт Паглиньо — друг детства рассказчика» —
+ * то есть сама называет, кто это. То же на «Аяксе», чья биография начинается
+ * с «Аякс Теламонид», и на «Duke», чья — с «Duke Senior».
+ *
+ * Признак различает и обратные случаи: у сестёр Торп и близнецов Дэви с Дорой
+ * биографии начинаются каждая со своего имени, и они остаются врозь.
+ *
+ * Ограда от родни под общей фамилией: сливаются только карточки, чьи имена
+ * целиком набраны из слов этого общего начала. «Роберт» и «Паглиньо» набраны
+ * из «Роберта Паглиньо» и сходятся под полным именем. «Mr Price» из «Fanny
+ * Price» не набирается — слова «mr» там нет, и это её отец. Так же разъезжаются
+ * «Sir Felix Glyde» и «Sir Percival Glyde», «Крылов» и «Лизавета Сергеевна
+ * Крылова» (в «Крылове» нет ни одного слова жены), «Anne Thorpe» и «Maria
+ * Thorpe» при общем «Anne Thorpe».
+ *
+ * Прозвище проходит по второму допуску: карточка «Паг» набрана не из слов
+ * «Роберта Паглиньо», но сама перечисляет это имя среди своих псевдонимов —
+ * значит, речь о нём же. Своим именем родственника карточки не зовут, поэтому
+ * ограда держится.
+ *
+ * «Глостера» к «Ричарду» и «Бедного Тома» к «Эдгару» правило не соберёт, пока
+ * ни разбор по словам, ни псевдонимы их не связывают. Это намеренно: такое
+ * прозвище не отличить от родственника, о котором зашла речь в первых словах
+ * чужой биографии.
+ */
+const BIO_LEAD_MIN_LENGTH = 4
+const BIO_LEAD_SEPARATOR = /^(.{0,44}?)(\s[—–-]\s|\sis\s|\swas\s|,\s|\.\s|\.$)/u
+const NAME_TOKEN_SEPARATOR = /[^\p{L}\p{N}]+/u
+
+function bioLeadName(card) {
+  const bio = String(card?.bio?.value ?? '').trim()
+  if (!bio) return ''
+  const lead = (BIO_LEAD_SEPARATOR.exec(bio)?.[1] ?? '').trim()
+  return lead.length >= BIO_LEAD_MIN_LENGTH ? lead : ''
+}
+
+function nameTokens(name) {
+  return String(name ?? '').toLowerCase().split(NAME_TOKEN_SEPARATOR).filter(Boolean)
+}
+
+export function reconcileCardsByBioLead({ cards, fragmentsByCharacter }) {
+  const groups = new Map()
+  for (const card of cards) {
+    const lead = bioLeadName(card)
+    if (!lead) continue
+    const group = groups.get(lead.toLowerCase()) ?? { lead, members: [] }
+    group.members.push(card)
+    groups.set(lead.toLowerCase(), group)
+  }
+  const absorbed = new Map()
+  const renamed = new Map()
+  for (const [key, { lead, members }] of groups) {
+    if (members.length < 2) continue
+    const leadTokens = new Set(nameTokens(key))
+    const kin = members.filter((card) => {
+      if ((card.aliases ?? []).some((alias) => String(alias).toLowerCase() === key)) return true
+      const tokens = nameTokens(card.name)
+      return tokens.length > 0 && tokens.every((token) => leadTokens.has(token))
+    })
+    if (kin.length < 2) continue
+    const primary = kin.sort((left, right) =>
+      nameTokens(right.name).length - nameTokens(left.name).length ||
+      (right.mentionCount ?? 0) - (left.mentionCount ?? 0) ||
+      left.characterKey.localeCompare(right.characterKey, 'en'))[0]
+    // Оставшийся зовётся так, как его называет биография: «Роберт» и «Паглиньо»
+    // сходятся не в одного из двоих, а в «Роберта Паглиньо».
+    if (String(primary.name ?? '').toLowerCase() !== key) renamed.set(primary.characterKey, lead)
+    for (const card of kin) {
+      if (card.characterKey !== primary.characterKey) absorbed.set(card.characterKey, primary.characterKey)
+    }
+  }
+  if (!absorbed.size) return { cards, fragmentsByCharacter, merges: [] }
+
+  const byKey = new Map(cards.map((card) => [card.characterKey, card]))
+  const mergedFragments = new Map(fragmentsByCharacter)
+  const merges = []
+  for (const [fromKey, toKey] of absorbed) {
+    const from = byKey.get(fromKey)
+    const to = byKey.get(toKey)
+    if (!from || !to) continue
+    const previousName = to.name
+    const leadName = renamed.get(toKey)
+    if (leadName) {
+      to.name = leadName
+      to.fullName = to.fullName && nameTokens(to.fullName).length > nameTokens(leadName).length
+        ? to.fullName
+        : leadName
+      renamed.delete(toKey)
+    }
+    merges.push({ fromKey, toKey, fromName: from.name, toName: to.name })
+    to.aliases = [...new Set([
+      ...(to.aliases ?? []),
+      ...(previousName && previousName !== to.name ? [previousName] : []),
+      ...(from.name && from.name !== to.name ? [from.name] : []),
+      ...(from.aliases ?? [])
+    ])].slice(0, 32)
+    mergedFragments.set(toKey, [
+      ...(mergedFragments.get(toKey) ?? []),
+      ...(mergedFragments.get(fromKey) ?? [])
+    ])
+    mergedFragments.delete(fromKey)
+  }
+  return {
+    cards: cards.filter((card) => !absorbed.has(card.characterKey)),
+    fragmentsByCharacter: mergedFragments,
+    merges
+  }
+}
+
+/**
  * Наблюдения и сущности из карточек и фрагментов.
  *
  * @param {object} input
@@ -93,9 +207,14 @@ export function projectCardsToSnapshot({ cards, fragmentsByCharacter, textLength
   if (!Number.isSafeInteger(textLength) || textLength < 1) {
     throw projectionError('CARD_PROJECTION_INVALID', 'textLength must be a positive safe integer')
   }
-  const byCharacter = fragmentsByCharacter instanceof Map
-    ? fragmentsByCharacter
-    : new Map(Object.entries(fragmentsByCharacter ?? {}))
+  const reconciled = reconcileCardsByBioLead({
+    cards,
+    fragmentsByCharacter: fragmentsByCharacter instanceof Map
+      ? fragmentsByCharacter
+      : new Map(Object.entries(fragmentsByCharacter ?? {}))
+  })
+  const reconciledCards = reconciled.cards
+  const byCharacter = reconciled.fragmentsByCharacter
 
   const observations = []
   const seenObservations = new Set()
@@ -103,7 +222,7 @@ export function projectCardsToSnapshot({ cards, fragmentsByCharacter, textLength
   const characterProfiles = []
   const warmupDistance = Math.max(2_000, Math.round(textLength * 0.02))
 
-  for (const card of [...cards].sort((left, right) =>
+  for (const card of [...reconciledCards].sort((left, right) =>
     left.characterKey.localeCompare(right.characterKey, 'en'))) {
     const fragments = byCharacter.get(card.characterKey) ?? []
     if (!fragments.length) {

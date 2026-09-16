@@ -779,3 +779,70 @@ test('two patronymic forms are not a full name, so one adjacency proves nothing'
   ])
   assert.deepEqual(pairs, [])
 })
+
+/**
+ * Голое имя, за которым стоит не один человек.
+ *
+ * Самая частая причина неверной склейки. В «Илиаде» два Аякса — Теламонид и
+ * Оилид; у Пипса четыре герцога; в «Паже цесаревны» три Анны; в «Ложной
+ * слепоте» два Роберта — Каннингем и Паглиньо. Раньше такая пара уходила
+ * модели с обычным сигналом «общее имя», и она сливала голое имя с одним из
+ * носителей наугад. Слитый не с тем Аяксом пропадает совсем; несклеенный
+ * остаётся отдельной карточкой, и это потеря меньшая.
+ *
+ * Обратная сторона того же счёта: ровно одно расширение — сильная улика за
+ * слияние. По каталогу таких имён 417 в 240 книгах, неоднозначных — 286 в 187.
+ */
+function named(key, name, count = 50) {
+  return candidate({ candidateKey: key, displayName: name, count })
+}
+
+test('a bare name shared by two people is forbidden, not merged', () => {
+  const rows = [
+    named('name:ayaks', 'Аякс', 206),
+    named('name:telamonid', 'Аякс Теламонид', 66),
+    named('name:oilid', 'Аякс Оилид', 20)
+  ]
+  const { forbidden } = rosterForbiddenPairs(rows)
+  const reasons = forbidden.map(({ reason }) => reason)
+  assert.equal(forbidden.length, 2)
+  assert.ok(reasons.every((reason) => reason === 'ambiguous_bare_name'))
+  // И запрет доходит до пар: модель об этих слияниях даже не спрашивают.
+  const pairs = rosterCandidatePairs(rows, { forbiddenPairs: forbidden })
+  assert.ok(pairs.every(({ leftKey, rightKey }) =>
+    !(leftKey === 'name:ayaks' || rightKey === 'name:ayaks')))
+})
+
+test('a bare name with exactly one full form is strong merge evidence', () => {
+  const rows = [named('name:emperor', 'Emperor', 625), named('name:alexander', 'Emperor Alexander', 139)]
+  const { forbidden } = rosterForbiddenPairs(rows)
+  assert.deepEqual(forbidden, [])
+  const [pair] = rosterCandidatePairs(rows, { forbiddenPairs: forbidden })
+  assert.ok(pair.signals.includes('unique_extension'))
+})
+
+test('the two rules together take Paglino apart correctly', () => {
+  // «Роберт» неоднозначен — Каннингем и Паглиньо, его не трогаем. «Паглиньо»
+  // имеет ровно одно полное имя и сливается с ним. Ровно тот разбор, который
+  // на этой книге признан верным вручную.
+  const rows = [
+    named('name:robert', 'Роберт', 43),
+    named('name:rp', 'Роберт Паглиньо', 55),
+    named('name:rk', 'Роберт Каннингем', 136),
+    named('name:paglino', 'Паглиньо', 8)
+  ]
+  const { forbidden } = rosterForbiddenPairs(rows)
+  assert.deepEqual(
+    forbidden.map(({ leftKey, rightKey }) => `${leftKey}+${rightKey}`).sort(),
+    ['name:rk+name:robert', 'name:robert+name:rp']
+  )
+  const pairs = rosterCandidatePairs(rows, { forbiddenPairs: forbidden })
+  const paglino = pairs.find(({ leftKey, rightKey }) =>
+    leftKey === 'name:paglino' && rightKey === 'name:rp')
+  assert.ok(paglino?.signals.includes('unique_extension'))
+})
+
+test('a bare name nobody extends changes nothing', () => {
+  const rows = [named('name:emma', 'Эмма', 921), named('name:harriet', 'Харриет', 506)]
+  assert.deepEqual(rosterForbiddenPairs(rows).forbidden, [])
+})

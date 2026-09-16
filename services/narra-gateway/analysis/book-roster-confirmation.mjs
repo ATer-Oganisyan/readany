@@ -186,8 +186,59 @@ function coMentionParagraphs(fragments) {
  * тринадцати размеченных пар разных людей, крупнейшая склейка — семь форм
  * одного имени.
  */
+/**
+ * Голое имя и его расширения: «Аякс» против «Аякс Теламонид» и «Аякс Оилид».
+ *
+ * У одного короткого имени в книге может стоять не один человек, и это самая
+ * частая причина неверной склейки. В «Илиаде» два Аякса, у Пипса четыре
+ * герцога, в «Паже цесаревны» три Анны, в «Ложной слепоте» два Роберта —
+ * Каннингем и Паглиньо. Сейчас такая пара уходит модели с обычным сигналом
+ * «общее имя», и она сливает голое имя с одним из носителей наугад.
+ *
+ * Считается по одним именам, без обращения к тексту: сколько многосоставных
+ * имён книги содержат этот токен. Ровно одно — улика за слияние, и сильная.
+ * Два и больше — запрет: слитый не с тем Аяксом пропадает совсем, а
+ * несклеенный остаётся отдельной карточкой, и это потеря меньшая.
+ */
+function bareNameExtensions(candidates) {
+  const extensions = new Map()
+  const bare = new Map()
+  for (const candidate of candidates) {
+    for (const name of candidateNames(candidate)) {
+      const tokens = identityTokens(name)
+      if (tokens.length === 1) {
+        const owners = bare.get(tokens[0]) ?? new Set()
+        owners.add(candidate.candidateKey)
+        bare.set(tokens[0], owners)
+        continue
+      }
+      for (const token of tokens) {
+        const owners = extensions.get(token) ?? new Set()
+        owners.add(candidate.candidateKey)
+        extensions.set(token, owners)
+      }
+    }
+  }
+  const byPair = new Map()
+  for (const [token, owners] of bare) {
+    const holders = [...(extensions.get(token) ?? new Set())]
+      .filter((key) => !owners.has(key))
+    if (!holders.length) continue
+    for (const bareKey of owners) {
+      for (const holderKey of holders) {
+        const [leftKey, rightKey] = [bareKey, holderKey].sort(compareText)
+        byPair.set(pairKey(leftKey, rightKey), {
+          leftKey, rightKey, bareKey, token, extensionCount: holders.length
+        })
+      }
+    }
+  }
+  return byPair
+}
+
 export function rosterForbiddenPairs(candidates, { fragments = null } = {}) {
   const paragraphs = coMentionParagraphs(fragments)
+  const bareExtensions = bareNameExtensions(candidates)
   const genders = new Map(candidates.map((candidate) =>
     [candidate.candidateKey, candidateGenderSignals(candidate)]))
   const values = new Map()
@@ -203,6 +254,11 @@ export function rosterForbiddenPairs(candidates, { fragments = null } = {}) {
         ![...leftGender].some((value) => rightGender.has(value))
       ) {
         values.set(key, { leftKey, rightKey, reason: 'gender_conflict' })
+        continue
+      }
+      const ambiguous = bareExtensions.get(key)
+      if (ambiguous && ambiguous.extensionCount > 1) {
+        values.set(key, { leftKey, rightKey, reason: 'ambiguous_bare_name' })
         continue
       }
       const leftParagraphs = paragraphs.get(left.candidateKey)
@@ -244,6 +300,11 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [], coMentio
       names: candidateNames(candidate)
     }))).map((pair) => [pairKey(pair.leftKey, pair.rightKey), pair])
   )
+  // Уникальное расширение — сильнейшая улика из тех, что даёт имя: если в книге
+  // ровно один «Роберт Паглиньо», то «Паглиньо» — он же. Неуникальные сюда не
+  // доходят, их отсекает запрет: два Аякса лучше оставить врозь, чем слить
+  // наугад с одним из них.
+  const bareExtensions = bareNameExtensions(candidates)
   const rows = []
   for (const [index, left] of candidates.entries()) {
     for (const right of candidates.slice(index + 1)) {
@@ -254,12 +315,14 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [], coMentio
       const adjacency = adjacentAsOneName(left, right)
       const adjacent = adjacency > 0
       const sharedParagraphs = shared.get(key) ?? 0
-      if (!nameSignal && !lexicon && !adjacent && !sharedParagraphs) continue
+      const uniqueExtension = bareExtensions.get(key)?.extensionCount === 1
+      if (!nameSignal && !lexicon && !adjacent && !sharedParagraphs && !uniqueExtension) continue
       const [leftKey, rightKey] = [left.candidateKey, right.candidateKey].sort(compareText)
       rows.push({
         leftKey,
         rightKey,
         signals: [
+          ...(uniqueExtension ? ['unique_extension'] : []),
           ...(nameSignal ? [nameSignal] : []),
           ...(lexicon ? ['nickname_lexicon'] : []),
           ...(adjacent ? ['adjacent_full_name'] : []),
@@ -274,7 +337,9 @@ export function rosterCandidatePairs(candidates, { forbiddenPairs = [], coMentio
   // Первыми идут пары, которых не видит перекрытие токенов: лексикон и
   // соседство. При упоре в потолок терять надо не их.
   const unseenByOverlap = (row) =>
-    Number(!row.signals.includes('nickname_lexicon') && !row.signals.includes('adjacent_full_name'))
+    Number(!row.signals.includes('nickname_lexicon') &&
+      !row.signals.includes('adjacent_full_name') &&
+      !row.signals.includes('unique_extension'))
   return rows.sort((left, right) =>
     unseenByOverlap(left) - unseenByOverlap(right) ||
     right.adjacentCount - left.adjacentCount ||
