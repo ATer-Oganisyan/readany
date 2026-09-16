@@ -17,6 +17,7 @@
 ## Запуск Expo
 
 - Никогда не использовать `ngrok`, Expo Tunnel (`expo start --tunnel`) или другие публичные туннели для запуска проекта.
+- По умолчанию все запуски, включая симулятор и Metro, идут на продовый бэкенд `https://api.narra.disrupt.builders`; это дефолт `build_and_run.sh`.
 - Для запуска на физическом телефоне использовать только Expo LAN: телефон и ноутбук должны быть в одной Wi‑Fi-сети, Metro запускать из `packages/app-expo` командой `./script/build_and_run.sh start-lan`.
 - Для ежедневного запуска iOS Simulator использовать `./script/build_and_run.sh` или Codex-действие `Run`: оно загружает Simulator, запускает или переиспользует Metro через localhost и открывает уже установленный dev-client без нативной сборки.
 - Не запускать одновременно Simulator или Device Hub из разных версий Xcode. Перед сменой `DEVELOPER_DIR`/`xcode-select` остановить booted-устройство, закрыть оба UI-приложения и выполнить `./script/build_and_run.sh check`.

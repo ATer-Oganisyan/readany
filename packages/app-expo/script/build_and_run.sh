@@ -12,8 +12,14 @@ NARRA_BACKEND_PROFILE="${READANY_NARRA_BACKEND:-}"
 
 case "$NARRA_BACKEND_PROFILE" in
   "")
-    export EXPO_PUBLIC_NARRA_ENVIRONMENT="${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test}"
-    export EXPO_PUBLIC_NARRA_GATEWAY_URL="${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders}"
+    # The test gateway is retired: every run, simulator included, talks to production.
+    # A custom gateway URL is only honoured by the app outside the production environment.
+    if [ -n "${EXPO_PUBLIC_NARRA_GATEWAY_URL:-}" ]; then
+      export EXPO_PUBLIC_NARRA_ENVIRONMENT="${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test}"
+    else
+      export EXPO_PUBLIC_NARRA_ENVIRONMENT="${EXPO_PUBLIC_NARRA_ENVIRONMENT:-production}"
+      export EXPO_PUBLIC_NARRA_GATEWAY_URL="https://api.narra.disrupt.builders"
+    fi
     ;;
   test)
     export EXPO_PUBLIC_NARRA_ENVIRONMENT="test"
@@ -77,7 +83,7 @@ Optional environment variables:
   READANY_DEVICE_ID            Physical devicectl device ID for rebuild-ios (otherwise Simulator)
   READANY_METRO_HOST           LAN host for the physical dev-client (defaults to en0 IP)
   READANY_METRO_PORT           Metro port (default: 8081)
-  READANY_NARRA_BACKEND        Backend profile: test (default) or production
+  READANY_NARRA_BACKEND        Backend profile: production (default) or test
   READANY_DERIVED_DATA_PATH    Canonical DerivedData directory
   READANY_DEVELOPER_DIR        Xcode Developer directory (defaults to DEVELOPER_DIR or xcode-select)
   READANY_ALLOW_PASTEBOARD_SYNC=1
@@ -247,7 +253,7 @@ run_metro_prepared() {
   else
     log "Starting Metro on localhost:$METRO_PORT"
   fi
-  log "Gateway profile: ${EXPO_PUBLIC_NARRA_ENVIRONMENT:-test} (${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api-test.narra.disrupt.builders})"
+  log "Gateway profile: ${EXPO_PUBLIC_NARRA_ENVIRONMENT:-production} (${EXPO_PUBLIC_NARRA_GATEWAY_URL:-https://api.narra.disrupt.builders})"
 
   cd "$APP_ROOT"
   # Keep reader dependencies in the initial bundle: an import() must not need
@@ -578,7 +584,7 @@ run_rebuild_device() {
     xcrun devicectl device process launch --device "$READANY_DEVICE_ID" \
       --terminate-existing --payload-url "$launch_url" "$BUNDLE_ID"
   else
-    log "Installed. Start Metro with READANY_NARRA_BACKEND=${READANY_NARRA_BACKEND:-test} ./script/build_and_run.sh start-lan"
+    log "Installed. Start Metro with READANY_NARRA_BACKEND=${READANY_NARRA_BACKEND:-production} ./script/build_and_run.sh start-lan"
   fi
 }
 

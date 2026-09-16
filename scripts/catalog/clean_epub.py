@@ -18,6 +18,7 @@ from lxml import etree as ET
 from lxml import html as HTML
 from chapter_headings import normalize_chapters
 from repair_navigation import recover_navigation, remove_contents_column_labels
+from split_documents import split_large_documents
 
 XHTML = 'http://www.w3.org/1999/xhtml'
 OPF = 'http://www.idpf.org/2007/opf'
@@ -362,6 +363,10 @@ def clean_epub(source, destination, title=None, author=None, editorial_headings=
     languages = metadata.findall(f'{{{DC}}}language')
     recover_navigation(docs, ncxs, manifest, opf, navigation_repair, report)
     remove_contents_column_labels(docs, ncxs, report)
+    # Volume-sized documents become chapter-sized parts (see split_documents.py)
+    # before heading normalization, so the new chapter entries and their headings
+    # get the same treatment as every other navigation label.
+    split_large_documents(docs, ncxs, manifest, opf, opf_name, excluded, report, member_path)
     normalize_chapters(docs, ncxs, manifest, excluded, report, member_path, text,
                        languages[0].text if languages and languages[0].text else 'ru')
     for name, ncx in ncxs.items(): files[name] = serialize(ncx)

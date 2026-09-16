@@ -1637,6 +1637,8 @@
         view = null;
         readerElement = null;
         currentBook = null;
+        // The next book's first section load rebuilds and re-scales the renderer styles.
+        lastRendererStyles = '';
         currentSectionIndex = 0;
         totalSections = 0;
       }
@@ -1789,7 +1791,11 @@
             customFontFamily: currentSettings.customFontFamily,
           });
           applyDocStyles(doc);
-          applySettings(currentSettings);
+          // The renderer stylesheet is built once; applyDocStyles hands the cached
+          // copy to every later section. Rebuilding it here re-styled all loaded
+          // documents on each load, costing several full style recalculations of a
+          // volume-sized section for nothing.
+          if (!lastRendererStyles) applySettings(currentSettings);
 
           // The fixed SB Serif family is warmed once in the outer document
           // before Foliate creates its section documents. Every section still
@@ -1871,6 +1877,9 @@
           if (currentSectionIndex !== previousSectionIndex) {
             refreshUserAnnotations(120);
           }
+          // Names on the page just turned to are underlined right away even while
+          // the rest of a long section is still being matched in the background.
+          try { flushVisibleCharacterNames(); } catch (e) {}
           // Extract text after page render settles
           if (snippetTimer) clearTimeout(snippetTimer);
           snippetTimer = setTimeout(() => {
@@ -2010,6 +2019,20 @@
           postToRN('toc', { items: convertTOC(book.toc) });
         }
 
+        // Section sizes tell RN how heavy the book is for the renderer: one
+        // volume-sized section costs far more than the same text in chapters.
+        try {
+          var sectionSizes = (book.sections || []).map(function (section) {
+            return Number(section && section.size) || 0;
+          });
+          postToRN('bookStructure', {
+            loadId: msg.loadId,
+            sections: sectionSizes.length,
+            maxSectionBytes: sectionSizes.reduce(function (a, b) { return a > b ? a : b; }, 0),
+            totalBytes: sectionSizes.reduce(function (a, b) { return a + b; }, 0),
+          });
+        } catch (e) {}
+
         const renderer = el.renderer;
         if (renderer && !el.isFixedLayout) {
           // Swipes are handled by the tap listener, which turns one page per
@@ -2035,6 +2058,13 @@
         } else if (msg.lastLocation) {
           try {
             await el.init({ lastLocation: msg.lastLocation });
+            // A CFI saved against a differently cut file resolves without throwing
+            // but lands somewhere else. The saved percentage is the tiebreaker.
+            const landed = el.lastLocation && el.lastLocation.fraction;
+            if (Number.isFinite(msg.fallbackFraction) && Number.isFinite(landed)
+                && Math.abs(landed - msg.fallbackFraction) > 0.05) {
+              await el.goToFraction(msg.fallbackFraction);
+            }
           } catch (err) {
             console.warn('[WebView] Failed to init with lastLocation, going to start:', err);
             await el.goToFraction(Number.isFinite(msg.fallbackFraction) ? msg.fallbackFraction : 0);
@@ -3281,16 +3311,31 @@ a { color: var(--readany-link, ${primary}) !important; }
         var pStart = renderer.start;
         var pEnd = renderer.end;
 
-        var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+        var snippetFilter = {
           acceptNode: function(node) {
             if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_SKIP;
             if (isTTSFootnoteMarker(node.nodeValue)) return NodeFilter.FILTER_REJECT;
             if (shouldSkipTTSNode(node.parentElement)) return NodeFilter.FILTER_REJECT;
             return NodeFilter.FILTER_ACCEPT;
           }
-        });
+        };
+        var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, snippetFilter);
 
-        var textNode = walker.nextNode();
+        // The renderer already knows where the visible range starts. Walking from
+        // the top of the section instead measures every preceding text node, which
+        // in a volume-sized section is thousands of layout reads per page turn.
+        var textNode = null;
+        var visibleStart = view.lastLocation && view.lastLocation.range
+          ? view.lastLocation.range.startContainer
+          : null;
+        if (visibleStart && visibleStart.ownerDocument === doc && doc.body.contains(visibleStart)) {
+          walker.currentNode = visibleStart;
+          textNode = visibleStart.nodeType === 3 && snippetFilter.acceptNode(visibleStart) === NodeFilter.FILTER_ACCEPT
+            ? visibleStart
+            : walker.nextNode();
+        } else {
+          textNode = walker.nextNode();
+        }
         while (textNode && totalLen < maxLen) {
           var range = doc.createRange();
           range.selectNodeContents(textNode);
@@ -5469,6 +5514,7 @@ a { color: var(--readany-link, ${primary}) !important; }
     }
 
     function doRemoveRubyAnnotations(doc) {
+      invalidateCharacterSpans(doc);
       if (!doc) return;
       var style = doc.getElementById(RUBY_STYLE_ID);
       if (style) style.remove();
@@ -5544,24 +5590,57 @@ a { color: var(--readany-link, ${primary}) !important; }
     var CHARACTER_NAME_CLASS = 'readany-character-name';
     var CHARACTER_NAME_ATTR = 'data-readany-character-id';
     var CHARACTER_NAME_BLOCK_ATTR = 'data-readany-charnames';
-    var CHARACTER_NAME_CHUNK = 24;
+    // Блоков за один срез сопоставления (только вычисления, без правок DOM)
+    var CHARACTER_NAME_CHUNK = 48;
 
     function reportVisibleCharacters() {
       if (!view || !view.lastLocation || !view.lastLocation.range) return;
       var visible = view.lastLocation.range;
       var doc = visible.startContainer.ownerDocument;
       if (!doc) return;
+      var spans = characterSpansForDoc(doc);
+      if (!spans.length) return;
+      // The visible range is one contiguous stretch of the document and the spans
+      // are in document order: binary-search the first candidate instead of
+      // testing every span in the section.
+      function position(span) {
+        try { return visible.comparePoint(span, 0); } catch (e) { return NaN; }
+      }
+      var lo = 0;
+      var hi = spans.length;
+      while (lo < hi) {
+        var mid = (lo + hi) >> 1;
+        if (position(spans[mid]) < 0) lo = mid + 1; else hi = mid;
+      }
       var ids = [];
-      var spans = doc.querySelectorAll('[' + CHARACTER_NAME_ATTR + ']');
-      for (var span of spans) {
+      for (var i = Math.max(0, lo - 1); i < spans.length; i++) {
+        var span = spans[i];
+        if (position(span) > 0) break;
+        var hit = false;
+        try { hit = visible.intersectsNode(span); } catch (e) { hit = false; }
+        if (!hit) continue;
         var id = span.getAttribute(CHARACTER_NAME_ATTR);
-        if (!id || _encounteredCharacterIds.has(id) || !visible.intersectsNode(span)) continue;
+        if (!id || _encounteredCharacterIds.has(id)) continue;
         _encounteredCharacterIds.add(id);
         ids.push(id);
       }
       if (ids.length) postToRN('charactersEncountered', {
         characterIds: ids, loadId: _characterReaderLoadId,
       });
+    }
+
+    // Name spans per section document, in document order. reportVisibleCharacters
+    // runs after every page turn, so it must not rescan a volume-sized section.
+    var _characterSpanCache = new WeakMap();
+    function characterSpansForDoc(doc) {
+      var cached = _characterSpanCache.get(doc);
+      if (cached) return cached;
+      var spans = Array.prototype.slice.call(doc.querySelectorAll('[' + CHARACTER_NAME_ATTR + ']'));
+      _characterSpanCache.set(doc, spans);
+      return spans;
+    }
+    function invalidateCharacterSpans(doc) {
+      if (doc) _characterSpanCache.delete(doc);
     }
 
     function characterNameInjectStyles(doc) {
@@ -5592,8 +5671,11 @@ a { color: var(--readany-link, ${primary}) !important; }
       return false;
     }
 
-    function markCharacterNamesInBlock(doc, block) {
-      block.setAttribute(CHARACTER_NAME_BLOCK_ATTR, '1');
+    // Matching is CPU work and can run in slices; touching the DOM is what makes
+    // the browser lay out the whole multi-column section again. So the plan for a
+    // block (which text nodes get which spans) is computed first, and the DOM is
+    // rewritten in one pass per section instead of once per slice.
+    function planCharacterNamesInBlock(doc, block, planned) {
       var walker = doc.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
         acceptNode: function(node) {
           if (!node.nodeValue || !/[A-ZА-ЯЁ]/.test(node.nodeValue)) return NodeFilter.FILTER_SKIP;
@@ -5602,20 +5684,38 @@ a { color: var(--readany-link, ${primary}) !important; }
           return NodeFilter.FILTER_ACCEPT;
         }
       });
-      var textNodes = [];
       var current = walker.nextNode();
-      while (current) { textNodes.push(current); current = walker.nextNode(); }
-
-      for (var ni = 0; ni < textNodes.length; ni++) {
-        var node = textNodes[ni];
-        var text = node.nodeValue || '';
+      while (current) {
+        var text = current.nodeValue || '';
         var matches;
         try {
           matches = window._readanyFindCharacterNameMatches(text, _characterNameSpec);
         } catch (e) {
           matches = [];
         }
-        if (!matches || !matches.length) continue;
+        if (matches && matches.length) planned.push({ node: current, text: text, matches: matches, block: block });
+        current = walker.nextNode();
+      }
+      planned.push({ block: block });
+      return planned;
+    }
+
+    function applyCharacterNamePlan(doc, planned) {
+      var wrote = false;
+      var stale = new Set();
+      for (var pi = 0; pi < planned.length; pi++) {
+        var entry = planned[pi];
+        if (!entry.node) {
+          // A block whose text moved under the plan (TTS, ruby, translation) is
+          // left unmarked so the next pass picks it up again.
+          if (!stale.has(entry.block)) entry.block.setAttribute(CHARACTER_NAME_BLOCK_ATTR, '1');
+          continue;
+        }
+        var node = entry.node;
+        if (!node.parentNode || node.nodeValue !== entry.text) { stale.add(entry.block); continue; }
+        wrote = true;
+        var text = entry.text;
+        var matches = entry.matches;
         var fragment = doc.createDocumentFragment();
         var cursor = 0;
         for (var mi = 0; mi < matches.length; mi++) {
@@ -5636,15 +5736,12 @@ a { color: var(--readany-link, ${primary}) !important; }
         if (cursor < text.length) {
           fragment.appendChild(doc.createTextNode(text.slice(cursor)));
         }
-        if (node.parentNode) node.parentNode.replaceChild(fragment, node);
+        node.parentNode.replaceChild(fragment, node);
       }
+      if (wrote) invalidateCharacterSpans(doc);
     }
 
-    // Разметка порциями через setTimeout, чтобы не блокировать рендер страницы.
-    function scheduleCharacterNameMarkup(doc) {
-      if (!doc || !_characterNameSpec || !window._readanyFindCharacterNameMatches) return;
-      var spec = _characterNameSpec;
-      characterNameInjectStyles(doc);
+    function collectCharacterNameBlocks(doc) {
       var blocks = doc.querySelectorAll(
         'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption'
       );
@@ -5656,18 +5753,58 @@ a { color: var(--readany-link, ${primary}) !important; }
         if (characterNameShouldSkip(block)) continue;
         pending.push(block);
       }
+      return pending;
+    }
+
+    // Blocks on the visible page are marked synchronously, so a page turn never
+    // shows names appearing after the fact while the rest of a long section is
+    // still being matched in the background.
+    function flushVisibleCharacterNames() {
+      if (!view || !view.lastLocation || !view.lastLocation.range) return;
+      var visible = view.lastLocation.range;
+      var doc = visible.startContainer.ownerDocument;
+      var state = doc && doc.__readany_charnames_pending;
+      if (!state || state.spec !== _characterNameSpec) return;
+      var planned = [];
+      for (var i = 0; i < state.pending.length; i++) {
+        var block = state.pending[i];
+        if (block.hasAttribute(CHARACTER_NAME_BLOCK_ATTR)) continue;
+        var hit = false;
+        try { hit = visible.intersectsNode(block); } catch (e) { hit = false; }
+        if (hit) planCharacterNamesInBlock(doc, block, planned);
+      }
+      if (!planned.length) return;
+      applyCharacterNamePlan(doc, planned);
+      reportVisibleCharacters();
+    }
+
+    // Разметка секции: видимая страница — сразу, остальное — сопоставление порциями
+    // через setTimeout без правок DOM, затем одна вставка спанов на всю секцию.
+    function scheduleCharacterNameMarkup(doc) {
+      if (!doc || !_characterNameSpec || !window._readanyFindCharacterNameMatches) return;
+      var spec = _characterNameSpec;
+      characterNameInjectStyles(doc);
+      var pending = collectCharacterNameBlocks(doc);
       if (!pending.length) return;
+      var state = { spec: spec, pending: pending };
+      doc.__readany_charnames_pending = state;
+      flushVisibleCharacterNames();
+      var planned = [];
       var index = 0;
       function step() {
-        // Спека сменилась (unlock/новая книга) — этот проход устарел
-        if (_characterNameSpec !== spec) return;
+        // Спека сменилась (unlock/новая книга) или разметку сняли — этот проход устарел
+        if (_characterNameSpec !== spec || doc.__readany_charnames_pending !== state) return;
         if (!doc.defaultView) return; // секция выгружена
         var limit = Math.min(index + CHARACTER_NAME_CHUNK, pending.length);
         for (; index < limit; index++) {
-          try { markCharacterNamesInBlock(doc, pending[index]); } catch (e) {}
+          var block = pending[index];
+          if (block.hasAttribute(CHARACTER_NAME_BLOCK_ATTR)) continue;
+          try { planCharacterNamesInBlock(doc, block, planned); } catch (e) {}
         }
+        if (index < pending.length) { setTimeout(step, 0); return; }
+        doc.__readany_charnames_pending = null;
+        applyCharacterNamePlan(doc, planned);
         reportVisibleCharacters();
-        if (index < pending.length) setTimeout(step, 0);
       }
       setTimeout(step, 0);
     }
@@ -5684,6 +5821,8 @@ a { color: var(--readany-link, ${primary}) !important; }
       for (var b = 0; b < blocksMarked.length; b++) {
         blocksMarked[b].removeAttribute(CHARACTER_NAME_BLOCK_ATTR);
       }
+      doc.__readany_charnames_pending = null;
+      invalidateCharacterSpans(doc);
     }
 
     // Вызывается из RN: спека матчера (JSON или объект) либо null — снять разметку

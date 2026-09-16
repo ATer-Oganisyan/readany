@@ -13,26 +13,23 @@ const eas = JSON.parse(readFileSync(new URL("../../../eas.json", import.meta.url
 };
 
 describe("mobile environment profiles", () => {
-  it("keeps the simulator on TEST and disables analytics", () => {
+  // The test gateway is retired: every profile, simulator included, talks to production.
+  it("keeps the simulator on production and disables analytics", () => {
     const profile = eas.build["development-simulator"];
     expect(profile.ios?.simulator).toBe(true);
     expect(profile.channel).toBe("development");
-    expect(profile.env?.EXPO_PUBLIC_NARRA_ENVIRONMENT).toBe("test");
-    expect(profile.env?.EXPO_PUBLIC_NARRA_GATEWAY_URL).toBe(
-      "https://api-test.narra.disrupt.builders",
-    );
+    expect(profile.env?.EXPO_PUBLIC_NARRA_ENVIRONMENT).toBe("production");
+    expect(profile.env?.EXPO_PUBLIC_NARRA_GATEWAY_URL).toBe("https://api.narra.disrupt.builders");
     expect(profile.env?.EXPO_PUBLIC_NARRA_ANALYTICS_TIER).toBe("none");
   });
 
-  it("binds internal builds to TEST", () => {
+  it("binds internal builds to the production API", () => {
     for (const name of ["development", "preview"]) {
       const profile = eas.build[name];
       expect(profile.distribution).toBe("internal");
       expect(profile.channel).toBe("test");
-      expect(profile.env?.EXPO_PUBLIC_NARRA_ENVIRONMENT).toBe("test");
-      expect(profile.env?.EXPO_PUBLIC_NARRA_GATEWAY_URL).toBe(
-        "https://api-test.narra.disrupt.builders",
-      );
+      expect(profile.env?.EXPO_PUBLIC_NARRA_ENVIRONMENT).toBe("production");
+      expect(profile.env?.EXPO_PUBLIC_NARRA_GATEWAY_URL).toBe("https://api.narra.disrupt.builders");
     }
   });
 

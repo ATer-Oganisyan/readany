@@ -109,6 +109,9 @@ const rafAnimateScroll = (a, b, duration, ease, render) => new Promise(resolve =
 // Android) Blink blocks the UI for ~1s preparing it before the turn snaps. Above
 // this accumulated rendered-view size, animate the native scroll offset instead.
 const RAF_ANIMATE_SCROLL_THRESHOLD = 20000
+// Bytes of section markup above which neighbours are not preloaded in
+// paginated mode (see #isOversized).
+const PRELOAD_MAX_SECTION_SIZE = 300 * 1024
 
 // collapsed range doesn't return client rects sometimes (or always?)
 // try make get a non-collapsed range or element
@@ -2252,8 +2255,8 @@ export class Paginator extends HTMLElement {
                 if (lastIndex == null) break
                 const nextIdx = this.#adjacentIndex(1, lastIndex)
                 if (nextIdx == null) break
-                // Stop preloading at writing-mode boundaries
-                if (!this.#isSameDirection(nextIdx)) break
+                // Stop at writing-mode boundaries and before volume-sized neighbours
+                if (!this.#canPreload(nextIdx)) break
                 await this.#loadAdjacentSection(nextIdx)
                 if (!this.#views.has(nextIdx)) break
             }
@@ -2409,7 +2412,7 @@ export class Paginator extends HTMLElement {
                         prop => doc.documentElement.setAttribute('data-' + prop, ''))
                     this.#styleMap.set(doc, [$styleBefore, $style])
                 }
-                this.setStyles(this.#styles)
+                this.#applyStylesToDocument(doc)
                 this.dispatchEvent(new CustomEvent('load', { detail: { doc, index, primary: false } }))
             }
             // Adjacent sections reuse the primary view's cached layout
@@ -2493,8 +2496,8 @@ export class Paginator extends HTMLElement {
                 if (lastIndex == null) break
                 const nextIdx = this.#adjacentIndex(1, lastIndex)
                 if (nextIdx == null) break
-                // Stop at writing-mode boundaries
-                if (!this.#isSameDirection(nextIdx)) break
+                // Stop at writing-mode boundaries and before volume-sized neighbours
+                if (!this.#canPreload(nextIdx)) break
                 await this.#loadAdjacentSection(nextIdx)
                 if (!this.#views.has(nextIdx)) break
             }
@@ -2615,7 +2618,7 @@ export class Paginator extends HTMLElement {
             const onLoad = detail => {
                 if (oldIndex >= 0 && !this.#views.has(oldIndex))
                     this.sections[oldIndex]?.unload?.()
-                this.setStyles(this.#styles)
+                this.#applyStylesToDocument(detail.doc)
                 this.dispatchEvent(new CustomEvent('load', { detail }))
             }
             await this.#display(Promise.resolve(this.sections[index].load())
@@ -2759,15 +2762,7 @@ export class Paginator extends HTMLElement {
     setStyles(styles) {
         this.#styles = styles
         for (const [, view] of this.#views) {
-            const $$styles = this.#styleMap.get(view.document)
-            if (!$$styles) continue
-            const [$beforeStyle, $style] = $$styles
-            if (Array.isArray(styles)) {
-                const [beforeStyle, style] = styles
-                $beforeStyle.textContent = beforeStyle
-                $style.textContent = style
-            } else $style.textContent = styles
-
+            if (!this.#writeStyles(view.document)) continue
             // needed because the resize observer doesn't work in Firefox
             view.document?.fonts?.ready?.then(() => view.expand())
         }
@@ -2777,6 +2772,39 @@ export class Paginator extends HTMLElement {
         if (primaryView) {
             requestAnimationFrame(() => this.#replaceBackground())
         }
+    }
+    // A freshly loaded section only needs the current stylesheet itself.
+    // Re-applying it to every open document (as setStyles does) forced a full
+    // style recalculation of each of them on every section load.
+    #writeStyles(doc) {
+        const $$styles = this.#styleMap.get(doc)
+        if (!$$styles) return false
+        const [$beforeStyle, $style] = $$styles
+        const styles = this.#styles
+        if (Array.isArray(styles)) {
+            const [beforeStyle, style] = styles
+            $beforeStyle.textContent = beforeStyle
+            $style.textContent = style
+        } else $style.textContent = styles
+        return true
+    }
+    #applyStylesToDocument(doc) {
+        if (!this.#writeStyles(doc)) return
+        for (const [, view] of this.#views) {
+            if (view.document === doc) doc.fonts?.ready?.then(() => view.expand())
+        }
+        if (this.#primaryView) requestAnimationFrame(() => this.#replaceBackground())
+    }
+    // Sections above this size are not preloaded as neighbours. A volume-sized
+    // document costs a full multi-column layout and megabytes of DOM; keeping
+    // two or three alive for a smoother section boundary is a bad trade on phones.
+    #isOversized(index) {
+        const size = this.sections?.[index]?.size
+        return typeof size === 'number' && size > PRELOAD_MAX_SECTION_SIZE
+    }
+    #canPreload(index) {
+        if (!this.#isSameDirection(index)) return false
+        return this.scrolled || !(this.#isOversized(index) || this.#isOversized(this.#primaryIndex))
     }
     focusView() {
         this.#primaryView?.document?.defaultView?.focus()

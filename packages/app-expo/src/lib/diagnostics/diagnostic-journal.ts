@@ -19,6 +19,7 @@ const EVENTS = new Set([
   "reader_panels",
   "reader_tap",
   "reader_relocated",
+  "reader_book_structure",
   "webview_terminated",
   "webview_error",
   "webview_unresponsive",
@@ -36,7 +37,16 @@ const BOOLEAN_FIELDS = new Set([
   "notebook",
   "translation",
 ]);
-const NUMBER_FIELDS = new Set(["durationMs", "attempt", "code", "delayMs", "build"]);
+const NUMBER_FIELDS = new Set([
+  "durationMs",
+  "attempt",
+  "code",
+  "delayMs",
+  "build",
+  "sections",
+  "maxSectionKb",
+  "totalKb",
+]);
 const ENUM_FIELDS: Record<string, ReadonlySet<string>> = {
   buildEnvironment: new Set(["production", "test", "unknown"]),
   expectedEnvironment: new Set(["production", "staging", "development", "test", "unknown"]),

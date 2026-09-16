@@ -16,7 +16,7 @@ const baseStyles = template
   .replace(/\$\{getVerticalWritingCompatibilityStyles\(\)\}/g, "");
 const markupCode = template.slice(
   template.indexOf("    var _characterNameSpec = null;"),
-  template.indexOf("    // Разметка порциями через setTimeout"),
+  template.indexOf("    // Разметка секции: видимая страница"),
 );
 
 for (const [name, engine] of Object.entries({ webkit, chromium })) {

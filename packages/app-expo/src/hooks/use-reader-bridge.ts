@@ -83,6 +83,13 @@ export interface ReaderBridgeCallbacks {
   onThemeApplied?: (detail: { background?: string; foreground?: string }) => void;
   onRelocate?: (detail: RelocateEvent) => void;
   onBookTextMetrics?: (detail: { totalCharacters: number }) => void;
+  /** Section count and sizes: how heavy the book is for the renderer (diagnostics). */
+  onBookStructure?: (detail: {
+    sections: number;
+    maxSectionBytes: number;
+    totalBytes: number;
+    loadId?: string;
+  }) => void;
   onTocReady?: (items: TOCItem[]) => void;
   onSelection?: (detail: SelectionEvent) => void;
   onSelectionCleared?: () => void;
@@ -893,6 +900,14 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
         case "bookTextMetrics":
           cb.onBookTextMetrics?.({
             totalCharacters: Number(msg.totalCharacters) || 0,
+          });
+          break;
+        case "bookStructure":
+          cb.onBookStructure?.({
+            sections: Number(msg.sections) || 0,
+            maxSectionBytes: Number(msg.maxSectionBytes) || 0,
+            totalBytes: Number(msg.totalBytes) || 0,
+            loadId: typeof msg.loadId === "string" ? msg.loadId : undefined,
           });
           break;
         case "toc":

@@ -1170,6 +1170,16 @@ function ReaderContent({ route, navigation }: Props) {
         })();
       }
     },
+    onBookStructure: ({ sections, maxSectionBytes, totalBytes, loadId }) => {
+      if (loadId && loadId !== activeReaderLoadIdRef.current) return;
+      // Volume-sized sections are what makes heavy books lag; the journal shows
+      // how often readers open such files.
+      recordDiagnostic("reader_book_structure", {
+        sections,
+        maxSectionKb: Math.round(maxSectionBytes / 1024),
+        totalKb: Math.round(totalBytes / 1024),
+      });
+    },
     onBookTextMetrics: ({ totalCharacters }) => {
       if (totalCharacters <= 0) {
         totalBookCharactersRef.current = null;
@@ -1831,6 +1841,10 @@ function ReaderContent({ route, navigation }: Props) {
           pdfEngineUri,
           loadId,
           lastLocation,
+          // A saved CFI can stop resolving when the book file changes shape
+          // (catalog volumes were re-cut into chapters). The reader then reopens
+          // at the saved percentage instead of the first page.
+          fallbackFraction: book.progress,
           pageMargin: readSettings.pageMargin,
           paginatedLayout: readSettings.paginatedLayout,
           settings: {
