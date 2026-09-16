@@ -5,6 +5,7 @@ import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
 import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import type { NativeContextMenuItem } from "@/components/ui/NativeContextMenuButton.types";
 import { Text } from "@/components/ui/Typography";
+import { useAnalysisFailureToast } from "@/hooks/use-analysis-failure-toast";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
@@ -22,11 +23,7 @@ import {
 } from "@/lib/catalog/bundled-books";
 import { diagnosticErrorReason, recordDiagnostic } from "@/lib/diagnostics/diagnostics";
 import { hapticLight } from "@/lib/haptics";
-import {
-  retryBackendBookAnalysis,
-  retryBackendBookSync,
-  useBackendBookStatus,
-} from "@/lib/narra/backend-book-sync";
+import { retryBackendBookSync, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
 import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
@@ -708,6 +705,8 @@ function ReaderContent({ route, navigation }: Props) {
     (state) => state.books[bookId]?.backendBinding?.bookEditionId,
   );
   const backendBookStatus = useBackendBookStatus((state) => state.books[bookId]);
+  const isFocused = useIsFocused();
+  const retryAnalysis = useAnalysisFailureToast(bookId, isFocused);
   const backendSceneEnabled = isBackendSceneReady(
     backendBookEditionId || book?.bookEditionId,
     backendBookStatus?.manifest?.availability,
@@ -819,10 +818,10 @@ function ReaderContent({ route, navigation }: Props) {
         }
         if (backendCode === "MARKUP_FAILED") {
           bridgeRef.current?.setSceneSlotState(anchor, "error");
-          toast.error(t("narra.analysisFailed", "Не удалось подготовить книгу"), {
+          toast.error(t("narra.analysisFailed", "Не удалось разметить книгу"), {
             action: {
-              label: t("common.retry", "Повторить"),
-              onClick: () => void retryBackendBookAnalysis(bookId).catch(() => undefined),
+              label: t("narra.analysisRetry", "Попробовать ещё раз"),
+              onClick: retryAnalysis,
             },
           });
           return;
@@ -832,7 +831,16 @@ function ReaderContent({ route, navigation }: Props) {
         sceneSlotActions.delete(anchor);
       }
     },
-    [book?.meta.title, book?.bookEditionId, sceneSlotActions, t, bookId, bookTitle, currentChapter],
+    [
+      book?.meta.title,
+      book?.bookEditionId,
+      sceneSlotActions,
+      t,
+      bookId,
+      bookTitle,
+      currentChapter,
+      retryAnalysis,
+    ],
   );
 
   // Врезка восстановлена при загрузке секции — вернуть сохранённую картинку
@@ -1020,7 +1028,6 @@ function ReaderContent({ route, navigation }: Props) {
   const ttsPlayState = useTTSStore((s) => s.playState);
 
   // Focus & foreground state for volume paging whitelist
-  const isFocused = useIsFocused();
   useEffect(() => {
     if (Platform.OS === "android" && isFocused) {
       void ReadAnyNativeControls.setNavigationBarTheme?.(

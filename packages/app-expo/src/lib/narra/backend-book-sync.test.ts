@@ -77,9 +77,9 @@ import { parseBackendManifest } from "./backend-book-contract";
 import {
   preserveBackendOriginalSource,
   retainBackendBookSync,
-  stopBackendBookSync,
   retryBackendBookAnalysis,
   startImportedBackendBook,
+  stopBackendBookSync,
   useBackendBookStatus,
 } from "./backend-book-sync";
 import { characterBiography } from "./character-profile";
@@ -416,7 +416,7 @@ describe("backend book import and persistence integration", () => {
   });
 
   it("does not offer analysis retry without a private binding", async () => {
-    await retryBackendBookAnalysis("local");
+    await expect(retryBackendBookAnalysis("local")).rejects.toThrow("ANALYSIS_RETRY_UNAVAILABLE");
     expect(runtime.request).not.toHaveBeenCalled();
     expect(useBackendBookStatus.getState().books.local).toMatchObject({
       analysisRetrying: false,

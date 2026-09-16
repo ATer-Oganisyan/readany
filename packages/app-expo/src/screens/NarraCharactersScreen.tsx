@@ -9,13 +9,13 @@ import { CharacterPortraitImage } from "@/components/narra/character-portrait-im
 import { SystemSheetZoomDestination } from "@/components/navigation/SystemSheetZoomDestination";
 import { Text } from "@/components/ui/Typography";
 import { InitialsAvatar } from "@/components/ui/initials-avatar";
+import { useAnalysisFailureToast } from "@/hooks/use-analysis-failure-toast";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
-import { retryBackendBookAnalysis, useBackendBookStatus } from "@/lib/narra/backend-book-sync";
+import { useBackendBookStatus } from "@/lib/narra/backend-book-sync";
 import { characterBiography } from "@/lib/narra/character-profile";
 import { isCharacterUnlocked } from "@/lib/narra/domain";
 import type { NarraCharacter } from "@/lib/narra/types";
-import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
@@ -327,28 +327,8 @@ function NarraCharactersList({
     [visibleCharacters.length, backendStatus?.manifest?.charactersStatus, backendStatus?.preview],
   );
   const isFindingCharacters = analysisAvailability === "processing";
-  const analysisTerminal =
-    analysisAvailability === "failed" || analysisAvailability === "cancelled";
   const sourceUnavailable = backendStatus?.error === "SOURCE_UNAVAILABLE";
-  const retryAnalysis = useCallback(() => {
-    void retryBackendBookAnalysis(bookId).catch(() => undefined);
-  }, [bookId]);
-  const shownAnalysisFailureRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!analysisTerminal) {
-      shownAnalysisFailureRef.current = null;
-      return;
-    }
-    const failureKey = `${analysisAvailability}:${backendStatus?.manifest?.analysis?.updatedAt ?? ""}`;
-    if (shownAnalysisFailureRef.current === failureKey) return;
-    shownAnalysisFailureRef.current = failureKey;
-    toast.error(t("narra.analysisFailed", "Не удалось подготовить книгу"), {
-      action: {
-        label: t("common.retry", "Повторить"),
-        onClick: retryAnalysis,
-      },
-    });
-  }, [analysisAvailability, analysisTerminal, backendStatus, retryAnalysis, t]);
+  useAnalysisFailureToast(bookId, isActive);
   useEffect(() => {
     recordTelemetry("character_opened", { feature: "character" });
   }, []);
