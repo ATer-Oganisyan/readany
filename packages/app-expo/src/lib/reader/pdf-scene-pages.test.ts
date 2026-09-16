@@ -38,13 +38,17 @@ function findFunction(root: ts.Node, name: string): ts.FunctionDeclaration {
   return found;
 }
 
-function harness(enabled: boolean, isPDF = true) {
+function readerAst(): ts.SourceFile {
   const html = readFileSync(
     new URL("../../../assets/reader/reader.template.html", import.meta.url),
     "utf8",
   );
   const script = html.slice(html.indexOf("<script>") + 8, html.indexOf("\n  </script>"));
-  const ast = ts.createSourceFile("reader.js", script, ts.ScriptTarget.ESNext, true);
+  return ts.createSourceFile("reader.js", script, ts.ScriptTarget.ESNext, true);
+}
+
+function harness(enabled: boolean, isPDF = true) {
+  const ast = readerAst();
   const setInterstitials = vi.fn();
   const sceneSlotLog = vi.fn();
   const insertBefore = vi.fn();
@@ -159,6 +163,147 @@ describe("PDF scene pages", () => {
     expect(renderSceneInsert).toHaveBeenCalledWith(slot, "idle", null);
   });
 
+  it("shows the idle animation without a button, then unlocks the same PDF slot", () => {
+    class FakeElement {
+      className = "";
+      children: Array<FakeElement | { textContent: string }> = [];
+      style = { setProperty: vi.fn() };
+      attributes = new Map<string, string>();
+      __readanyDisposeLoader?: () => void;
+
+      constructor(
+        readonly ownerDocument: FakeDocument,
+        readonly tagName: string,
+      ) {}
+
+      setAttribute(name: string, value: string) {
+        this.attributes.set(name, value);
+      }
+
+      getAttribute(name: string) {
+        return this.attributes.get(name) ?? null;
+      }
+
+      appendChild(child: FakeElement | { textContent: string }) {
+        this.children.push(child);
+        return child;
+      }
+
+      removeChild(child: FakeElement | { textContent: string }) {
+        this.children.splice(this.children.indexOf(child), 1);
+      }
+
+      get firstChild() {
+        return this.children[0] ?? null;
+      }
+
+      querySelectorAll(selector: string): FakeElement[] {
+        const result: FakeElement[] = [];
+        for (const child of this.children) {
+          if (!(child instanceof FakeElement)) continue;
+          if (
+            selector.startsWith(".")
+              ? child.className === selector.slice(1)
+              : child.tagName === selector
+          ) {
+            result.push(child);
+          }
+          result.push(...child.querySelectorAll(selector));
+        }
+        return result;
+      }
+
+      querySelector(selector: string) {
+        return this.querySelectorAll(selector)[0] ?? null;
+      }
+    }
+
+    class FakeDocument {
+      readonly body = new FakeElement(this, "body");
+      readonly host = new FakeElement(this, "main");
+      readonly documentElement = {
+        getAttribute: (name: string) =>
+          name === "data-readany-scene-page" ? "readany-pdf-page-v1:4" : null,
+      };
+
+      constructor() {
+        this.body.appendChild(this.host);
+      }
+
+      createElement(tagName: string) {
+        return new FakeElement(this, tagName);
+      }
+
+      createTextNode(textContent: string) {
+        return { textContent };
+      }
+
+      getElementById(id: string) {
+        return id === "readany-pdf-scene-host" ? this.host : null;
+      }
+
+      querySelectorAll(selector: string) {
+        return this.body.querySelectorAll(selector);
+      }
+
+      querySelector(selector: string) {
+        return this.body.querySelector(selector);
+      }
+    }
+
+    const ast = readerAst();
+    const doc = new FakeDocument();
+    const disposeLoader = vi.fn();
+    const mountLoader = vi.fn(() => disposeLoader);
+    const context = vm.createContext({
+      view: {},
+      window: { _readanyMountScenePixelLoader: mountLoader },
+      _sceneSlotsEnabled: false,
+      _sceneSlotLabels: { idle: "Сгенерировать сцену", error: "Повторить" },
+      _sceneRestoreAnchors: [],
+      _pdfSceneProgress: { "readany-pdf-page-v1:4": 0.42 },
+      SCENE_INSERT_CLASS: "readany-scene-insert",
+      SCENE_ANCHOR_ATTR: "data-readany-scene-anchor",
+      SCENE_PROGRESS_ATTR: "data-readany-scene-progress",
+      SCENE_STATE_ATTR: "data-readany-scene-state",
+      PDF_SCENE_PAGE_ATTR: "data-readany-scene-page",
+      SCENE_WAND_SVG: "<svg/>",
+      currentThemeColors: { sceneActionColor: "#333" },
+      sceneSlotInjectStyles: vi.fn(),
+      appendSceneFlowBorder: vi.fn(),
+      findSceneInsertInDoc: () => null,
+      getRendererContents: () => [{ doc, index: 4 }],
+      postToRN: vi.fn(),
+    });
+    for (const name of [
+      "appendSceneAction",
+      "renderSceneInsert",
+      "createSceneInsert",
+      "applySceneInserts",
+    ]) {
+      vm.runInContext(findFunction(ast, name).getText(ast), context);
+    }
+    const assignment = findWindowAssignment(ast, "configureSceneSlots");
+    vm.runInContext(`globalThis.configureSceneSlots = ${assignment.right.getText(ast)}`, context);
+
+    context.applySceneInserts(doc, 4);
+    const slot = doc.querySelector(".readany-scene-insert");
+    expect(slot?.getAttribute("data-readany-scene-state")).toBe("idle");
+    expect(slot?.querySelector("canvas")?.getAttribute("data-scene-effect")).toBe("pixels-organic");
+    expect(slot?.querySelector("button")).toBeNull();
+    expect(mountLoader).toHaveBeenCalledWith(slot?.querySelector("canvas"), "pixels-organic");
+
+    context.configureSceneSlots(JSON.stringify({ enabled: true }));
+    expect(disposeLoader).toHaveBeenCalledTimes(1);
+    expect(slot?.querySelector("button")?.getAttribute("data-slot")).toBe("button");
+    expect(slot?.querySelector("canvas")?.getAttribute("data-scene-effect")).toBe("pixels-organic");
+    expect(slot?.getAttribute("data-readany-scene-anchor")).toBe("readany-pdf-page-v1:4");
+
+    const lateDoc = new FakeDocument();
+    context.applySceneInserts(lateDoc, 4);
+    expect(lateDoc.querySelector(".readany-scene-insert")?.querySelector("button")).not.toBeNull();
+  });
+
   it("does not duplicate a saved PDF scene while generation is unavailable", () => {
     const { context, setInterstitials } = harness(false);
     context.setSceneAnchors(JSON.stringify(["readany-pdf-page-v1:4"]));
@@ -171,6 +316,17 @@ describe("PDF scene pages", () => {
 
     expect(Array.from(context._pdfSceneProposals)).toEqual([]);
     expect(setInterstitials).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps one PDF page when a saved scene arrives after an idle proposal", () => {
+    const { context, setInterstitials } = harness(false);
+    context.insertSceneSlot(0.42);
+    context.setSceneAnchors(JSON.stringify(["readany-pdf-page-v1:4"]));
+
+    expect(setInterstitials).toHaveBeenCalledTimes(2);
+    expect(setInterstitials).toHaveBeenLastCalledWith([
+      { key: "readany-pdf-page-v1:4", afterIndex: 4 },
+    ]);
   });
 
   it("leaves the non-PDF insertion path unchanged while generation is unavailable", () => {
