@@ -812,7 +812,23 @@ export function createPostgresBookMarkupRepository(pool, {
     priority,
     sourceKind = 'markup',
     runId = null,
-    client: outerClient = null
+    client: outerClient = null,
+    /**
+     * Сверять ли отпечаток источника с тем, что лежит в бандле.
+     *
+     * Сверка означает «содержимое персонажа изменилось — перевыпустить медиа»:
+     * ревизия растёт, готовые артефакты удаляются, портрет рисуется заново.
+     * Право на этот вывод есть только у того, кто персонажа и переписал, —
+     * у публикации карточки.
+     *
+     * Запрос читателя ничего не переписывает, он лишь просит показать медиа. Но
+     * отпечаток он считал по-своему — брал `content_hash` последней публикации
+     * книги, — а конвейер карточек публикует разметку на каждом закрытом окне.
+     * Выходило, что каждое новое окно объявляло все портреты книги устаревшими:
+     * у «Войны с саламандрами» 19 публикаций и 17 ревизий медиа, у «Дубровского»
+     * 24 и 12. По каталогу 1206 персонажей нарисованы от двух до семнадцати раз.
+     */
+    reconcileSource = true
   }) {
     const body = async (client) => {
       await client.query(
@@ -864,7 +880,11 @@ export function createPostgresBookMarkupRepository(pool, {
     async function ensureFromSource(client, row, payloadExtras) {
       let bundleId = row.bundle_id
       let mediaRevision = Number(row.media_revision ?? 1)
-      const sourceMarkupHash = row.source_markup_hash
+      // Без сверки отпечаток берётся из бандла: он и есть то, по чему медиа уже
+      // сделано. Свой, только что вычисленный, нужен лишь новому бандлу.
+      const sourceMarkupHash = reconcileSource || !row.previous_source_markup_hash
+        ? row.source_markup_hash
+        : row.previous_source_markup_hash
       let sourceChanged = false
       if (!bundleId) {
         bundleId = idFactory()
@@ -888,7 +908,7 @@ export function createPostgresBookMarkupRepository(pool, {
            SET source_markup_hash = $2, updated_at = now() WHERE id = $1`,
           [bundleId, sourceMarkupHash]
         )
-      } else if (row.previous_source_markup_hash !== sourceMarkupHash) {
+      } else if (reconcileSource && row.previous_source_markup_hash !== sourceMarkupHash) {
         mediaRevision += 1
         sourceChanged = true
         await client.query(
@@ -2435,7 +2455,10 @@ export function createPostgresBookMarkupRepository(pool, {
       priority = 50
     }) {
       const ensured = await ensureCharacterMediaJobs({
-        bookEditionId, characterKey, bundleVersion, priority
+        // Запрос читателя ничего не переписывает: он просит показать медиа, а
+        // не объявляет персонажа изменившимся. Сверка отпечатка здесь означала
+        // бы перерисовку готового портрета при каждой новой публикации книги.
+        bookEditionId, characterKey, bundleVersion, priority, reconcileSource: false
       })
       return {
         id: ensured.jobs[0]?.id,
@@ -2488,10 +2511,12 @@ export function createPostgresBookMarkupRepository(pool, {
       const jobs = []
       for (const candidate of candidates.rows) {
         const ensured = await ensureCharacterMediaJobs({
+          // Подогрев дозаказывает недостающее, а не переиздаёт сделанное.
           bookEditionId: candidate.book_edition_id,
           characterKey: candidate.character_key,
           bundleVersion: candidate.bundle_version,
-          priority
+          priority,
+          reconcileSource: false
         })
         jobs.push(...ensured.jobs)
       }

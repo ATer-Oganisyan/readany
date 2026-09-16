@@ -359,6 +359,89 @@ test('массовая разметка может публиковать кар
   assert.ok(pool.queries.every(({ sql }) => !/character_media_bundles/.test(sql)))
 })
 
+test('a reader request does not redraw a portrait that is already there', async () => {
+  // Отпечаток источника у пути читателя считался по `content_hash` последней
+  // публикации книги, а конвейер карточек публикует разметку на каждом закрытом
+  // окне. Выходило, что каждое новое окно объявляло все портреты книги
+  // устаревшими: у «Войны с саламандрами» 19 публикаций и 17 ревизий медиа,
+  // по каталогу 1206 персонажей нарисованы от двух до семнадцати раз.
+  const pool = scriptedPool([
+    () => ({ rows: [] }),                                       // advisory lock
+    (sql) => {                                                  // markup media source
+      assert.match(sql, /FROM book_markup_versions AS markup/)
+      return {
+        rows: [{
+          markup_version_id: 'markup-1',
+          // Отпечаток свежей публикации отличается от того, по которому портрет
+          // уже нарисован, — и это не повод рисовать заново.
+          source_markup_hash: 'c'.repeat(64),
+          bundle_id: 'bundle-1',
+          bundle_status: 'ready',
+          previous_source_markup_hash: 'b'.repeat(64),
+          media_revision: 3
+        }]
+      }
+    },
+    () => ({ rows: [{ count: 2 }] })                            // completeness
+  ])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174000'
+  })
+  const result = await repository.ensureCharacterBundle({
+    bookEditionId: 'edition-1',
+    characterKey: 'char:elizabeth-bennet'
+  })
+  assert.equal(result.status, 'ready')
+  assert.equal(result.mediaRevision, 3, 'ревизия не выросла')
+  assert.ok(
+    pool.queries.every(({ sql }) => !/DELETE FROM character_bundle_assets/.test(sql)),
+    'готовые артефакты не удалены'
+  )
+  assert.ok(
+    pool.queries.every(({ sql }) => !/INSERT INTO generation_jobs/.test(sql)),
+    'ни одного нового задания'
+  )
+})
+
+test('publishing a card still redraws media when the card itself changed', async () => {
+  // Сверка остаётся за тем, кто персонажа переписал: новая ревизия карточки —
+  // это другой внешний вид и другое приветствие, и медиа обязано обновиться.
+  const inserts = []
+  const pool = scriptedPool([
+    () => ({ rows: [{ id: 'job-card', status: 'running' }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [{ id: 'card-1' }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [{
+      source_markup_hash: 'c'.repeat(64),
+      card_revision: 2, run_id: 'run-1', window_index: 0,
+      bundle_id: 'bundle-1', bundle_status: 'ready',
+      previous_source_markup_hash: 'b'.repeat(64), media_revision: 1
+    }] }),
+    () => ({ rows: [] }),                                       // bump revision
+    () => ({ rows: [] }),                                       // drop assets
+    () => ({ rows: [{ count: 0 }] }),
+    (sql, params) => { inserts.push(params); return { rows: [] } },
+    (sql, params) => { inserts.push(params); return { rows: [] } },
+    () => ({ rows: [] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    idFactory: () => '123e4567-e89b-42d3-a456-426614174000'
+  })
+  const result = await repository.publishCharacterCard(
+    { id: 'job-card', bookEditionId: 'edition-1', characterKey: 'char:elizabeth-bennet', leaseToken: 'lease-1' },
+    {
+      runId: 'run-1', bookEditionId: 'edition-1', characterKey: 'char:elizabeth-bennet',
+      windowIndex: 0, cardRevision: 2, fragmentSetHash: HASH, normalizedTextHash: HASH,
+      promptVersion: 'character-card-prompt-v1',
+      mediaPriority: CARD_MEDIA_PRIORITY.foreground, card: card()
+    }
+  )
+  assert.equal(result.media.mediaRevision, 2, 'ревизия выросла')
+  assert.ok(pool.queries.some(({ sql }) => /DELETE FROM character_bundle_assets/.test(sql)))
+})
+
 test('publishing a card without an enabled card row refuses to queue media', async () => {
   const pool = scriptedPool([
     () => ({ rows: [{ id: 'job-card', status: 'running' }] }),
