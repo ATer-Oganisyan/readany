@@ -40,6 +40,21 @@ describe("buildSystemPrompt citations", () => {
     expect(prompt).not.toContain("latest substantive message");
     expect(prompt).toContain("Interface language: en.");
   });
+
+  it("requires plain-text answers without conflicting formatting instructions", () => {
+    const prompt = buildSystemPrompt({
+      book: makeBook(),
+      semanticContext: null,
+      enabledSkills: [],
+      isVectorized: false,
+      userLanguage: "ru",
+    });
+
+    expect(prompt).toContain("Reply in plain text and ordinary paragraphs");
+    expect(prompt).not.toContain("You can create diagrams using Mermaid");
+    expect(prompt).not.toContain("```mermaid");
+  });
+
   it("allows fallback citations only when a returned CFI can be validated", () => {
     const prompt = buildSystemPrompt({
       book: makeBook(),

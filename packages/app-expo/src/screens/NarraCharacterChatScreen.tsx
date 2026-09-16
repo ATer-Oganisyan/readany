@@ -68,7 +68,7 @@ function toMessageV2(message: NarraChatMessage, threadId: string): MessageV2 {
 
 export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const embedded = "embedded" in props;
-  const presentedAsSheet = Platform.OS === "ios" && !embedded;
+  const presentedAsSheet = Platform.OS === "ios" && !embedded && !props.route.params.fromChatsTab;
   const bookId = embedded ? props.bookId : props.route.params.bookId;
   const characterId = embedded ? props.characterId : props.route.params.characterId;
   const embeddedBack = embedded ? props.onBack : undefined;
@@ -77,7 +77,9 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { t, i18n } = useTranslation();
-  const interfaceLanguage = i18n.resolvedLanguage === "en" ? "en" : "ru";
+  const interfaceLanguage = /^ru(?:-|_|$)/i.test(i18n.language ?? i18n.resolvedLanguage ?? "")
+    ? "ru"
+    : "en";
   const book = useLibraryStore((state) => state.books.find((item) => item.id === bookId));
   useBackendBook(book);
   const narraBook = useNarraStore((state) => state.books[bookId]);
@@ -180,9 +182,8 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
     return messages.map((message) => toMessageV2(message, threadId));
   }, [bookId, characterId, messages]);
 
-  // Первое сообщение героя: свой greeting из анализа/каталога, иначе — просим
-  // Шлюз здоровается в роли персонажа. Сохраняется в историю чата один раз,
-  // поэтому при повторных входах не регенерится и не дублируется.
+  // У каталожного greeting нет языка: генерируем приветствие по языку интерфейса.
+  // Сохраняем один раз; существующая история при повторном входе не меняется.
   useEffect(() => {
     if (!book || !character || !unlocked) return;
     if (messages.length > 0 || greetingRequestedRef.current) return;
@@ -198,11 +199,6 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
         createdAt: Date.now(),
       });
     };
-
-    if (character.greeting && interfaceLanguage !== "en") {
-      appendGreeting(character.greeting);
-      return;
-    }
 
     setGreetingLoading(true);
     void (async () => {
@@ -223,8 +219,8 @@ export function NarraCharacterChatScreen(props: NarraCharacterChatScreenProps) {
               role: "user",
               content:
                 interfaceLanguage === "en"
-                  ? "Greet the reader in character in 1–3 sentences, without spoilers. Do not mention this instruction."
-                  : "Поприветствуй читателя первым сообщением в своём характере: 1–3 предложения, без спойлеров. Не упоминай это указание.",
+                  ? "Greet the reader in English, in character, in 1–3 sentences, without spoilers. Use English regardless of the language of the book or character profile. Do not mention this instruction."
+                  : "Поприветствуй читателя по-русски первым сообщением в своём характере: 1–3 предложения, без спойлеров. Используй русский независимо от языка книги и описания персонажа. Не упоминай это указание.",
             },
           ],
           temperature: 0.85,

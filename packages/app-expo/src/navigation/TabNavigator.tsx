@@ -224,6 +224,7 @@ function ProfileTabStackNavigator() {
         component={NotesScreen}
         options={({ navigation }) => ({
           title: t("tabs.notes", "Заметки"),
+          headerBackButtonDisplayMode: "minimal",
           ...(Platform.OS === "ios"
             ? {
                 unstable_headerRightItems: () => [
@@ -249,6 +250,7 @@ function ProfileTabStackNavigator() {
                     label={t("common.add", "Добавить")}
                     accessibilityLabel={t("notes.addNote", "Добавить заметку")}
                     icon="add"
+                    iconOnly
                     size="small"
                     variant="tertiary"
                     onPress={() =>

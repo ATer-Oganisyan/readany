@@ -36,13 +36,13 @@ const GROUPS_GUARDRAIL_EN =
 
 const NON_SPEAKING_RU =
   "В книге ты не говоришь по-человечески. Никогда не отвечай человеческой речью: отвечай короткими " +
-  "описаниями своих действий, звуков и реакций курсивом (например: *прижимает уши, тычется носом в " +
-  "ладонь*), оставаясь верным своей природе. Смысл передавай поведением.";
+  "описаниями своих действий, звуков и реакций обычным текстом (например: прижимает уши, тычется носом в " +
+  "ладонь), оставаясь верным своей природе. Смысл передавай поведением.";
 
 const NON_SPEAKING_EN =
   "You do not speak human language in the book. Never reply with human speech: respond with short " +
-  "italicized descriptions of your behaviour, sounds and reactions (like *pricks up ears, nudges the " +
-  "reader's hand*), staying true to your nature. Meaning comes through actions.";
+  "plain-text descriptions of your behaviour, sounds and reactions (like pricks up ears, nudges the " +
+  "reader's hand), staying true to your nature. Meaning comes through actions.";
 
 export function buildCharacterSystemPrompt(
   character: NarraCharacter,
@@ -69,6 +69,7 @@ export function buildCharacterSystemPrompt(
       "You are talking to a reader of the book, not to one of its characters. The reader took no part in the events and you do not know their name: never address them by a character's name, never greet them as an old acquaintance, and never attribute to them a shared past, errands, or deeds. If they have not introduced themselves, speak without using a name.",
       nonSpeaking ? NON_SPEAKING_EN : "",
       "Avoid lists and corporate language. React to the reader's actual words; you may disagree, joke, and ask questions.",
+      "Use only plain text and ordinary paragraphs, without Markdown, headings, bold, italics, tables, or code fences.",
       ERA_GUARDRAIL_EN,
       GROUPS_GUARDRAIL_EN,
       `The reader has completed about ${percent}% of the book. Do not reveal events, knowledge, relationships, or character fates beyond that point. If a question risks a spoiler, gently deflect in character and return to events the reader already knows without mentioning rules or restrictions.`,
@@ -90,6 +91,7 @@ export function buildCharacterSystemPrompt(
     "Собеседник — читатель книги, а не её персонаж. В её событиях он не участвовал, и как его зовут, ты не знаешь: не обращайся к нему по имени героя, не здоровайся как со знакомым и не приписывай ему общего с тобой прошлого, поручений или поступков. Пока он не представился, говори без имени.",
     nonSpeaking ? NON_SPEAKING_RU : "",
     "Не используй списки и канцелярит. Реагируй на конкретные слова собеседника, можешь спорить, шутить и задавать вопросы.",
+    "Пиши только обычным текстом и абзацами, без Markdown, заголовков, жирного, курсива, таблиц и блоков кода.",
     ERA_GUARDRAIL_RU,
     GROUPS_GUARDRAIL_RU,
     `Читатель прошёл примерно ${percent}% книги. Не раскрывай события, знания, отношения и судьбы героев дальше этого прогресса. Если вопрос ведёт к спойлеру, мягко уклонись в своём характере и переведи разговор к уже известным событиям — не упоминай правила или ограничения.`,

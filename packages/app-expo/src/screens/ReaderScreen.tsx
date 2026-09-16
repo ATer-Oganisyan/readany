@@ -1,10 +1,3 @@
-import ReadAnyNativeControls from "../../modules/native-controls";
-import { allowReaderNavigation } from "@/lib/reader/reader-navigation";
-import { openAudiobookPlayerFromReader } from "@/lib/audiobook-player";
-import { useReaderCopy } from "@/hooks/use-reader-copy";
-import { recordCharacterEncounters } from "@/lib/narra/character-encounters";
-import { useReaderErrorToast } from "@/hooks/use-reader-error-toast";
-import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
@@ -15,8 +8,11 @@ import { Text } from "@/components/ui/Typography";
 import { useBackendBook } from "@/hooks/use-backend-book";
 import { useReaderBridge } from "@/hooks/use-reader-bridge";
 import type { RelocateEvent, SelectionEvent, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
+import { useReaderCopy } from "@/hooks/use-reader-copy";
+import { useReaderErrorToast } from "@/hooks/use-reader-error-toast";
 import { durationBucket } from "@/lib/analytics/contract";
 import { recordTelemetry } from "@/lib/analytics/telemetry";
+import { openAudiobookPlayerFromReader } from "@/lib/audiobook-player";
 import {
   BUNDLED_CATALOG_BOOKS,
   findBundledCatalogBookByTitle,
@@ -32,13 +28,14 @@ import {
   useBackendBookStatus,
 } from "@/lib/narra/backend-book-sync";
 import { importBackendCatalogBook } from "@/lib/narra/backend-catalog-import";
-import { withCatalogCoversSuspended } from "@/lib/narra/catalog-cover-coordinator";
 import { isCatalogBookRevisionCurrent } from "@/lib/narra/backend-catalog-library";
-import { BackendSceneError, isBackendSceneReady } from "@/lib/narra/backend-scene";
 import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
+import { BackendSceneError, isBackendSceneReady } from "@/lib/narra/backend-scene";
 import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
 import { generateBackendReaderScene, readSceneDataUri } from "@/lib/narra/backend-scene-reader";
 import { backendSceneForAnchor } from "@/lib/narra/backend-scene-state";
+import { withCatalogCoversSuspended } from "@/lib/narra/catalog-cover-coordinator";
+import { recordCharacterEncounters } from "@/lib/narra/character-encounters";
 import { buildCharacterNameMatcherSpec } from "@/lib/narra/character-name-matcher";
 import { narraBackendCode } from "@/lib/narra/errors";
 import { sceneInsertAnchors, sceneSourceKeyForAnchor } from "@/lib/narra/scene-inserts";
@@ -50,11 +47,12 @@ import type { NarraCharacter } from "@/lib/narra/types";
 import { toast } from "@/lib/notifications";
 import { DEFAULT_READER_FONT_FAMILY } from "@/lib/reader/bundled-reader-font";
 import { getReaderBookmarkCopy } from "@/lib/reader/reader-bookmark-copy";
+import { allowReaderNavigation } from "@/lib/reader/reader-navigation";
+import { isReaderTransportError } from "@/lib/reader/reader-recovery";
 import {
   resolveReaderBookLocation,
   resolveTrackableReaderLocation,
 } from "@/lib/reader/reader-relocation";
-import { isReaderTransportError } from "@/lib/reader/reader-recovery";
 import {
   READER_BUILD_ID,
   prepareReaderAsset,
@@ -82,7 +80,6 @@ import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import type { Book, ReadSettings, TOCItem } from "@readany/core/types";
 import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
-import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 /**
  * ReaderScreen — WebView-based reader with foliate-js engine.
@@ -97,7 +94,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -105,6 +101,7 @@ import {
 import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import ReadAnyNativeControls from "../../modules/native-controls";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
 
 // ── Extracted modules ──
@@ -135,11 +132,6 @@ const BOOK_FORMAT_MIME_TYPES: Partial<Record<string, string>> = {
   txt: "text/plain",
 };
 
-const NOTE_TOOLTIP_WIDTH = 300;
-const NOTE_TOOLTIP_SIDE_PADDING = 12;
-const NOTE_TOOLTIP_ABOVE_OFFSET = 2;
-const NOTE_TOOLTIP_BELOW_OFFSET = 8;
-const NOTE_TOOLTIP_TOP_THRESHOLD = 180;
 import {
   flattenReaderColor,
   getAppSyncedReaderTheme,
@@ -148,10 +140,10 @@ import {
 } from "@/lib/reader/reader-themes";
 import { useRubyStore } from "@readany/core/stores/ruby-store";
 import { ReaderSettingsPanel } from "./reader/ReaderSettingsPanel.entry";
-import { CONTROLS_TIMEOUT, SCREEN_HEIGHT, SCREEN_WIDTH } from "./reader/reader-constants";
-import { makeStyles, noteTooltipMdStyles } from "./reader/reader-styles";
-import { useBackendBookToc } from "./reader/useBackendBookToc";
+import { CONTROLS_TIMEOUT, SCREEN_HEIGHT } from "./reader/reader-constants";
+import { makeStyles } from "./reader/reader-styles";
 import { useReaderTOCSheet } from "./reader/reader-toc-sheet-context";
+import { useBackendBookToc } from "./reader/useBackendBookToc";
 import { useReaderBookmark } from "./reader/useReaderBookmark";
 import { useReaderSystemInfo } from "./reader/useReaderSystemInfo";
 import { useReaderTTS } from "./reader/useReaderTTS";
@@ -537,13 +529,6 @@ function ReaderContent({ route, navigation }: Props) {
   } | null>(null);
   const [noteViewEditing, setNoteViewEditing] = useState(false);
   const [noteViewContent, setNoteViewContent] = useState("");
-  const [noteTooltip, setNoteTooltip] = useState<{
-    note: string;
-    cfi: string;
-    position: { x: number; y: number; selectionTop: number; selectionBottom: number };
-  } | null>(null);
-  const noteTooltipTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const noteTooltipVisibleRef = useRef(false);
   const suppressReaderTapUntilRef = useRef(0);
   // Mediator ref so onRelocate can fire TTS continuation without direct hook dependency
   const ttsPendingContinueRef = useRef<{
@@ -1024,7 +1009,10 @@ function ReaderContent({ route, navigation }: Props) {
   const isFocused = useIsFocused();
   useEffect(() => {
     if (Platform.OS === "android" && isFocused) {
-      void ReadAnyNativeControls.setNavigationBarTheme?.(readerThemeColors.background, isReaderThemeDark);
+      void ReadAnyNativeControls.setNavigationBarTheme?.(
+        readerThemeColors.background,
+        isReaderThemeDark,
+      );
     }
   }, [isFocused, readerThemeColors.background, isReaderThemeDark]);
   useReaderErrorToast(error, isFocused, navigation, `${bookId}:${loadAttempt}`);
@@ -1370,6 +1358,9 @@ function ReaderContent({ route, navigation }: Props) {
         });
       }
     },
+    onNoteSelection: ({ text, cfi }) => {
+      navigation.navigate("ManualNote", { bookId, text, cfi, chapterTitle: currentChapter });
+    },
     onCopySelection: copySelection,
     onSelectionCleared: () => {
       setSelection(null);
@@ -1377,7 +1368,7 @@ function ReaderContent({ route, navigation }: Props) {
     },
     onTap: () => {
       recordDiagnostic("reader_tap");
-      if (noteTooltipVisibleRef.current || Date.now() < suppressReaderTapUntilRef.current) {
+      if (Date.now() < suppressReaderTapUntilRef.current) {
         return;
       }
       sendEvent({ type: "activity" });
@@ -1433,28 +1424,16 @@ function ReaderContent({ route, navigation }: Props) {
       suppressReaderTapUntilRef.current = Date.now() + 650;
       const highlight = highlights.find((h) => h.cfi === detail.value);
       if (!highlight) return;
+      if (highlight.note?.trim()) {
+        setSelection(null);
+        navigation.navigate("ManualNote", { bookId, noteId: highlight.id });
+        return;
+      }
       setSelection({
         text: highlight.text,
         cfi: highlight.cfi,
         position: detail.position,
       });
-    },
-    onNoteTooltip: (detail) => {
-      suppressReaderTapUntilRef.current = Date.now() + 900;
-      // Dismiss any existing tooltip
-      if (noteTooltipTimer.current) {
-        clearTimeout(noteTooltipTimer.current);
-      }
-      setNoteTooltip({
-        note: detail.note,
-        cfi: detail.cfi,
-        position: detail.position,
-      });
-      // Auto-hide after 4 seconds
-      noteTooltipTimer.current = setTimeout(() => {
-        setNoteTooltip(null);
-        noteTooltipTimer.current = null;
-      }, 4000);
     },
     onPageSnippet: (_text: string) => {
       // page snippet handled by bookmark hook if pending
@@ -1463,10 +1442,6 @@ function ReaderContent({ route, navigation }: Props) {
       bookmark.onBookmarkSnippet(text);
     },
   });
-
-  useEffect(() => {
-    noteTooltipVisibleRef.current = !!noteTooltip;
-  }, [noteTooltip]);
 
   // ── Volume button paging ─────────────────────────────────────────────────
   const isPureReadingContext = useMemo(
@@ -1484,7 +1459,6 @@ function ReaderContent({ route, navigation }: Props) {
       chapterTranslation.state.status === "idle" &&
       !selection &&
       !noteViewHighlight &&
-      !noteTooltip &&
       ttsPlayState === "stopped" &&
       isFocused &&
       appActive,
@@ -1502,7 +1476,6 @@ function ReaderContent({ route, navigation }: Props) {
       chapterTranslation.state.status,
       selection,
       noteViewHighlight,
-      noteTooltip,
       ttsPlayState,
       isFocused,
       appActive,
@@ -1574,32 +1547,14 @@ function ReaderContent({ route, navigation }: Props) {
     characters,
   });
 
-  const openScene = useCallback(
-    (excerpt: string, sourceKey: string) => {
-      const normalizedExcerpt = excerpt.trim();
-      if (!normalizedExcerpt) {
-        toast.error(t("narra.sceneFailedTitle"), {
-          description: t("narra.sceneNoText"),
-        });
-        return;
-      }
-      navigation.navigate("NarraScene", {
-        bookId,
-        chapter:
-          currentChapter ||
-          bookTitle ||
-          book?.meta.title ||
-          t("reader.currentPage", "Текущая страница"),
-        excerpt: normalizedExcerpt,
-        sourceKey,
-      });
+  const handleSelectionMenuAction = useCallback(
+    (event: { nativeEvent: { key: string } }) => {
+      const action =
+        event.nativeEvent.key === "note" ? "noteReaderSelection" : "copyReaderSelection";
+      bridge.webViewRef.current?.injectJavaScript(`window.${action}?.(); true;`);
     },
-    [book?.meta.title, bookId, bookTitle, currentChapter, navigation, t],
+    [bridge.webViewRef],
   );
-
-  const handleSelectionMenuAction = useCallback(() => {
-    bridge.webViewRef.current?.injectJavaScript("window.copyReaderSelection?.(); true;");
-  }, [bridge.webViewRef]);
 
   const handleOpenCharacters = useCallback(() => {
     publishCharacterProgress();
@@ -1614,9 +1569,14 @@ function ReaderContent({ route, navigation }: Props) {
   const openReaderAppearance = useCallback(() => setShowSettings(true), []);
 
   const openAudiobookPlayer = useCallback(async () => {
-    await openAudiobookPlayerFromReader(bookId, tts.startPageTTS, () => {
-      navigation.navigate("AudiobookPlayer", { sourceId: speechSheetSourceId });
-    }, tts.handleToggleTTS);
+    await openAudiobookPlayerFromReader(
+      bookId,
+      tts.startPageTTS,
+      () => {
+        navigation.navigate("AudiobookPlayer", { sourceId: speechSheetSourceId });
+      },
+      tts.handleToggleTTS,
+    );
   }, [bookId, navigation, speechSheetSourceId, tts.startPageTTS, tts.handleToggleTTS]);
 
   const readerActions = useMemo<NativeContextMenuItem[]>(
@@ -1702,16 +1662,6 @@ function ReaderContent({ route, navigation }: Props) {
     },
     [closeTocSheet, goToHrefSafely],
   );
-
-  const goBackToPreviousLocation = useCallback(() => {
-    if (locationHistoryRef.current.length === 0) return;
-    const previousCfi = locationHistoryRef.current.pop();
-    if (previousCfi) {
-      goToCFISafely(previousCfi);
-    }
-  }, [goToCFISafely]);
-
-  const canGoBack = locationHistoryRef.current.length > 0;
 
   const updateSetting = useCallback(
     <K extends keyof ReadSettings>(key: K, value: ReadSettings[K]) => {
@@ -2201,17 +2151,6 @@ function ReaderContent({ route, navigation }: Props) {
   );
   const readerTopMargin = showTopTitleProgress ? layoutTopInset + 30 : layoutTopInset;
   const isScrollMode = readSettings.viewMode === "scroll";
-  const adjustedNoteTooltip = noteTooltip
-    ? {
-        ...noteTooltip,
-        position: {
-          ...noteTooltip.position,
-          y: noteTooltip.position.y + readerTopMargin,
-          selectionTop: noteTooltip.position.selectionTop + readerTopMargin,
-          selectionBottom: noteTooltip.position.selectionBottom + readerTopMargin,
-        },
-      }
-    : null;
 
   return (
     <>
@@ -2246,15 +2185,15 @@ function ReaderContent({ route, navigation }: Props) {
               ]}
               pointerEvents={isPanelOpen ? "none" : "auto"}
               onMessage={bridge.handleMessage}
-              onShouldStartLoadWithRequest={(request) => allowReaderNavigation(request, readerHtmlUri)}
+              onShouldStartLoadWithRequest={(request) =>
+                allowReaderNavigation(request, readerHtmlUri)
+              }
               onOpenWindow={() => undefined}
               javaScriptCanOpenWindowsAutomatically={false}
-              menuItems={Platform.OS === "android"
-                ? [{ key: "copy", label: t("reader.copySelection", "Скопировать") }]
-                : undefined}
-              suppressMenuItems={Platform.OS === "ios"
-                ? ["cut", "paste", "replace", "bold", "italic", "underline", "select", "selectAll", "translate", "lookup", "share"]
-                : undefined}
+              menuItems={[
+                { key: "copy", label: t("reader.copySelection", "Скопировать") },
+                { key: "note", label: t("notes.addNote", "Добавить заметку") },
+              ]}
               onCustomMenuSelection={handleSelectionMenuAction}
               onError={(e) => {
                 console.error("[ReaderScreen] WebView error:", e.nativeEvent);
@@ -2331,66 +2270,6 @@ function ReaderContent({ route, navigation }: Props) {
         {readerToolbarDock}
 
         {/* ─── Bookmark Ribbon (top-right) ─── */}
-
-        {/* Note Tooltip (long-press on wavy underline) */}
-        {adjustedNoteTooltip && (
-          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-            <Pressable
-              style={StyleSheet.absoluteFill}
-              onPress={() => {
-                suppressReaderTapUntilRef.current = Date.now() + 350;
-                if (noteTooltipTimer.current) {
-                  clearTimeout(noteTooltipTimer.current);
-                  noteTooltipTimer.current = null;
-                }
-                setNoteTooltip(null);
-              }}
-            />
-            <Pressable
-              style={[
-                s.noteTooltip,
-                {
-                  left: Math.max(
-                    NOTE_TOOLTIP_SIDE_PADDING,
-                    Math.min(
-                      adjustedNoteTooltip.position.x - NOTE_TOOLTIP_WIDTH / 2,
-                      SCREEN_WIDTH - NOTE_TOOLTIP_WIDTH - NOTE_TOOLTIP_SIDE_PADDING,
-                    ),
-                  ),
-                  ...(adjustedNoteTooltip.position.selectionTop > NOTE_TOOLTIP_TOP_THRESHOLD
-                    ? {
-                        bottom:
-                          SCREEN_HEIGHT -
-                          adjustedNoteTooltip.position.selectionTop +
-                          NOTE_TOOLTIP_ABOVE_OFFSET,
-                      }
-                    : {
-                        top:
-                          adjustedNoteTooltip.position.selectionBottom + NOTE_TOOLTIP_BELOW_OFFSET,
-                      }),
-                },
-              ]}
-              onPress={(event) => {
-                event.stopPropagation();
-                suppressReaderTapUntilRef.current = Date.now() + 550;
-              }}
-              onPressIn={(event) => {
-                event.stopPropagation();
-                suppressReaderTapUntilRef.current = Date.now() + 550;
-              }}
-              onStartShouldSetResponder={() => true}
-              onMoveShouldSetResponder={() => true}
-              onResponderTerminationRequest={() => false}
-            >
-              <View style={s.noteTooltipContent}>
-                <MarkdownRenderer
-                  content={adjustedNoteTooltip.note || ""}
-                  styleOverrides={noteTooltipMdStyles}
-                />
-              </View>
-            </Pressable>
-          </View>
-        )}
 
         {/* ─── Settings Panel ─── */}
         <ReaderSettingsPanel

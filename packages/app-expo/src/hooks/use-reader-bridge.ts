@@ -84,6 +84,7 @@ export interface ReaderBridgeCallbacks {
   onTocReady?: (items: TOCItem[]) => void;
   onSelection?: (detail: SelectionEvent) => void;
   onSelectionCleared?: () => void;
+  onNoteSelection?: (detail: { text: string; cfi: string }) => void;
   onCopySelection?: (text: string, nativeCopied: boolean) => void;
   onTap?: () => void;
   onSearchResult?: (index: number, count: number) => void;
@@ -893,6 +894,10 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           break;
         case "selection":
           cb.onSelection?.(msg);
+          break;
+        case "noteSelection":
+          if (typeof msg.text === "string" && msg.text.trim())
+            cb.onNoteSelection?.({ text: msg.text, cfi: msg.cfi || "" });
           break;
         case "copySelection":
           if (typeof msg.text === "string" && msg.text)

@@ -2,6 +2,7 @@ import { NativeNoteEditor } from "@/components/notes/NativeNoteEditor";
 import { ChevronDownIcon } from "@/components/ui/Icon";
 import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
+import { NativeContextMenuButton } from "@/components/ui/NativeContextMenuButton";
 import { Text } from "@/components/ui/Typography";
 import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -11,7 +12,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { generateId } from "@readany/core/utils";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Platform, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Platform, StyleSheet, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ManualNote">;
@@ -22,11 +23,16 @@ export function ManualNoteScreen({ navigation, route }: Props) {
   const books = useLibraryStore((state) => state.books);
   const addHighlight = useAnnotationStore((state) => state.addHighlight);
   const updateHighlight = useAnnotationStore((state) => state.updateHighlight);
+  const removeHighlight = useAnnotationStore((state) => state.removeHighlight);
   const highlightsWithBooks = useAnnotationStore((state) => state.highlightsWithBooks);
+  const highlights = useAnnotationStore((state) => state.highlights);
   const noteId = route.params?.noteId;
+  const lockedBookId = route.params?.bookId;
   const existingNote = useMemo(
-    () => highlightsWithBooks.find((highlight) => highlight.id === noteId),
-    [highlightsWithBooks, noteId],
+    () =>
+      highlightsWithBooks.find((highlight) => highlight.id === noteId) ??
+      highlights.find((highlight) => highlight.id === noteId),
+    [highlightsWithBooks, highlights, noteId],
   );
   const existingNoteHasBook = Boolean(
     existingNote &&
@@ -35,20 +41,14 @@ export function ManualNoteScreen({ navigation, route }: Props) {
   const [bookId, setBookId] = useState(
     existingNoteHasBook ? existingNote?.bookId || "" : route.params?.bookId || "",
   );
-  const [content, setContent] = useState(existingNote?.note || "");
+  const initialContent = existingNote?.note ?? route.params?.text ?? "";
+  const [content, setContent] = useState(initialContent);
   const [saving, setSaving] = useState(false);
-  const selectedBook = useMemo(() => books.find((book) => book.id === bookId), [bookId, books]);
-
-  const chooseBook = useCallback(() => {
-    Alert.alert(t("notes.chooseBook", "Выберите книгу"), undefined, [
-      { text: t("common.noBook", "Без книги"), onPress: () => setBookId("") },
-      ...books.slice(0, 6).map((book) => ({
-        text: book.meta.title,
-        onPress: () => setBookId(book.id),
-      })),
-      { text: t("common.cancel", "Отмена"), style: "cancel" as const },
-    ]);
-  }, [books, t]);
+  const effectiveBookId = lockedBookId || bookId;
+  const selectedBook = useMemo(
+    () => books.find((book) => book.id === effectiveBookId),
+    [effectiveBookId, books],
+  );
 
   const save = useCallback(async () => {
     const note = content.trim();
@@ -59,9 +59,13 @@ export function ManualNoteScreen({ navigation, route }: Props) {
     try {
       if (existingNote) {
         updateHighlight(existingNote.id, {
-          bookId: selectedBook?.id ?? "",
+          bookId: effectiveBookId,
           note,
-          chapterTitle: selectedBook ? "Заметка к книге" : undefined,
+          chapterTitle: existingNote.cfi
+            ? existingNote.chapterTitle
+            : effectiveBookId
+              ? "Заметка к книге"
+              : undefined,
           updatedAt: now,
         });
         navigation.goBack();
@@ -70,12 +74,13 @@ export function ManualNoteScreen({ navigation, route }: Props) {
 
       await addHighlight({
         id: generateId(),
-        bookId: selectedBook?.id ?? "",
+        bookId: effectiveBookId,
         cfi: route.params?.cfi ?? "",
         text: route.params?.text ?? "",
         color: "yellow",
         note,
-        chapterTitle: route.params?.chapterTitle ?? (selectedBook ? "Заметка к книге" : undefined),
+        chapterTitle:
+          route.params?.chapterTitle ?? (effectiveBookId ? "Заметка к книге" : undefined),
         createdAt: now,
         updatedAt: now,
       });
@@ -97,10 +102,17 @@ export function ManualNoteScreen({ navigation, route }: Props) {
     route.params?.chapterTitle,
     route.params?.text,
     saving,
-    selectedBook,
+    effectiveBookId,
     t,
     updateHighlight,
   ]);
+
+  const deleteNote = useCallback(() => {
+    if (!existingNote || saving) return;
+    if (existingNote.cfi) updateHighlight(existingNote.id, { note: undefined });
+    else removeHighlight(existingNote.id);
+    navigation.goBack();
+  }, [existingNote, saving, updateHighlight, removeHighlight, navigation]);
 
   useLayoutEffect(() => {
     const canSave = Boolean(content.trim()) && !saving;
@@ -115,34 +127,52 @@ export function ManualNoteScreen({ navigation, route }: Props) {
       },
       ...(Platform.OS === "ios"
         ? {
-            unstable_headerRightItems: () => [
+            unstable_headerLeftItems: () => [
               {
-                type: "menu" as const,
-                label: t("common.book", "Книга"),
-                accessibilityLabel: t("notes.chooseBook", "Выбрать книгу"),
-                icon: {
-                  type: "image" as const,
-                  source: getStrokeIconImageSource("book"),
-                },
-                menu: {
-                  title: t("common.book", "Книга"),
-                  multiselectable: false,
-                  items: [
-                    {
-                      type: "action" as const,
-                      label: t("common.noBook", "Без книги"),
-                      state: bookId ? ("off" as const) : ("on" as const),
-                      onPress: () => setBookId(""),
-                    },
-                    ...books.map((book) => ({
-                      type: "action" as const,
-                      label: book.meta.title,
-                      state: book.id === bookId ? ("on" as const) : ("off" as const),
-                      onPress: () => setBookId(book.id),
-                    })),
-                  ],
-                },
+                type: "button" as const,
+                label: existingNote ? t("common.delete", "Удалить") : t("common.close", "Закрыть"),
+                accessibilityLabel: existingNote
+                  ? t("common.delete", "Удалить")
+                  : t("common.close", "Закрыть"),
+                icon: existingNote
+                  ? { type: "image" as const, source: getStrokeIconImageSource("bin") }
+                  : { type: "sfSymbol" as const, name: "xmark" },
+                disabled: saving,
+                onPress: existingNote ? deleteNote : () => navigation.goBack(),
               },
+            ],
+            unstable_headerRightItems: () => [
+              ...(!lockedBookId
+                ? [
+                    {
+                      type: "menu" as const,
+                      label: t("common.book", "Книга"),
+                      accessibilityLabel: t("notes.chooseBook", "Выбрать книгу"),
+                      icon: {
+                        type: "image" as const,
+                        source: getStrokeIconImageSource("book"),
+                      },
+                      menu: {
+                        title: t("common.book", "Книга"),
+                        multiselectable: false,
+                        items: [
+                          {
+                            type: "action" as const,
+                            label: t("common.noBook", "Без книги"),
+                            state: bookId ? ("off" as const) : ("on" as const),
+                            onPress: () => setBookId(""),
+                          },
+                          ...books.map((book) => ({
+                            type: "action" as const,
+                            label: book.meta.title,
+                            state: book.id === bookId ? ("on" as const) : ("off" as const),
+                            onPress: () => setBookId(book.id),
+                          })),
+                        ],
+                      },
+                    },
+                  ]
+                : []),
               {
                 type: "button" as const,
                 label: saving ? t("notes.saving", "Сохраняем") : t("common.done", "Готово"),
@@ -159,47 +189,86 @@ export function ManualNoteScreen({ navigation, route }: Props) {
             ],
           }
         : {
-            headerTitle: () => (
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel={t("notes.chooseBook", "Выберите книгу")}
-                style={styles.headerBookButton}
-                onPress={chooseBook}
-                activeOpacity={0.65}
-              >
-                <Text
-                  numberOfLines={1}
-                  style={[styles.headerBookTitle, { color: colors.foreground }]}
-                >
-                  {selectedBook?.meta.title ?? t("common.noBook", "Без книги")}
-                </Text>
-                <ChevronDownIcon size={18} color={colors.mutedForeground} />
-              </TouchableOpacity>
-            ),
+            headerTitle: lockedBookId
+              ? undefined
+              : () => (
+                  <NativeContextMenuButton
+                    accessibilityLabel={t("notes.chooseBook", "Выберите книгу")}
+                    items={[
+                      {
+                        key: "no-book",
+                        label: t("common.noBook", "Без книги"),
+                        icon: bookId ? null : "check",
+                        iconPosition: "trailing",
+                        onPress: () => setBookId(""),
+                      },
+                      ...books.map((book) => ({
+                        key: book.id,
+                        label: book.meta.title,
+                        icon: book.id === bookId ? ("check" as const) : null,
+                        iconPosition: "trailing" as const,
+                        onPress: () => setBookId(book.id),
+                      })),
+                    ]}
+                    renderTrigger={(openMenu) => (
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        accessibilityLabel={t("notes.chooseBook", "Выберите книгу")}
+                        style={styles.headerBookButton}
+                        onPress={openMenu}
+                        activeOpacity={0.65}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={[styles.headerBookTitle, { color: colors.foreground }]}
+                        >
+                          {selectedBook?.meta.title ?? t("common.noBook", "Без книги")}
+                        </Text>
+                        <ChevronDownIcon size={18} color={colors.mutedForeground} />
+                      </TouchableOpacity>
+                    )}
+                  />
+                ),
             headerRight: () => (
-              <NativeButton
-                label={t("common.done", "Готово")}
-                accessibilityLabel={t("notes.saveNote", "Сохранить заметку")}
-                icon="check"
-                size="small"
-                variant="tertiary"
-                disabled={!canSave}
-                onPress={() => void save()}
-              />
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                {existingNote ? (
+                  <NativeButton
+                    label={t("common.delete", "Удалить")}
+                    accessibilityLabel={t("common.delete", "Удалить")}
+                    icon="delete"
+                    iconOnly
+                    size="small"
+                    variant="tertiary"
+                    disabled={saving}
+                    onPress={deleteNote}
+                  />
+                ) : null}
+                <NativeButton
+                  label={t("common.done", "Готово")}
+                  accessibilityLabel={t("notes.saveNote", "Сохранить заметку")}
+                  icon="check"
+                  iconOnly
+                  size="small"
+                  variant="tertiary"
+                  disabled={!canSave}
+                  onPress={() => void save()}
+                />
+              </View>
             ),
           }),
     });
   }, [
     bookId,
     books,
-    chooseBook,
     colors.background,
     colors.foreground,
     colors.mutedForeground,
     colors.primary,
     content,
+    deleteNote,
     existingNote,
     navigation,
+    lockedBookId,
     save,
     saving,
     selectedBook?.meta.title,
@@ -212,7 +281,7 @@ export function ManualNoteScreen({ navigation, route }: Props) {
       edges={["bottom"]}
     >
       <View style={styles.content}>
-        <NativeNoteEditor initialValue={existingNote?.note} onChange={setContent} autoFocus />
+        <NativeNoteEditor initialValue={initialContent} onChange={setContent} autoFocus />
       </View>
     </SafeAreaView>
   );

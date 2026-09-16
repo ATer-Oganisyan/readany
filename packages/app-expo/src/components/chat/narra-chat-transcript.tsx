@@ -1,4 +1,3 @@
-import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { Text } from "@/components/ui/Typography";
 import { bodyTypography, fontFamily, useTheme, withOpacity } from "@/styles/theme";
 import { spacingPixels } from "@deslop/primitives";
@@ -28,7 +27,7 @@ import { StreamingWords } from "./streaming-words";
  *
  * Пузыри красит тема PanelUI, собранная из токенов deslop
  * (src/panelui-theme.css): свои — primary, чужие — muted. Текст внутри рисует
- * наш MarkdownRenderer нашими шрифтами; на акцентном фоне он тёмный в обеих
+ * StreamingWords нашими шрифтами; на акцентном фоне он тёмный в обеих
  * темах, поэтому цвет передаётся по роли.
  */
 
@@ -41,21 +40,11 @@ const EDGE_FADE_HEIGHT = ELEMENT_GAP;
 const FOLLOW_LAYOUT_SETTLE_MS = 80;
 /** Повтор после первого окна виртуализации FlatList. */
 const FOLLOW_LAYOUT_RETRY_MS = 140;
-/** Пустое множество для стартового состояния: новая ссылка каждый рендер сбивала бы мемоизацию. */
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 /** Насколько далеко от живого края слежение за ответом ещё уместно. */
 const NEAR_LIVE_EDGE = 160;
 /** Геометрия сообщения по продуктовой спецификации чата. */
 const MESSAGE_RADIUS = 20;
-/**
- * Разметка в ещё не дописанном ответе.
- *
- * Пословное появление раскладывает строку на отдельные слова, и инлайновая
- * разметка на этом рвётся. Пока ответ идёт с разметкой — показываем его обычным
- * рендером, без волны: это ровно то поведение, что было до неё.
- */
-const MARKDOWN_SYNTAX = /[*_`#>|]|\[\d*\]|^\s*[-+]\s|^\s*\d+\.\s/m;
-
 const MESSAGE_TEXT_STYLE: TextStyle = {
   ...bodyTypography,
   fontWeight: "400",
@@ -82,10 +71,16 @@ function dayLabel(timestamp: number, locale: "ru" | "en", todayLabel: string): s
   });
 }
 
-function buildRows(messages: MessageV2[], locale: "ru" | "en", todayLabel: string): ChatRow[] {
+function buildRows(
+  messages: MessageV2[],
+  locale: "ru" | "en",
+  todayLabel: string,
+  renderText: (message: MessageV2) => string,
+): ChatRow[] {
   const rows: ChatRow[] = [];
   let lastDay = "";
   for (const message of messages) {
+    if (!renderText(message).trim()) continue;
     const day = new Date(message.createdAt).toDateString();
     if (day !== lastDay) {
       lastDay = day;
@@ -314,7 +309,6 @@ interface NarraChatTranscriptProps {
   locale: "ru" | "en";
   /** Текст сообщения, собранный вызывающей стороной из частей MessageV2. */
   renderText: (message: MessageV2) => string;
-  streamingMessageId?: string;
   onCitationClick?: (citation: CitationPart) => void;
   /**
    * Высота прозрачного навбара, под который уходит лента. Эта зона закрашена
@@ -336,7 +330,6 @@ export function NarraChatTranscript({
   messages,
   locale,
   renderText,
-  streamingMessageId,
   onCitationClick,
   topInset = 0,
   bottomInset = 0,
@@ -350,8 +343,8 @@ export function NarraChatTranscript({
   const todayLabel = t("chat.today", "Сегодня");
   const typingLabel = t("chat.typing", "Печатает…");
   const rows = useMemo(
-    () => buildRows(messages, locale, todayLabel),
-    [locale, messages, todayLabel],
+    () => buildRows(messages, locale, todayLabel, renderText),
+    [locale, messages, todayLabel, renderText],
   );
   const latestUserMessageId = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -362,27 +355,29 @@ export function NarraChatTranscript({
   // Ответы, пришедшие при открытом чате: их проявляем по словам. История,
   // с которой чат открылся, появляется сразу — иначе каждое открытие
   // превращалось бы в представление.
-  const [revealIds, setRevealIds] = useState<ReadonlySet<string>>(EMPTY_IDS);
-  const seenIdsRef = useRef<Set<string> | null>(null);
+  const [arrivals, setArrivals] = useState(() => ({
+    messages,
+    seenIds: new Set(messages.map((message) => message.id)),
+    revealIds: EMPTY_IDS,
+  }));
+  // Обновляем состояние до commit: новый ответ не должен сначала попасть
+  // на экран обычным текстом, а затем перемонтироваться для анимации.
+  if (arrivals.messages !== messages) {
+    const tail = messages.at(-1);
+    const isNewAnswer = tail?.role === "assistant" && !arrivals.seenIds.has(tail.id);
+    setArrivals({
+      messages,
+      seenIds: new Set([...arrivals.seenIds, ...messages.map((message) => message.id)]),
+      revealIds: isNewAnswer ? new Set(arrivals.revealIds).add(tail.id) : arrivals.revealIds,
+    });
+  }
+  const { revealIds } = arrivals;
   const tailMessage = messages.at(-1);
   const tailId = tailMessage?.id;
   const tailLength = useMemo(
     () => (tailMessage ? renderText(tailMessage).length : 0),
     [renderText, tailMessage],
   );
-  useEffect(() => {
-    if (!seenIdsRef.current) {
-      seenIdsRef.current = new Set(messages.map((message) => message.id));
-      return;
-    }
-    const tail = messages.at(-1);
-    if (!tail || tail.role !== "assistant" || seenIdsRef.current.has(tail.id)) return;
-    seenIdsRef.current.add(tail.id);
-    // Текст, который дописывается по токенам, ведёт себя иначе: там волну
-    // задаёт сам поток, и целое сообщение проявлять не нужно.
-    if (tail.id === streamingMessageId) return;
-    setRevealIds((previous) => new Set(previous).add(tail.id));
-  }, [messages, streamingMessageId]);
 
   const fadeColor = colors.background;
   const chatScrollViewRef = useRef<KeyboardChatScrollViewRef>(null);
@@ -421,12 +416,6 @@ export function NarraChatTranscript({
 
       const isUser = item.message.role === "user";
       const messageBody = renderText(item.message);
-      const isStreamingMessage = item.message.id === streamingMessageId;
-      // Волна только на живом ответе героя: свои сообщения появляются целиком,
-      // а дописанный ответ отдаётся обычному рендеру — с разметкой и сносками.
-      const revealWhole = revealIds.has(item.message.id);
-      const revealWords =
-        (isStreamingMessage || revealWhole) && !isUser && !MARKDOWN_SYNTAX.test(messageBody);
       return (
         <View style={styles.messageRow}>
           <Message align={isUser ? "end" : "start"}>
@@ -440,31 +429,21 @@ export function NarraChatTranscript({
                   !isUser && isDark ? { backgroundColor: colors.primary10 } : undefined,
                 ]}
               >
-                {revealWords ? (
-                  <StreamingWords
-                    color={colors.foreground}
-                    mode={isStreamingMessage ? "stream" : "whole"}
-                    text={messageBody}
-                    textStyle={MESSAGE_TEXT_STYLE}
-                  />
-                ) : (
-                  <MarkdownRenderer
-                    citations={citationsOf(item.message)}
-                    content={messageBody}
-                    isStreaming={isStreamingMessage}
-                    onCitationClick={onCitationClick}
-                    textColor={isUser ? colors.primaryForeground : colors.foreground}
-                    textStyle={MESSAGE_TEXT_STYLE}
-                    trimTrailingParagraphSpacing
-                  />
-                )}
+                <StreamingWords
+                  animate={!isUser && revealIds.has(item.message.id)}
+                  citations={citationsOf(item.message)}
+                  color={isUser ? colors.primaryForeground : colors.foreground}
+                  onCitationClick={onCitationClick}
+                  text={messageBody}
+                  textStyle={MESSAGE_TEXT_STYLE}
+                />
               </Message.Bubble>
             </Message.Content>
           </Message>
         </View>
       );
     },
-    [colors, isDark, onCitationClick, renderText, revealIds, streamingMessageId],
+    [colors, isDark, onCitationClick, renderText, revealIds],
   );
 
   return (

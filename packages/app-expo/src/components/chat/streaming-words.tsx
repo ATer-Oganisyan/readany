@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import type { CitationPart } from "@readany/core/types/message";
 import type { TextStyle } from "react-native";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import Animated, { cubicBezier, useReducedMotion } from "react-native-reanimated";
 
 /**
@@ -10,14 +10,10 @@ import Animated, { cubicBezier, useReducedMotion } from "react-native-reanimated
  * speed="normal"): шаг между словами 35 мс, слово всплывает 400 мс —
  * прозрачность плюс подъём на 6 pt, кривая ease-out (0.23, 1, 0.32, 1).
  *
- * В вебе волну задаёт staggerChildren по готовому тексту. Здесь текст приходит
- * потоком, поэтому очередь слов задаёт сам поток: анимируется только новая
- * порция, а шаг нужен внутри неё — когда в одном чанке пришло несколько слов.
- * Появление слова — это анимация его монтирования, так что уже показанные слова
- * при следующем чанке не переигрываются.
+ * Нара и персонажи передают готовый ответ, поэтому очередь слов одинакова.
  */
 
-/** Шаг между словами внутри одной порции (SPEED_PRESETS.normal). */
+/** Шаг между словами (SPEED_PRESETS.normal). */
 const WORD_STAGGER_MS = 35;
 /** Длительность появления одного слова. */
 const WORD_DURATION_MS = 400;
@@ -25,14 +21,6 @@ const WORD_DURATION_MS = 400;
 const WORD_OFFSET = 6;
 /** Сокращённое движение: остаётся только проявление. */
 const REDUCED_DURATION_MS = 150;
-/**
- * Предел шага внутри порции.
- *
- * Обычный чанк потока — несколько слов, и до предела дело не доходит. Но если
- * порция пришла большой (например, история открылась разом), без предела
- * последние слова ждали бы секунды.
- */
-const MAX_STAGGER_WORDS = 12;
 /**
  * Сколько всего длится волна, когда ответ пришёл целиком.
  *
@@ -59,11 +47,10 @@ interface StreamingWordsProps {
   /** Типографика бабла: слова садятся на ту же сетку, что обычный текст. */
   textStyle?: TextStyle;
   color: string;
-  /**
-   * `stream` — текст дописывается по токенам, шаг нужен внутри пришедшей порции.
-   * `whole` — ответ пришёл целиком, волна идёт по всему сообщению.
-   */
-  mode?: "stream" | "whole";
+  /** Новые ответы появляются по словам; история и сообщения читателя — сразу. */
+  animate?: boolean;
+  citations?: CitationPart[];
+  onCitationClick?: (citation: CitationPart) => void;
 }
 
 /**
@@ -75,26 +62,46 @@ function splitLines(text: string): string[][] {
   return text.split("\n").map((line) => line.split(/\s+/).filter(Boolean));
 }
 
-export function StreamingWords({ text, textStyle, color, mode = "stream" }: StreamingWordsProps) {
+export function StreamingWords({
+  text,
+  textStyle,
+  color,
+  animate = true,
+  citations = [],
+  onCitationClick,
+}: StreamingWordsProps) {
   const reducedMotion = useReducedMotion();
   const lines = splitLines(text);
   const total = lines.reduce((sum, words) => sum + words.length, 0);
 
-  // Сколько слов было показано до этого рендера: всё, что дальше, — новая
-  // порция, и только она получает шаг. Значение обновляется после коммита,
-  // поэтому во время рендера здесь именно прошлое состояние.
-  const shownRef = useRef(0);
-  const shown = shownRef.current;
-  useEffect(() => {
-    shownRef.current = total;
-  }, [total]);
+  const citationPress = (word: string) => {
+    const match = word.match(/^\[(\d+)\]/);
+    if (!match || !onCitationClick) return undefined;
+    const number = Number(match[1]);
+    const citation =
+      citations.find((item) => item.citationIndex === number) ?? citations[number - 1];
+    return citation ? () => onCitationClick(citation) : undefined;
+  };
 
-  // При целом ответе шаг сжимается под общую длительность волны, при потоке
-  // остаётся исходным: там очередь задаёт сам поток.
-  const step =
-    mode === "whole"
-      ? Math.min(WORD_STAGGER_MS, WHOLE_MESSAGE_STAGGER_MS / Math.max(total, 1))
-      : WORD_STAGGER_MS;
+  if (!animate) {
+    return (
+      <Text selectable style={[textStyle, { color }]}>
+        {text.split(/(\[\d+\])/).map((part, index) => {
+          const onPress = citationPress(part);
+          return onPress ? (
+            // biome-ignore lint/suspicious/noArrayIndexKey: части статичного текста идут по порядку
+            <Text key={index} onPress={onPress}>
+              {part}
+            </Text>
+          ) : (
+            part
+          );
+        })}
+      </Text>
+    );
+  }
+
+  const step = Math.min(WORD_STAGGER_MS, WHOLE_MESSAGE_STAGGER_MS / Math.max(total, 1));
 
   let wordIndex = 0;
 
@@ -105,25 +112,24 @@ export function StreamingWords({ text, textStyle, color, mode = "stream" }: Stre
         return (
           <View key={lineKey} style={styles.line}>
             {words.map((word, indexInLine) => {
-              const staggerSteps =
-                mode === "whole"
-                  ? wordIndex
-                  : Math.min(Math.max(wordIndex - shown, 0), MAX_STAGGER_WORDS);
+              const delay = wordIndex * step;
               wordIndex += 1;
               return (
                 <Animated.Text
-                  // Последнее слово потока дописывается по буквам, поэтому ключ с текстом
-                  // переигрывал бы его появление на каждом токене: нужен ключ по позиции.
-                  // biome-ignore lint/suspicious/noArrayIndexKey: позиция здесь и есть личность слова
+                  // biome-ignore lint/suspicious/noArrayIndexKey: позиция слова в готовом ответе стабильна
                   key={`${lineKey}-${indexInLine}`}
+                  onPress={citationPress(word)}
                   style={[
                     textStyle,
                     { color },
                     {
+                      // Native CSS animation attaches after the view mounts.
+                      // Keep that first frame hidden until keyframes take over.
+                      opacity: 0,
                       animationName: reducedMotion ? REDUCED_KEYFRAMES : WORD_KEYFRAMES,
                       animationDuration: reducedMotion ? REDUCED_DURATION_MS : WORD_DURATION_MS,
                       animationTimingFunction: reducedMotion ? "linear" : EASE_OUT,
-                      animationDelay: reducedMotion ? 0 : staggerSteps * step,
+                      animationDelay: reducedMotion ? 0 : delay,
                       animationFillMode: "both",
                     },
                   ]}

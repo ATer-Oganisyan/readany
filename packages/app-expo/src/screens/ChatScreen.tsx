@@ -31,7 +31,6 @@ import {
   formatRelativeTimeShort,
   getMonthLabel,
   groupThreadsByTime,
-  mergeMessagesWithStreaming,
 } from "@readany/core/utils";
 
 import { NarraChat } from "@/components/chat/NarraChat";
@@ -223,7 +222,6 @@ export function ChatScreen({
   // Streaming chat
   const {
     isStreaming,
-    currentMessage,
     currentStep,
     error,
     errorThreadId,
@@ -237,14 +235,8 @@ export function ChatScreen({
     ? threads.find((thread) => thread.id === activeThreadId)
     : null;
 
-  const activeCurrentMessage =
-    activeThread?.id === currentMessage?.threadId ? currentMessage : null;
+  // Как у персонажей: статус в шапке, затем готовый ответ с общей анимацией.
   const displayMessages = convertToMessageV2(activeThread?.messages || []);
-  const allMessages = mergeMessagesWithStreaming(
-    displayMessages,
-    activeCurrentMessage,
-    isStreaming,
-  );
 
   // Handlers
   const handleSend = useCallback(
@@ -477,7 +469,7 @@ export function ChatScreen({
           {/* Content */}
           <View style={s.content}>
             <NarraChat
-              messages={allMessages}
+              messages={displayMessages}
               isStreaming={isStreaming}
               currentStep={currentStep}
               onSend={handleSend}

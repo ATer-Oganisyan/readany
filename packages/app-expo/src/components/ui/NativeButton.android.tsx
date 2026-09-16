@@ -1,10 +1,14 @@
+import { MishanaerIcon } from "@/components/ui/Icon";
+import { Text } from "@/components/ui/Typography";
+import { useTheme } from "@/styles/theme";
 import { interfaceFontFamily } from "@deslop/primitives/native";
 import {
   Button,
+  Text as ComposeText,
   FilledTonalIconButton,
   Host,
   Icon,
-  Text as ComposeText,
+  IconButton,
 } from "@expo/ui/jetpack-compose";
 import {
   fillMaxWidth,
@@ -12,11 +16,8 @@ import {
   size as nativeSize,
   testID as nativeTestID,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { getFilledIconImageSource, getStrokeIconImageSource } from "./MishanaerIcon";
-import { MishanaerIcon } from "@/components/ui/Icon";
-import { Text } from "@/components/ui/Typography";
-import { useTheme } from "@/styles/theme";
 import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
+import { getFilledIconImageSource, getStrokeIconImageSource } from "./MishanaerIcon";
 import {
   type NativeButtonProps,
   nativeButtonHeights,
@@ -53,6 +54,27 @@ export function NativeButton({
 
   if (iconOnly && icon) {
     const dark = colorScheme ? colorScheme === "dark" : isDark;
+    if (variant === "tertiary") {
+      return (
+        <Host colorScheme={dark ? "dark" : "light"} style={[{ width: 48, height: 48 }, style]}>
+          <IconButton
+            onClick={onPress}
+            enabled={!disabled && !loading}
+            colors={{ contentColor: content }}
+            modifiers={[nativeSize(48, 48), ...(testID ? [nativeTestID(testID)] : [])]}
+          >
+            <Icon
+              source={getStrokeIconImageSource(
+                loading ? "pulse-circle" : nativeButtonIconNames[icon],
+              )}
+              size={24}
+              tint={content}
+              contentDescription={accessibilityLabel ?? label}
+            />
+          </IconButton>
+        </Host>
+      );
+    }
     const foreground = dark ? "#ffffff" : "#000000";
     return (
       <Host colorScheme={dark ? "dark" : "light"} style={[{ width: 64, height: 68 }, style]}>

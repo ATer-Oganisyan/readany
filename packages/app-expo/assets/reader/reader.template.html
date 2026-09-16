@@ -1406,64 +1406,6 @@
       return true;
     }
 
-    // Attach long-press note tooltip detection to each doc
-    function attachNoteLongPress(doc) {
-      if (doc.__readany_noteLongPress) return;
-      doc.__readany_noteLongPress = true;
-
-      const LONG_PRESS_MS = 400;
-      let timer = null;
-      let startX = 0, startY = 0;
-
-      doc.addEventListener('touchstart', (e) => {
-        if (e.touches.length !== 1) return;
-        const touch = e.touches[0];
-        startX = touch.clientX;
-        startY = touch.clientY;
-
-        timer = setTimeout(() => {
-          timer = null;
-          const hit = isPointInNoteRange(doc, startX, startY);
-          if (!hit) return;
-          armNoteTapGuard(doc, 900);
-
-          // Prevent subsequent click / show-annotation
-          e.preventDefault && e.preventDefault();
-
-          const rect = hit.range.getBoundingClientRect();
-          const iframe = doc.defaultView && doc.defaultView.frameElement;
-          const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 };
-          postToRN('note-tooltip', {
-            cfi: hit.cfi,
-            note: hit.note,
-            position: {
-              x: iframeRect.left + rect.left + rect.width / 2,
-              y: iframeRect.top + rect.top - 8,
-              selectionTop: iframeRect.top + rect.top,
-              selectionBottom: iframeRect.top + rect.bottom,
-            },
-          });
-        }, LONG_PRESS_MS);
-      }, { passive: false });
-
-      doc.addEventListener('touchmove', (e) => {
-        if (!timer) return;
-        const touch = e.touches[0];
-        if (Math.abs(touch.clientX - startX) > 10 || Math.abs(touch.clientY - startY) > 10) {
-          clearTimeout(timer);
-          timer = null;
-        }
-      }, { passive: true });
-
-      doc.addEventListener('touchend', () => {
-        if (timer) { clearTimeout(timer); timer = null; }
-      }, { passive: true });
-
-      doc.addEventListener('touchcancel', () => {
-        if (timer) { clearTimeout(timer); timer = null; }
-      }, { passive: true });
-    }
-
     // ─── Message handler from React Native ───
     window.addEventListener('message', async (e) => {
       try {
@@ -1766,7 +1708,6 @@
           // preparation is an optimization and must never hold gesture wiring.
           attachTapListener(doc);
           attachSelectionListener(doc);
-          attachNoteLongPress(doc);
           normalizeBrOnlyParagraphs(doc);
           if (primary !== false) {
             currentSectionUsesVerticalWriting = !el.isFixedLayout && isVerticalDoc(doc);
@@ -1900,9 +1841,7 @@
             drawTTSHighlightWithCSS(range, annotation.color);
           } else if (annotation.note) {
             console.log('[draw-annotation] has note:', annotation.note);
-            // Draw both highlight and squiggly underline for notes
-            draw(Overlayer.highlight, { color: colorMap[color] || colorMap.yellow });
-            draw(Overlayer.squiggly, { color: '#000000', width: 1.5 });
+            draw(Overlayer.highlight, { color: 'rgba(250, 204, 21, 0.65)' });
             // Register for long-press tooltip
             if (doc && range && annotation.value) {
               registerAnnotationRange(doc, annotation.value, range);
@@ -2999,6 +2938,20 @@ a { color: ${primary} !important; }
 
     // ─── Selection detection ───
     var _readerCopyText = '';
+    var _readerNoteRange = null;
+    window.noteReaderSelection = function () {
+      for (const { doc } of getRendererContents()) {
+        const range = getSelectionRange(doc.getSelection());
+        if (range) { _readerNoteRange = { doc, range: range.cloneRange() }; break; }
+      }
+      if (!_readerNoteRange) return;
+      const { doc, range } = _readerNoteRange;
+      _readerNoteRange = null;
+      const content = getRendererContents().find(content => content.doc === doc);
+      const text = getRangeTextWithoutRuby(range, range.toString());
+      if (!content || !text.trim()) return;
+      postToRN('noteSelection', { text, cfi: view.getCFI(content.index, range) || '' });
+    };
     window.copyReaderSelection = function () {
       for (const { doc } of getRendererContents()) {
         const selection = doc.getSelection();
@@ -3047,7 +3000,10 @@ a { color: ${primary} !important; }
         // Snapshot immediately: native menus may dismiss selection before RN handles Copy.
         const currentSelection = doc.getSelection();
         const currentRange = getSelectionRange(currentSelection);
-        if (currentRange) _readerCopyText = currentSelection.toString();
+        if (currentRange) {
+          _readerCopyText = currentSelection.toString();
+          _readerNoteRange = { doc, range: currentRange.cloneRange() };
+        }
         if (selTimer) clearTimeout(selTimer);
         selTimer = setTimeout(() => {
           const sel = doc.getSelection();
@@ -3162,10 +3118,17 @@ a { color: ${primary} !important; }
     function getRangeTextWithoutRuby(range, fallback) {
       try {
         const fragment = range.cloneContents();
-        fragment.querySelectorAll('rt, rp').forEach(function (node) {
-          node.remove();
-        });
-        const text = (fragment.textContent || '').trim();
+        function readText(node) {
+          if (node.nodeType === 3) return node.nodeValue || '';
+          const tag = (node.localName || '').toLowerCase();
+          if (tag === 'rt' || tag === 'rp') return '';
+          if (tag === 'br') return '\n';
+          let text = '';
+          for (const child of Array.from(node.childNodes)) text += readText(child);
+          return /^(p|div|li|blockquote|h[1-6]|section|article|pre|tr)$/.test(tag)
+            ? '\n' + text + '\n' : text;
+        }
+        const text = readText(fragment).replace(/\n{3,}/g, '\n\n').trim();
         if (text) return text;
       } catch {}
       return (fallback || '').trim();

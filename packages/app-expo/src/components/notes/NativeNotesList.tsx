@@ -1,13 +1,12 @@
+import { BookCardContextMenu } from "@/components/library/BookCardContextMenu";
 import { Text } from "@/components/ui/Typography";
-import { secondLevelTitleFontFamily, useColors } from "@/styles/theme";
+import { radius, useColors } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
 import { Pressable, SectionList, StyleSheet, View } from "react-native";
 
 export interface NativeNoteListItem {
   id: string;
   title: string;
-  preview: string;
-  dateLabel: string;
   bookTitle?: string;
 }
 
@@ -19,10 +18,11 @@ export interface NativeNoteListSection {
 export interface NativeNotesListProps {
   sections: NativeNoteListSection[];
   onPress: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
-/** Cross-platform fallback. iOS replaces this with a real SwiftUI inset-grouped List. */
-export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
+/** Android note list. */
+export function NativeNotesList({ sections, onPress, onDelete }: NativeNotesListProps) {
   const colors = useColors();
   const { t } = useTranslation();
 
@@ -37,71 +37,59 @@ export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.content}
       renderSectionHeader={({ section }) => (
-        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{section.title}</Text>
+        <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
+          {section.title}
+        </Text>
       )}
       renderItem={({ item, index, section }) => (
-        <Pressable
-          accessibilityRole="button"
+        <BookCardContextMenu
           accessibilityLabel={t("notes.openNote", "Открыть заметку «{{title}}»", {
             title: item.title,
           })}
           onPress={() => onPress(item.id)}
-          style={({ pressed }) => [
-            styles.row,
+          items={[
             {
-              backgroundColor: pressed ? colors.primary : colors.card,
-              borderBottomColor: colors.border,
-              borderBottomWidth: index === section.data.length - 1 ? 0 : StyleSheet.hairlineWidth,
+              key: "delete",
+              label: t("common.delete", "Удалить"),
+              sfSymbol: "trash",
+              destructive: true,
+              onPress: () => onDelete(item.id),
             },
           ]}
         >
-          {({ pressed }) => (
-            <View style={styles.rowContent}>
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.title,
-                  { color: pressed ? colors.primaryForeground : colors.foreground },
-                ]}
-              >
-                {item.title}
-              </Text>
-              <View style={styles.metaRow}>
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.meta,
-                    { color: pressed ? colors.primaryForeground : colors.mutedForeground },
-                  ]}
-                >
-                  {item.dateLabel}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("notes.openNote", "Открыть заметку «{{title}}»", {
+              title: item.title,
+            })}
+            onPress={() => onPress(item.id)}
+            style={({ pressed }) => [
+              styles.row,
+              {
+                backgroundColor: pressed ? colors.primary5 : colors.elevation1,
+                borderTopLeftRadius: index === 0 ? radius.card : 0,
+                borderTopRightRadius: index === 0 ? radius.card : 0,
+                borderBottomLeftRadius: index === section.data.length - 1 ? radius.card : 0,
+                borderBottomRightRadius: index === section.data.length - 1 ? radius.card : 0,
+                borderBottomColor: colors.border,
+                borderBottomWidth: index === section.data.length - 1 ? 0 : StyleSheet.hairlineWidth,
+              },
+            ]}
+          >
+            {() => (
+              <View style={styles.rowContent}>
+                <Text numberOfLines={1} style={[styles.title, { color: colors.foreground }]}>
+                  {item.title}
                 </Text>
-                {item.preview ? (
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.preview,
-                      { color: pressed ? colors.primaryForeground : colors.mutedForeground },
-                    ]}
-                  >
-                    {item.preview}
+                {item.bookTitle ? (
+                  <Text numberOfLines={1} style={[styles.book, { color: colors.mutedForeground }]}>
+                    {item.bookTitle}
                   </Text>
                 ) : null}
               </View>
-              {item.bookTitle ? (
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.book,
-                    { color: pressed ? colors.primaryForeground : colors.mutedForeground },
-                  ]}
-                >
-                  {item.bookTitle}
-                </Text>
-              ) : null}
-            </View>
-          )}
-        </Pressable>
+            )}
+          </Pressable>
+        </BookCardContextMenu>
       )}
     />
   );
@@ -110,17 +98,13 @@ export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
 const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingBottom: 28 },
   sectionTitle: {
-    fontFamily: secondLevelTitleFontFamily,
-    fontSize: 20,
-    fontWeight: "400",
+    paddingHorizontal: 16,
+    fontSize: 14,
     marginTop: 22,
     marginBottom: 8,
   },
   row: { overflow: "hidden", paddingHorizontal: 16 },
   rowContent: { paddingVertical: 12 },
   title: { fontSize: 17, fontWeight: "600" },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  meta: { fontSize: 15, flexShrink: 0 },
-  preview: { fontSize: 15, flex: 1 },
   book: { fontSize: 14, marginTop: 2 },
 });

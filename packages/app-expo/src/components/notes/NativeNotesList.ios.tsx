@@ -1,85 +1,100 @@
-import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
-import { Text } from "@/components/ui/Typography";
-import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
-import { radius, secondLevelTitleFontFamily, useColors } from "@/styles/theme";
+import { Text as InterfaceText } from "@/components/ui/Typography";
+import { useTheme } from "@/styles/theme";
+import { interfaceFontFamily } from "@deslop/primitives/native";
+import {
+  Button,
+  ContextMenu,
+  Host,
+  Label,
+  List,
+  RNHostView,
+  Section,
+  Text,
+  VStack,
+} from "@expo/ui/swift-ui";
+import {
+  buttonStyle,
+  font,
+  foregroundStyle,
+  frame,
+  lineLimit,
+  listRowBackground,
+  listRowInsets,
+  listStyle,
+  scrollContentBackground,
+} from "@expo/ui/swift-ui/modifiers";
 import { useTranslation } from "react-i18next";
-import { Pressable, SectionList, StyleSheet, View } from "react-native";
 import type { NativeNotesListProps } from "./NativeNotesList";
 
-/** Native RN list keeps UINavigationBar large-title transitions connected to scrolling. */
-export function NativeNotesList({ sections, onPress }: NativeNotesListProps) {
-  const colors = useColors();
+export function NativeNotesList({ sections, onPress, onDelete }: NativeNotesListProps) {
+  const { colors, isDark } = useTheme();
   const { t } = useTranslation();
+  const subtitle = [
+    font({ family: interfaceFontFamily.regular, size: 14 }),
+    foregroundStyle(colors.mutedForeground),
+  ];
 
   return (
-    <ScrollViewMarker style={styles.marker} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
-      <SectionList
-        style={{ backgroundColor: colors.background }}
-        sections={sections}
-        keyExtractor={(item) => item.id}
-        contentInsetAdjustmentBehavior="automatic"
-        alwaysBounceVertical
-        stickySectionHeadersEnabled={false}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-        renderSectionHeader={({ section }) => (
-          <Text style={[styles.sectionTitle, { color: colors.mutedForeground }]}>
-            {section.title}
-          </Text>
-        )}
-        renderItem={({ item, index, section }) => {
-          const isFirst = index === 0;
-          const isLast = index === section.data.length - 1;
-
-          return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t("notes.openNote", "Открыть заметку «{{title}}»", {
-                title: item.title,
-              })}
-              onPress={() => onPress(item.id)}
-              style={({ pressed }) => [
-                styles.row,
-                {
-                  backgroundColor: pressed ? colors.primary5 : colors.elevation1,
-                  borderColor: colors.primary5,
-                  borderTopWidth: isFirst ? 0.5 : 0,
-                  borderBottomWidth: 0.5,
-                  borderTopLeftRadius: isFirst ? radius.card : 0,
-                  borderTopRightRadius: isFirst ? radius.card : 0,
-                  borderBottomLeftRadius: isLast ? radius.card : 0,
-                  borderBottomRightRadius: isLast ? radius.card : 0,
-                },
-              ]}
-            >
-              <View style={styles.rowContent}>
-                <Text numberOfLines={1} style={[styles.title, { color: colors.foreground }]}>
-                  {item.title}
-                </Text>
-                <View style={styles.metaRow}>
-                  <Text numberOfLines={1} style={[styles.meta, { color: colors.mutedForeground }]}>
-                    {item.dateLabel}
-                  </Text>
-                  {item.preview ? (
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.preview, { color: colors.mutedForeground }]}
+    <Host
+      style={{ flex: 1, backgroundColor: colors.background }}
+      colorScheme={isDark ? "dark" : "light"}
+    >
+      <List modifiers={[listStyle("insetGrouped"), scrollContentBackground("hidden")]}>
+        {sections.map((section) => (
+          <Section
+            key={section.title}
+            header={
+              <RNHostView matchContents>
+                <InterfaceText
+                  style={{ fontSize: 14, color: colors.mutedForeground, paddingHorizontal: 32 }}
+                >
+                  {section.title}
+                </InterfaceText>
+              </RNHostView>
+            }
+          >
+            {section.data.map((item) => (
+              <ContextMenu
+                key={item.id}
+                modifiers={[
+                  listRowBackground(colors.elevation1),
+                  listRowInsets({ top: 12, bottom: 12, leading: 16, trailing: 16 }),
+                ]}
+              >
+                <ContextMenu.Trigger>
+                  <Button onPress={() => onPress(item.id)} modifiers={[buttonStyle("plain")]}>
+                    <VStack
+                      alignment="leading"
+                      spacing={2}
+                      modifiers={[frame({ maxWidth: 10000, alignment: "leading" })]}
                     >
-                      {item.preview}
-                    </Text>
-                  ) : null}
-                </View>
-                {item.bookTitle ? (
-                  <Text numberOfLines={1} style={[styles.book, { color: colors.mutedForeground }]}>
-                    {item.bookTitle}
-                  </Text>
-                ) : null}
-              </View>
-            </Pressable>
-          );
-        }}
-      />
-    </ScrollViewMarker>
+                      <Text
+                        modifiers={[
+                          font({ family: interfaceFontFamily.semibold, size: 17 }),
+                          foregroundStyle(colors.foreground),
+                          lineLimit(1),
+                        ]}
+                      >
+                        {item.title}
+                      </Text>
+                      {item.bookTitle ? (
+                        <Text modifiers={[...subtitle, lineLimit(1)]}>{item.bookTitle}</Text>
+                      ) : null}
+                    </VStack>
+                  </Button>
+                </ContextMenu.Trigger>
+                <ContextMenu.Items>
+                  {/* biome-ignore lint/a11y/useValidAriaRole: destructive is an Expo UI button role, not an ARIA role. */}
+                  <Button role="destructive" onPress={() => onDelete(item.id)}>
+                    <Label title={t("common.delete", "Удалить")} systemImage="trash" />
+                  </Button>
+                </ContextMenu.Items>
+              </ContextMenu>
+            ))}
+          </Section>
+        ))}
+      </List>
+    </Host>
   );
 }
 
@@ -88,22 +103,3 @@ export type {
   NativeNoteListSection,
   NativeNotesListProps,
 } from "./NativeNotesList";
-
-const styles = StyleSheet.create({
-  marker: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingBottom: 28 },
-  sectionTitle: {
-    fontFamily: secondLevelTitleFontFamily,
-    fontSize: 20,
-    fontWeight: "400",
-    paddingTop: 22,
-    paddingBottom: 8,
-  },
-  row: { overflow: "hidden", paddingHorizontal: 16, borderLeftWidth: 0.5, borderRightWidth: 0.5 },
-  rowContent: { paddingVertical: 12 },
-  title: { fontSize: 17, fontWeight: "600" },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  meta: { fontSize: 15, flexShrink: 0 },
-  preview: { fontSize: 15, flex: 1 },
-  book: { fontSize: 14, marginTop: 2 },
-});

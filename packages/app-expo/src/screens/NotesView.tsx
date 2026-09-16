@@ -31,7 +31,15 @@ import { eventBus } from "@readany/core/utils/event-bus";
 /** Notes list plus the existing per-book annotation detail view. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Alert, Image, ScrollView, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  ScrollView,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { HighlightCard } from "./notes/HighlightCard";
 import { NoteCard } from "./notes/NoteCard";
@@ -58,41 +66,18 @@ function cleanNoteText(value: string) {
     .trim();
 }
 
-function noteListItem(
-  highlight: HighlightWithBook,
-  locale: string,
-  yesterdayLabel: string,
-  noteFallback: string,
-): NativeNoteListItem {
+function noteListItem(highlight: HighlightWithBook, noteFallback: string): NativeNoteListItem {
   const rawLines = (highlight.note || "")
     .split(/\r?\n/)
     .map((line) => cleanNoteText(line))
     .filter(Boolean);
   const title = rawLines[0] || noteFallback;
-  const noteBody = cleanNoteText(rawLines.slice(1).join(" "));
-  const quote = cleanNoteText(highlight.text || "");
-  const timestamp = highlight.updatedAt || highlight.createdAt;
-  const date = new Date(timestamp);
-  const today = startOfDay(new Date());
-  const dateStart = startOfDay(date);
-  const dateLabel =
-    dateStart === today
-      ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date)
-      : dateStart === today - DAY_MS
-        ? yesterdayLabel
-        : new Intl.DateTimeFormat(locale, {
-            day: "numeric",
-            month: "short",
-            ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
-          }).format(date);
   const isStandaloneNote =
     !highlight.cfi && !highlight.text && highlight.chapterTitle !== "Заметка к книге";
 
   return {
     id: highlight.id,
     title,
-    preview: noteBody || quote,
-    dateLabel,
     bookTitle: isStandaloneNote ? undefined : highlight.bookTitle || undefined,
   };
 }
@@ -111,7 +96,7 @@ export function NotesView({
   const colors = useColors();
   const s = makeStyles(colors);
   const nativeHeaderHeight = useHeaderHeight();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const nav = useNavigation<Nav>();
   const { highlightsWithBooks, loadAllHighlightsWithBooks, removeHighlight, updateHighlight } =
     useAnnotationStore();
@@ -129,10 +114,10 @@ export function NotesView({
       loadAllHighlightsWithBooks(500).finally(() => setIsLoading(false));
 
       return () => {
-        setSelectedBookId(null);
+        setSelectedBookId(initialBookId || null);
         setEditingId(null);
       };
-    }, [loadAllHighlightsWithBooks]),
+    }, [initialBookId, loadAllHighlightsWithBooks]),
   );
 
   useEffect(() => {
@@ -213,14 +198,17 @@ export function NotesView({
   const allNotes = useMemo(
     () =>
       highlightsWithBooks
-        .filter((highlight) => Boolean(highlight.note?.trim()))
+        .filter(
+          (highlight) =>
+            Boolean(highlight.note?.trim()) &&
+            (!initialBookId || highlight.bookId === initialBookId),
+        )
         .sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt)),
-    [highlightsWithBooks],
+    [highlightsWithBooks, initialBookId],
   );
 
   const noteSections = useMemo<NativeNoteListSection[]>(() => {
     const today = startOfDay(new Date());
-    const locale = i18n.resolvedLanguage === "en" ? "en-US" : "ru-RU";
     const buckets: Array<{ title: string; from: number; to: number }> = [
       { title: t("notes.today", "Сегодня"), from: today, to: Number.POSITIVE_INFINITY },
       { title: t("notes.yesterday", "Вчера"), from: today - DAY_MS, to: today },
@@ -249,17 +237,10 @@ export function NotesView({
             const timestamp = highlight.updatedAt || highlight.createdAt;
             return timestamp >= bucket.from && timestamp < bucket.to;
           })
-          .map((highlight) =>
-            noteListItem(
-              highlight,
-              locale,
-              t("notes.yesterday", "Вчера"),
-              t("notes.noteFallback", "Заметка"),
-            ),
-          ),
+          .map((highlight) => noteListItem(highlight, t("notes.noteFallback", "Заметка"))),
       }))
       .filter((section) => section.data.length > 0);
-  }, [allNotes, i18n.resolvedLanguage, t]);
+  }, [allNotes, t]);
 
   // Group by chapter
   const itemsByChapter = useMemo(() => {
@@ -385,7 +366,7 @@ export function NotesView({
   }
 
   // Detail view
-  if (selectedBookId && selectedBook) {
+  if (selectedBookId && selectedBook && !hideDetailHeader) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
         {/* Detail header - hide entirely when from reader and empty */}
@@ -574,13 +555,19 @@ export function NotesView({
                 "notes.emptyHint",
                 "Добавьте заметку сейчас или выделите текст во время чтения.",
               )}
-              avoidNativeTabBar={showBackButton}
-              style={{ transform: [{ translateY: -nativeHeaderHeight / 2 }] }}
+              avoidNativeTabBar={Platform.OS === "ios" && showBackButton}
+              style={
+                Platform.OS === "ios"
+                  ? { transform: [{ translateY: -nativeHeaderHeight / 2 }] }
+                  : undefined
+              }
             >
               <EmptyStateActionButton
                 label={t("notes.addNote", "Добавить заметку")}
                 accessibilityLabel={t("notes.addNote", "Добавить заметку")}
-                onPress={() => nav.navigate("ManualNote")}
+                onPress={() =>
+                  nav.navigate("ManualNote", initialBookId ? { bookId: initialBookId } : undefined)
+                }
               />
             </CenteredEmptyState>
           </ScrollView>
@@ -593,8 +580,17 @@ export function NotesView({
   return (
     <NativeNotesList
       sections={noteSections}
+      onDelete={(id) => {
+        const note = allNotes.find((item) => item.id === id);
+        if (!note) return;
+        if (note.cfi) updateHighlight(id, { note: undefined });
+        else removeHighlight(id);
+      }}
       onPress={(id) => {
-        nav.navigate({ name: "ManualNote", params: { noteId: id } } as never);
+        nav.navigate({
+          name: "ManualNote",
+          params: { noteId: id, ...(initialBookId ? { bookId: initialBookId } : {}) },
+        } as never);
       }}
     />
   );

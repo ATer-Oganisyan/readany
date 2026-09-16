@@ -5,6 +5,7 @@ export type NativeContextMenuItem = {
   key: string;
   label: string;
   icon?: MishanaerIconName | null;
+  iconPosition?: "leading" | "trailing";
   sfSymbol?: SFSymbol;
   destructive?: boolean;
   disabled?: boolean;
@@ -17,6 +18,7 @@ export type NativeContextMenuButtonProps = {
   sfSymbol?: SFSymbol;
   size?: number;
   color?: string;
+  containerColor?: string;
   /**
    * Меню открылось/закрылось. Нужно там, где родитель может размонтировать
    * кнопку по своему таймеру: пока меню открыто, размонтировать его нельзя —

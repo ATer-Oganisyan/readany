@@ -40,9 +40,9 @@ import {
 } from "@react-navigation/native-stack";
 import type { WebDavImportSource } from "@readany/core";
 import { useEffect, useRef } from "react";
-import ReadAnyNativeControls from "../../modules/native-controls";
 import { useTranslation } from "react-i18next";
 import { Platform } from "react-native";
+import ReadAnyNativeControls from "../../modules/native-controls";
 import { TabNavigator } from "./TabNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS } from "./scroll-edge-effects";
 
@@ -63,7 +63,7 @@ export type RootStackParamList = {
   AudiobookPlayer: { sourceId?: string } | undefined;
   BookChat: { bookId: string; selectedText?: string; chapterTitle?: string };
   NarraCharacters: { bookId: string; charactersSheetSourceId?: string };
-  NarraCharacterChat: { bookId: string; characterId: string };
+  NarraCharacterChat: { bookId: string; characterId: string; fromChatsTab?: boolean };
   NarraCharacterProfile: {
     bookId: string;
     characterId: string;
@@ -113,7 +113,8 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 function NarraCharacterChatRouteScreen(
   props: NativeStackScreenProps<RootStackParamList, "NarraCharacterChat">,
 ) {
-  if (Platform.OS !== "ios") return <NarraCharacterChatScreen {...props} />;
+  if (Platform.OS !== "ios" || props.route.params.fromChatsTab)
+    return <NarraCharacterChatScreen {...props} />;
 
   return (
     <ElevatedSurfaceTheme>
@@ -299,17 +300,23 @@ export function RootNavigator() {
         <Stack.Screen
           name="NarraCharacterChat"
           component={NarraCharacterChatRouteScreen}
-          options={{
+          options={({ route }) => ({
             // Keep the chat above the modal reader when replacing the profile sheet.
-            presentation: Platform.OS === "ios" ? "formSheet" : "card",
-            animation: Platform.OS === "ios" ? "slide_from_bottom" : "slide_from_right",
+            presentation:
+              Platform.OS === "ios" && !route.params.fromChatsTab ? "formSheet" : "card",
+            animation:
+              Platform.OS === "ios" && !route.params.fromChatsTab
+                ? "slide_from_bottom"
+                : "slide_from_right",
             gestureEnabled: true,
             sheetAllowedDetents: [1],
             sheetGrabberVisible: true,
             sheetExpandsWhenScrolledToEdge: false,
             contentStyle: {
               backgroundColor:
-                Platform.OS === "ios" && isDark ? colors.elevation2 : colors.background,
+                Platform.OS === "ios" && !route.params.fromChatsTab && isDark
+                  ? colors.elevation2
+                  : colors.background,
             },
             title: t("narra.characterChat", "Чат с персонажем"),
             headerShown: false,
@@ -320,7 +327,7 @@ export function RootNavigator() {
               top: "hidden",
               bottom: "hidden",
             },
-          }}
+          })}
         />
         <Stack.Screen
           name="NarraCharacterProfile"
@@ -329,6 +336,10 @@ export function RootNavigator() {
             presentation: Platform.OS === "android" ? "transparentModal" : "formSheet",
             animation: Platform.OS === "android" ? "none" : "slide_from_bottom",
             headerShown: false,
+            scrollEdgeEffects: {
+              ...NATIVE_SCROLL_EDGE_EFFECTS,
+              top: "hidden",
+            },
             contentStyle: {
               backgroundColor: "transparent",
             },
@@ -427,12 +438,46 @@ export function RootNavigator() {
         <Stack.Screen
           name="FullScreenNotes"
           component={FullScreenNotesScreen}
-          options={{ animation: "slide_from_right", title: t("notes.title", "Заметки") }}
+          options={({ navigation }) => ({
+            title: t("notes.title", "Заметки"),
+            headerLargeTitle: false,
+            headerTransparent: false,
+            headerStyle: { backgroundColor: colors.background },
+            ...(Platform.OS === "ios"
+              ? {
+                  presentation: "formSheet",
+                  animation: "slide_from_bottom",
+                  sheetAllowedDetents: [1],
+                  sheetGrabberVisible: true,
+                  sheetExpandsWhenScrolledToEdge: false,
+                  unstable_headerLeftItems: () => [
+                    {
+                      type: "button" as const,
+                      label: t("common.close", "Закрыть"),
+                      accessibilityLabel: t("common.close", "Закрыть"),
+                      icon: { type: "sfSymbol" as const, name: "xmark" },
+                      onPress: () => navigation.goBack(),
+                    },
+                  ],
+                }
+              : { animation: "slide_from_right" }),
+          })}
         />
         <Stack.Screen
           name="ManualNote"
           component={ManualNoteScreen}
-          options={{ animation: "slide_from_right", title: t("notes.newNote", "Новая заметка") }}
+          options={{
+            title: t("notes.newNote", "Новая заметка"),
+            ...(Platform.OS === "ios"
+              ? {
+                  presentation: "formSheet",
+                  animation: "slide_from_bottom",
+                  sheetAllowedDetents: [1],
+                  sheetGrabberVisible: true,
+                  sheetExpandsWhenScrolledToEdge: false,
+                }
+              : { animation: "slide_from_right" }),
+          }}
         />
         {__DEV__ ? (
           <>

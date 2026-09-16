@@ -21,7 +21,7 @@ import {
 } from "@/lib/narra/chat-list-model";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { TabParamList } from "@/navigation/TabNavigator";
-import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
+import { NATIVE_SCROLL_EDGE_EFFECTS, topScrollEdgeEffect } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore, useNarraStore } from "@/stores";
 import type { NarraState } from "@/stores/narra-store";
 import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
@@ -30,7 +30,7 @@ import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -58,6 +58,14 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
   const styles = useMemo(() => makeStyles(colors, insets.bottom), [colors, insets.bottom]);
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const [topEdgeEffect, setTopEdgeEffect] = useState<"hidden" | "hard">("hidden");
+  const scrollEdgeEffects = useMemo(
+    () => ({ ...NATIVE_SCROLL_EDGE_EFFECTS, top: topEdgeEffect }),
+    [topEdgeEffect],
+  );
+  useEffect(() => {
+    if (Platform.OS === "ios") navigation.setOptions({ scrollEdgeEffects });
+  }, [navigation, scrollEdgeEffects]);
   const [selectedBookId, setSelectedBookId] = useState("all");
   const segmentValues = useMemo(
     () => [t("common.all", "Все"), ...model.books.map((book) => getBookTabLabel(book.title))],
@@ -82,6 +90,7 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
       navigation.navigate("NarraCharacterChat", {
         bookId: row.bookId,
         characterId: row.character.id,
+        fromChatsTab: true,
       });
     },
     [navigation],
@@ -131,8 +140,14 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
   return (
     <>
       <ChatPortraitWorker rows={rows} />
-      <ScrollViewMarker style={styles.container} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+      <ScrollViewMarker style={styles.container} scrollEdgeEffects={scrollEdgeEffects}>
         <ScrollView
+          onScroll={({ nativeEvent }) => {
+            setTopEdgeEffect(
+              topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top),
+            );
+          }}
+          scrollEventThrottle={100}
           contentInsetAdjustmentBehavior="automatic"
           style={styles.container}
           contentContainerStyle={styles.content}

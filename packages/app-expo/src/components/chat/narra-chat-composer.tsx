@@ -1,11 +1,11 @@
 import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
-import { useTheme } from "@/styles/theme";
+import { fontFamily, fontSize, useTheme } from "@/styles/theme";
 import { radiusPixels, spacingPixels } from "@deslop/primitives";
 import { AIInput } from "panelui-native";
 import type { ComponentPropsWithRef } from "react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, StyleSheet, type TextInput, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, type TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { IMessage, InputToolbarProps } from "../../../vendor/react-native-chat/src";
 
@@ -44,6 +44,33 @@ export function NarraChatComposer<TMessage extends IMessage>({
   const text = props.text ?? "";
   const inputProps = props.textInputProps;
   const onSend = props.onSend;
+  const placeholder = inputProps?.placeholder ?? "";
+  const [displayedPlaceholder, setDisplayedPlaceholder] = useState(placeholder);
+  const placeholderOpacity = useRef(new Animated.Value(1)).current;
+  const visiblePlaceholder = useRef(placeholder);
+
+  useEffect(() => {
+    if (text || visiblePlaceholder.current === placeholder) {
+      visiblePlaceholder.current = placeholder;
+      setDisplayedPlaceholder(placeholder);
+      placeholderOpacity.setValue(1);
+      return;
+    }
+    const fade = (toValue: number) =>
+      Animated.timing(placeholderOpacity, {
+        toValue,
+        duration: 150,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      });
+    fade(0).start(({ finished }) => {
+      if (!finished) return;
+      visiblePlaceholder.current = placeholder;
+      setDisplayedPlaceholder(placeholder);
+      fade(1).start();
+    });
+    return () => placeholderOpacity.stopAnimation();
+  }, [placeholder, placeholderOpacity, text]);
 
   const handleSubmit = useCallback(
     (value: string) => {
@@ -91,14 +118,31 @@ export function NarraChatComposer<TMessage extends IMessage>({
           {/* Метрики строки считает сам AIInput: он центрирует одну строку в
               контроле и растит поле вниз. Свои minHeight и паддинги перебивали
               этот расчёт и сдвигали плейсхолдер вверх. */}
-          <AIInput.Field
-            accessibilityLabel={inputProps?.placeholder}
-            autoFocus={inputProps?.autoFocus}
-            editable={inputProps?.editable}
-            nativeID={inputProps?.nativeID}
-            placeholder={inputProps?.placeholder ?? ""}
-            style={styles.field}
-          />
+          <View style={{ flex: 1, alignSelf: "center" }}>
+            <AIInput.Field
+              accessibilityLabel={inputProps?.placeholder}
+              autoFocus={inputProps?.autoFocus}
+              editable={inputProps?.editable}
+              nativeID={inputProps?.nativeID}
+              placeholder=""
+              style={styles.field}
+            />
+            {!text && (
+              <View pointerEvents="none" style={styles.placeholder} accessible={false}>
+                <Animated.Text
+                  accessible={false}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={[
+                    styles.placeholderText,
+                    { color: colors.mutedForeground, opacity: placeholderOpacity },
+                  ]}
+                >
+                  {displayedPlaceholder.replace(/[\r\n]+/g, " ")}
+                </Animated.Text>
+              </View>
+            )}
+          </View>
           {/* Своя кнопка вместо AIInput.Submit: тот трёхликий контрол подменяет
               глиф на диктовку и стоп, а отправка в чате Narra всегда читается
               одной стрелкой вверх. */}
@@ -160,7 +204,22 @@ const styles = StyleSheet.create({
     // У многострочного TextInput на iOS есть свой вертикальный запас: при
     // выравнивании строки по низу он уходит под текст и поднимает его над
     // центром капсулы. Центрируем сам бокс поля — кнопка остаётся внизу.
-    alignSelf: "center",
+    flex: 0,
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.base,
+  },
+  placeholder: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    justifyContent: "center",
+    paddingHorizontal: spacingPixels[8],
+  },
+  placeholderText: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.base,
   },
   submit: {
     alignItems: "center",

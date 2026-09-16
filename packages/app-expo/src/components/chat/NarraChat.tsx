@@ -10,6 +10,7 @@ import { KeyboardGestureArea, KeyboardStickyView } from "react-native-keyboard-c
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NarraChatComposer } from "./narra-chat-composer";
 import { NarraChatTranscript } from "./narra-chat-transcript";
+import { plainChatText } from "./plain-chat-text";
 
 type StreamingStep = "thinking" | "tool_calling" | "responding" | "idle";
 
@@ -30,24 +31,26 @@ function messageText(message: MessageV2, t: TFunction): string {
   for (const part of message.parts) {
     switch (part.type) {
       case "text":
-        if (part.text.trim()) body.push(part.text);
+        if (part.text.trim()) {
+          body.push(message.role === "assistant" ? plainChatText(part.text) : part.text);
+        }
         break;
       case "quote": {
-        const source = part.source ? `\n> — ${part.source}` : "";
-        body.push(`> ${part.text.replaceAll("\n", "\n> ")}${source}`);
+        const source = part.source ? `\n— ${part.source}` : "";
+        body.push(`${part.text}${source}`);
         break;
       }
       case "citation":
         citations.push(part);
         break;
       case "mindmap":
-        body.push(`**${part.title}**\n\n${part.markdown}`);
+        body.push(`${part.title}\n\n${plainChatText(part.markdown)}`);
         break;
       case "mermaid":
-        body.push(`**${part.title}**\n\n\`\`\`mermaid\n${part.chart}\n\`\`\``);
+        body.push(`${part.title}\n\n${part.chart}`);
         break;
       case "aborted":
-        body.push(`_${t("chat.responseStopped", "Ответ остановлен.")}_`);
+        body.push(t("chat.responseStopped", "Ответ остановлен."));
         break;
       // The 4.2 typing and streaming states replace Narra's old visible
       // reasoning/tool cards. Internal reasoning remains in message data.
@@ -62,9 +65,9 @@ function messageText(message: MessageV2, t: TFunction): string {
       .sort((a, b) => (a.citationIndex ?? 0) - (b.citationIndex ?? 0))
       .map((citation, index) => {
         const number = citation.citationIndex ?? index + 1;
-        return `[${number}. ${citation.chapterTitle}](narra-citation://${encodeURIComponent(citation.id)})`;
+        return `[${number}] ${citation.chapterTitle}`;
       });
-    body.push(`**${t("chat.sources", "Источники")}**\n\n${sources.join("  \n")}`);
+    body.push(`${t("chat.sources", "Источники")}\n\n${sources.join("\n")}`);
   }
 
   return body.join("\n\n");
@@ -141,9 +144,6 @@ export function NarraChat({
   const [composerMeasured, setComposerMeasured] = useState(false);
   const baseComposerHeightRef = useRef(initialComposerHeight);
   const didMeasureComposerRef = useRef(false);
-
-  const streamingMessageId =
-    isStreaming && messages.at(-1)?.role === "assistant" ? messages.at(-1)?.id : undefined;
 
   // Индикатор набора нужен, пока ответ ещё не начал приходить текстом.
   const lastMessage = messages.at(-1);
@@ -254,7 +254,6 @@ export function NarraChat({
         renderText={renderMessageText}
         showScrollToBottom={showScrollToBottomButton}
         showTyping={showTypingIndicator && showInitialStreaming}
-        streamingMessageId={streamingMessageId}
         topInset={topInset}
       />
       <KeyboardStickyView

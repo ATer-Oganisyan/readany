@@ -14,7 +14,7 @@ import {
 } from "@/lib/stats/live-reading-stats";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { ProfileTabStackParamList } from "@/navigation/TabNavigator";
-import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
+import { NATIVE_SCROLL_EDGE_EFFECTS, topScrollEdgeEffect } from "@/navigation/scroll-edge-effects";
 import { useReadingSessionStore, useTTSStore } from "@/stores";
 import type { ThemeMode } from "@/styles/ThemeContext";
 import {
@@ -43,6 +43,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   type StyleProp,
@@ -297,6 +298,14 @@ export function ProfileScreen() {
   const statsGridColumns = layout.isTablet ? 4 : 2;
   const statCardSlotWidth = `${100 / statsGridColumns}%` as `${number}%`;
   const nav = useNavigation<Nav>();
+  const [topEdgeEffect, setTopEdgeEffect] = useState<"hidden" | "hard">("hidden");
+  const scrollEdgeEffects = useMemo(
+    () => ({ ...NATIVE_SCROLL_EDGE_EFFECTS, top: topEdgeEffect }),
+    [topEdgeEffect],
+  );
+  useEffect(() => {
+    if (Platform.OS === "ios") nav.setOptions({ scrollEdgeEffects });
+  }, [nav, scrollEdgeEffects]);
   const isFocused = useIsFocused();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
@@ -499,9 +508,15 @@ export function ProfileScreen() {
   ];
 
   return (
-    <ScrollViewMarker style={s.scrollView} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+    <ScrollViewMarker style={s.scrollView} scrollEdgeEffects={scrollEdgeEffects}>
       <ScrollView
         style={[s.scrollView, { backgroundColor: colors.background }]}
+        onScroll={({ nativeEvent }) => {
+          setTopEdgeEffect(
+            topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top),
+          );
+        }}
+        scrollEventThrottle={100}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}

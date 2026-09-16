@@ -28,6 +28,7 @@ export function NativeContextMenuButton({
   sfSymbol = "ellipsis",
   size = 40,
   color,
+  containerColor,
   onOpenChange,
   renderTrigger,
   expanded: controlledExpanded,
@@ -62,7 +63,7 @@ export function NativeContextMenuButton({
           <IconButton
             onClick={() => setOpen(true)}
             modifiers={[frameSize(size, size)]}
-            colors={{ contentColor: iconColor }}
+            colors={{ contentColor: iconColor, containerColor }}
           >
             <Icon
               source={getStrokeIconImageSource(resolveSystemIconName(sfSymbol))}
@@ -77,6 +78,11 @@ export function NativeContextMenuButton({
           {items.map((item) => {
             const itemColor = item.destructive ? colors.destructive : colors.foreground;
             const itemIcon = item.icon ?? resolveSystemIconName(item.sfSymbol ?? "info.circle");
+
+            const IconSlot =
+              item.iconPosition === "trailing"
+                ? DropdownMenuItem.TrailingIcon
+                : DropdownMenuItem.LeadingIcon;
 
             return (
               <DropdownMenuItem
@@ -96,9 +102,9 @@ export function NativeContextMenuButton({
                   </Text>
                 </DropdownMenuItem.Text>
                 {item.icon !== null ? (
-                  <DropdownMenuItem.LeadingIcon>
+                  <IconSlot>
                     <Icon source={getStrokeIconImageSource(itemIcon)} size={20} tint={itemColor} />
-                  </DropdownMenuItem.LeadingIcon>
+                  </IconSlot>
                 ) : null}
               </DropdownMenuItem>
             );

@@ -25,6 +25,7 @@ export function NativeNoteEditor({
         minLines={12}
         maxLines={1_000}
         onValueChange={handleChange}
+        textStyle={{ fontSize: 16, lineHeight: 16 * 1.4 }}
         modifiers={[fillMaxSize()]}
         colors={{
           focusedTextColor: colors.foreground,

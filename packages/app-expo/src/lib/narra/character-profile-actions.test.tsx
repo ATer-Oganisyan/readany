@@ -57,7 +57,8 @@ vi.mock("@/hooks/use-backend-book", () => ({ useBackendBook: vi.fn() }));
 vi.mock("@/lib/library/open-mobile-book", () => ({ openMobileBook: vi.fn() }));
 vi.mock("@/lib/narra/character-portrait", () => ({
   hasCharacterPortrait: () => Boolean(runtime.character.portraitUri),
-  resolveCharacterPortraitUri: (character: typeof runtime.character | undefined) => character?.portraitUri,
+  resolveCharacterPortraitUri: (character: typeof runtime.character | undefined) =>
+    character?.portraitUri,
 }));
 vi.mock("@/styles/theme", () => ({ useTheme: () => ({ colors: { card: "#fff" } }) }));
 vi.mock("react-i18next", () => ({
@@ -160,7 +161,7 @@ describe("character profile actions", () => {
     expect(tree.root.findAll((node) => String(node.type) === "ActivityIndicator")).toHaveLength(0);
   });
 
-  it("presents the standalone iOS chat as a sheet above the modal reader", () => {
+  it("presents character chat according to its entry point", () => {
     const navigator = readFileSync(
       new URL("../../navigation/RootNavigator.tsx", import.meta.url),
       "utf8",
@@ -168,13 +169,13 @@ describe("character profile actions", () => {
     const reader = navigator.split('name="Reader"')[1].split("</Stack.Screen>")[0].split("/>")[0];
     const chat = navigator.split('name="NarraCharacterChat"')[1].split("/>")[0];
     expect(reader).toContain('presentation: "fullScreenModal"');
-    expect(chat).toContain('presentation: Platform.OS === "ios" ? "formSheet" : "card"');
+    expect(chat).toContain(
+      'Platform.OS === "ios" && !route.params.fromChatsTab ? "formSheet" : "card"',
+    );
     expect(chat).toContain("sheetAllowedDetents: [1]");
     expect(chat).toContain("sheetGrabberVisible: true");
-    expect(chat).toContain(
-      'Platform.OS === "ios" && isDark ? colors.elevation2 : colors.background',
-    );
-    expect(chat).not.toContain('presentation: "card"');
+    expect(chat).toContain('Platform.OS === "ios" && !route.params.fromChatsTab && isDark');
+    expect(chat).toContain(': "slide_from_right"');
 
     expect(navigator).toContain("function NarraCharacterChatRouteScreen");
     expect(navigator).toContain("<ElevatedSurfaceTheme>");

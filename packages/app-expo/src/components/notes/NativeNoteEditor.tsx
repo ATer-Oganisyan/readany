@@ -42,7 +42,7 @@ export function NativeNoteEditor({
         color: colors.foreground,
         backgroundColor: colors.background,
         fontSize: 18,
-        lineHeight: 26,
+        lineHeight: 18 * 1.4,
       }}
     />
   );
