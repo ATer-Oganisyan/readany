@@ -1692,7 +1692,6 @@
         const book = (file && file.sections) ? file : await makeBook(file);
         currentBook = book;
         _pdfSceneProposals = [];
-        _pdfScenePendingProposals = [];
         _pdfSceneProgress = Object.create(null);
         _pdfSceneEntries = Object.create(null);
         attachBookTransformHandler(book);
@@ -5598,7 +5597,6 @@ a { color: ${primary} !important; }
       'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt, figcaption, .__readany_br_paragraph';
     var _sceneRestoreAnchors = [];
     var _pdfSceneProposals = [];
-    var _pdfScenePendingProposals = [];
     var _pdfSceneProgress = Object.create(null);
     var _pdfSceneEntries = Object.create(null);
     var _sceneSlotLabels = {
@@ -6256,19 +6254,12 @@ a { color: ${primary} !important; }
           var pdfAnchor = pdfSceneAnchorForPage(content.index);
           if (
             _sceneRestoreAnchors.indexOf(pdfAnchor) >= 0 ||
-            _pdfSceneProposals.indexOf(pdfAnchor) >= 0 ||
-            _pdfScenePendingProposals.indexOf(pdfAnchor) >= 0
+            _pdfSceneProposals.indexOf(pdfAnchor) >= 0
           ) {
             sceneSlotLog('skip: PDF scene page already exists at ' + pdfAnchor);
             return;
           }
           if (Number.isFinite(progressFraction)) _pdfSceneProgress[pdfAnchor] = progressFraction;
-          if (!_sceneSlotsEnabled) {
-            // Keep the physical page, but do not add an empty PDF interstitial.
-            _pdfScenePendingProposals.push(pdfAnchor);
-            sceneSlotLog('deferred PDF scene page at ' + pdfAnchor + ' until generation is available');
-            return;
-          }
           _pdfSceneProposals.push(pdfAnchor);
           syncPDFScenePages();
           sceneSlotLog('inserted PDF scene page at ' + pdfAnchor);
@@ -6354,18 +6345,6 @@ a { color: ${primary} !important; }
             if (state === 'idle' || state === 'error') renderSceneInsert(slots[j], state, null);
           }
         }
-        if (_sceneSlotsEnabled && _pdfScenePendingProposals.length) {
-          var pending = _pdfScenePendingProposals;
-          _pdfScenePendingProposals = [];
-          var added = false;
-          for (var k = 0; k < pending.length; k++) {
-            var anchor = pending[k];
-            if (_sceneRestoreAnchors.indexOf(anchor) >= 0 || _pdfSceneProposals.indexOf(anchor) >= 0) continue;
-            _pdfSceneProposals.push(anchor);
-            added = true;
-          }
-          if (added) syncPDFScenePages();
-        }
       } catch (e) {
         console.error('[SceneSlots] Failed to parse labels:', e);
       }
@@ -6394,7 +6373,6 @@ a { color: ${primary} !important; }
       if (el && el.parentNode) el.parentNode.removeChild(el);
       if (pdfScenePageIndex(anchor) >= 0) {
         _pdfSceneProposals = _pdfSceneProposals.filter(function (item) { return item !== anchor; });
-        _pdfScenePendingProposals = _pdfScenePendingProposals.filter(function (item) { return item !== anchor; });
         _sceneRestoreAnchors = _sceneRestoreAnchors.filter(function (item) { return item !== anchor; });
         delete _pdfSceneProgress[anchor];
         delete _pdfSceneEntries[anchor];
