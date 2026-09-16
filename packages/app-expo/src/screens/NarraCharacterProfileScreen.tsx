@@ -102,8 +102,13 @@ export function NarraCharacterProfileScreen({ route, navigation }: Props) {
     </View>
   );
 
+  // Готовый портрет меняет и высоту, и подложку карточки. Compose-шторка на
+  // Android меряет RN-контент один раз при открытии и не перемеряется, а на iOS
+  // подмена содержимого выглядит скачком. Перемонтируем шторку целиком: она
+  // закрывается и открывается уже с портретом, своей штатной анимацией.
   return (
     <CharacterProfileSheet
+      key={portraitReady ? "portrait" : "compact"}
       portraitReady={portraitReady}
       backgroundColor={sheetBackgroundColor}
       onDismiss={() => navigation.goBack()}
