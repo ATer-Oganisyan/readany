@@ -35,6 +35,12 @@ interface NativeSegmentedPagerProps {
    * прокрутки за пределы содержимого. Каждая страница помнит своё положение.
    */
   fillHeight?: boolean;
+  /**
+   * Горизонтальный отступ родителя. Пейджер выезжает на него за края
+   * (PagerView режет страницы по своим границам), а отступ возвращается
+   * внутри каждой страницы, чтобы при свайпе контент обрезался по краю экрана.
+   */
+  horizontalInset?: number;
   onSwipeStateChange?: (swiping: boolean) => void;
 }
 
@@ -61,6 +67,7 @@ export const NativeSegmentedPager = forwardRef<
     pageGap = 0,
     stablePageHeight = false,
     fillHeight = false,
+    horizontalInset = 0,
     onSwipeStateChange,
   },
   ref,
@@ -157,7 +164,10 @@ export const NativeSegmentedPager = forwardRef<
 
   return (
     <View
-      style={fillHeight ? styles.containerFill : styles.container}
+      style={[
+        fillHeight ? styles.containerFill : styles.container,
+        horizontalInset ? { marginHorizontal: -horizontalInset } : null,
+      ]}
       {...swipeGuard?.touchHandlers}
       onLayout={({ nativeEvent }) => {
         const nextWidth = Math.round(nativeEvent.layout.width);
@@ -175,52 +185,61 @@ export const NativeSegmentedPager = forwardRef<
           variant={controlVariant}
         />
       </View>
-      <PagerView
-        ref={pagerRef}
-        style={[
-          styles.pager,
-          fillHeight ? styles.pagerFill : { height: pagerHeight },
-          pagerWidth ? { width: pagerWidth } : null,
-        ]}
-        initialPage={safeSelectedIndex}
-        orientation="horizontal"
-        // Без overdrag палец на первой и последней странице упирается в жёсткую
-        // стену. У двух вкладок крайние обе, поэтому системное оттягивание с
-        // отпружиниванием нужно всегда.
-        overdrag
-        pageMargin={safePageGap}
-        onPageScrollStateChanged={handlePageScrollStateChanged}
-        onPageSelected={({ nativeEvent }) => {
-          const nextIndex = nativeEvent.position;
-          // Сравниваем до присваивания: при свайпе пальцем onSelect мог уже
-          // обновить selectedIndex, и по нему смену страницы не поймать.
-          // Одна отдача на смену страницы — не на dragging и settling.
-          if (nextIndex !== activePageRef.current) hapticSelection();
-          activePageRef.current = nextIndex;
-          if (nextIndex !== selectedIndex) onSelect(nextIndex);
-        }}
-      >
-        {pages.map((page, index) => (
-          <View
-            collapsable={false}
-            key={page.key ?? `page-${index}`}
-            style={fillHeight ? styles.pageFill : styles.page}
-          >
-            {fillHeight ? (
-              page
-            ) : (
-              <View onLayout={(event) => rememberPageHeight(index, event)}>{page}</View>
-            )}
-          </View>
-        ))}
-      </PagerView>
+      {/* Высоту меняет только обёртка: нативный PagerView на iOS при смене
+          своего размера перевёрстывается и рывком добивает ещё доезжающий
+          скролл. Сам пейджер держит постоянную высоту по самой высокой
+          странице, а обёртка режет лишнее. */}
+      <View style={fillHeight ? styles.pagerFill : { height: pagerHeight, overflow: "hidden" }}>
+        <PagerView
+          ref={pagerRef}
+          style={[
+            styles.pager,
+            fillHeight ? styles.pagerFill : { height: Math.max(pagerHeight, tallestPageHeight) },
+            pagerWidth ? { width: pagerWidth } : null,
+          ]}
+          initialPage={safeSelectedIndex}
+          orientation="horizontal"
+          // Без overdrag палец на первой и последней странице упирается в жёсткую
+          // стену. У двух вкладок крайние обе, поэтому системное оттягивание с
+          // отпружиниванием нужно всегда.
+          overdrag
+          pageMargin={safePageGap}
+          onPageScrollStateChanged={handlePageScrollStateChanged}
+          onPageSelected={({ nativeEvent }) => {
+            const nextIndex = nativeEvent.position;
+            // Сравниваем до присваивания: при свайпе пальцем onSelect мог уже
+            // обновить selectedIndex, и по нему смену страницы не поймать.
+            // Одна отдача на смену страницы — не на dragging и settling.
+            if (nextIndex !== activePageRef.current) hapticSelection();
+            activePageRef.current = nextIndex;
+            if (nextIndex !== selectedIndex) onSelect(nextIndex);
+          }}
+        >
+          {pages.map((page, index) => (
+            <View
+              collapsable={false}
+              key={page.key ?? `page-${index}`}
+              style={[
+                fillHeight ? styles.pageFill : styles.page,
+                horizontalInset ? { paddingHorizontal: horizontalInset } : null,
+              ]}
+            >
+              {fillHeight ? (
+                page
+              ) : (
+                <View onLayout={(event) => rememberPageHeight(index, event)}>{page}</View>
+              )}
+            </View>
+          ))}
+        </PagerView>
+      </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
-  container: { width: "100%" },
-  containerFill: { flex: 1, width: "100%" },
+  container: { alignSelf: "stretch" },
+  containerFill: { flex: 1, alignSelf: "stretch" },
   pager: { width: "100%" },
   pagerFill: { flex: 1 },
   page: { width: "100%" },

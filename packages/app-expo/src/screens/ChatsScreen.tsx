@@ -26,9 +26,10 @@ import { useLibraryStore, useNarraStore } from "@/stores";
 import type { NarraState } from "@/stores/narra-store";
 import { type ThemeColors, spacing, useTheme } from "@/styles/theme";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,6 +55,8 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
   countRender("chats.screen");
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const scrollRef = useRef<ScrollView>(null);
   const { height: viewportHeight } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(colors, insets.bottom), [colors, insets.bottom]);
   const { t } = useTranslation();
@@ -142,6 +145,7 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
       <ChatPortraitWorker rows={rows} />
       <ScrollViewMarker style={styles.container} scrollEdgeEffects={scrollEdgeEffects}>
         <ScrollView
+          ref={scrollRef}
           onScroll={({ nativeEvent }) => {
             setTopEdgeEffect(
               topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top),
@@ -149,6 +153,9 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
           }}
           scrollEventThrottle={100}
           contentInsetAdjustmentBehavior="automatic"
+          // Без этого RN клампит программный scrollTo по сырому contentInset (0),
+          // а не по adjusted, и к верху под навбаром (y < 0) доехать нельзя.
+          scrollToOverflowEnabled
           style={styles.container}
           contentContainerStyle={styles.content}
         >
@@ -160,7 +167,14 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
             accessibilityLabel={t("chats.bookFilter", "Фильтр по книге")}
             scrollableSegments
             controlsStyle={styles.tabs}
+            horizontalInset={spacing.lg}
             minimumPageHeight={Math.max(1, viewportHeight - insets.top - insets.bottom - 120)}
+            onSwipeStateChange={(swiping) => {
+              // Как в библиотеке: на свайпе плавно уезжаем к верху, пока высота
+              // держится по самой длинной странице; на idle добиваем без анимации.
+              // Верх — минус высота навбара, а не ноль.
+              scrollRef.current?.scrollTo({ y: -headerHeight, animated: swiping });
+            }}
           >
             {segmentValues.map((_, index) => {
               const pageBookId = index === 0 ? "all" : (model.books[index - 1]?.id ?? "all");
@@ -294,8 +308,5 @@ const makeStyles = (colors: ThemeColors, bottomInset: number) =>
       paddingTop: spacing.sm,
       paddingBottom: spacing.xxl + bottomInset,
     },
-    tabs: {
-      marginHorizontal: -spacing.lg,
-      paddingBottom: spacing.lg,
-    },
+    tabs: { paddingBottom: spacing.lg },
   });

@@ -572,7 +572,9 @@ function LibraryScreenContent() {
     ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
       setCatalogScrollY(nativeEvent.contentOffset.y);
       if (Platform.OS === "ios") {
-        setTopEdgeEffect(topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top));
+        setTopEdgeEffect(
+          topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top),
+        );
       }
       if (
         !showCatalog ||
@@ -1156,6 +1158,7 @@ function LibraryScreenContent() {
       minimumPageHeight={libraryPagerMinHeight}
       initialPageHeight={libraryPageMinHeight}
       pageGap={gridGap}
+      horizontalInset={layout.horizontalPadding}
       stablePageHeight={false}
       onSwipeStateChange={(swiping) => {
         if (swiping) {
@@ -1447,6 +1450,7 @@ const makeStyles = (
     },
     librarySectionTabs: {
       width: "100%",
+      paddingHorizontal: layout.horizontalPadding,
       marginBottom: spacingPixels[20] + spacingPixels[3],
     },
     catalogSection: { overflow: "visible", paddingBottom: CATALOG_SHADOW_ROOM },
