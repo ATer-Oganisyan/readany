@@ -111,6 +111,9 @@ const MAX_TRACKED_PAGE_DELTA = 20;
 const MAX_TRACKED_FRACTION_DELTA = 0.08;
 const INITIAL_PROGRESS_RESTORE_GUARD_MS = 1800;
 const PROGRAMMATIC_NAV_GUARD_MS = 1200;
+// Дорисовка выделений после закрытия шторки заметки: formSheet уезжает вниз примерно
+// за столько, а focus прилетает раньше конца перехода.
+const SHEET_DISMISS_MS = 260;
 const CONTROLS_VISIBILITY_ANIMATION_MS = 220;
 const ANDROID_READER_BOOTSTRAP_SCRIPT =
   Platform.OS === "android"
@@ -529,6 +532,10 @@ function ReaderContent({ route, navigation }: Props) {
   const suppressReaderTapUntilRef = useRef(0);
   // Аннотации, уже отданные в WebView: cfi → как они там выглядят.
   const appliedAnnotationsRef = useRef<Map<string, { color: string; note?: string }>>(new Map());
+  // Пока поверх ридера открыта шторка (создание заметки — formSheet ManualNote), новые
+  // выделения в WebView не рисуем: проявление жёлтого маркера длится ~0.5 с и целиком
+  // отыграло бы под шторкой. Ждём возврата фокуса и доезда шторки вниз.
+  const [annotationsVisible, setAnnotationsVisible] = useState(true);
   // Mediator ref so onRelocate can fire TTS continuation without direct hook dependency
   const ttsPendingContinueRef = useRef<{
     pendingTTSContinueCallbackRef: React.RefObject<(() => void) | null>;
@@ -2039,6 +2046,9 @@ function ReaderContent({ route, navigation }: Props) {
       appliedAnnotationsRef.current = new Map();
       return;
     }
+    // Экран под шторкой: откладываем синхронизацию целиком. appliedAnnotationsRef не трогаем,
+    // поэтому после возврата фокуса эффект доедет и нарисует накопившееся — уже на видимом тексте.
+    if (!annotationsVisible) return;
     const applied = appliedAnnotationsRef.current;
     const next = new Map<string, { color: string; note?: string }>();
     for (const h of highlights) {
@@ -2062,7 +2072,18 @@ function ReaderContent({ route, navigation }: Props) {
       });
     }
     appliedAnnotationsRef.current = next;
-  }, [webViewReady, loading, highlights]);
+  }, [webViewReady, loading, highlights, annotationsVisible]);
+
+  // Шторка ManualNote уезжает вниз ~0.3 с, а focus прилетает в начале перехода, поэтому
+  // держим паузу — иначе маркер снова начнёт проявляться за уходящей шторкой.
+  useEffect(() => {
+    if (!isFocused) {
+      setAnnotationsVisible(false);
+      return;
+    }
+    const timer = setTimeout(() => setAnnotationsVisible(true), SHEET_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [isFocused]);
 
   // Reset last navigated CFI when book changes
   useEffect(() => {

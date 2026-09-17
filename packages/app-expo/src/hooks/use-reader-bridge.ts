@@ -274,18 +274,22 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const addAnnotation = useCallback(
     (annotation: { value: string; type?: string; color?: string; note?: string }) => {
       const annotationStr = JSON.stringify(annotation);
-      // Direct view.addAnnotation for immediate render + handleCommand to maintain userAnnotations map
+      // handleCommand сам вызывает view.addAnnotation и заодно ведёт userAnnotations,
+      // поэтому прямой вызов остаётся только запасным путём. Рисовать дважды нельзя:
+      // foliate на повторный addAnnotation снимает предыдущий overlay из DOM, и
+      // проявление жёлтого маркера обрывается на первом же кадре.
       webViewRef.current?.injectJavaScript(`
         (function() {
           try {
+            if (typeof handleCommand === 'function') {
+              handleCommand(${JSON.stringify({ type: "addAnnotation", annotation })});
+              return;
+            }
             if (!window.__view && document.querySelector('foliate-view')) {
               window.__view = document.querySelector('foliate-view');
             }
             var v = window.__view;
             if (v) v.addAnnotation(${annotationStr}).catch(function(){});
-            if (typeof handleCommand === 'function') {
-              handleCommand(${JSON.stringify({ type: "addAnnotation", annotation })});
-            }
           } catch(e) {}
         })();
         true;
