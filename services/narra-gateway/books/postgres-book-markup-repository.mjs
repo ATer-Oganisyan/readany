@@ -4459,19 +4459,13 @@ export function createPostgresBookMarkupRepository(pool, {
      * Растягивать повторы карточкам и разметке нельзя: цепочка окон ждёт, пока
      * у окна не останется заданий в работе, и отложенная на час карточка
      * останавливает книгу целиком. Медиа цепочку не держит.
-     *
-     * Отказ модерации не повторяется вовсе: промпт тот же, ответ будет тот же,
-     * а стоит он как удачная генерация.
      */
     async failGenerationJob(job, errorCode, { maxAttempts = 3 } = {}) {
       const media = Object.values(CHARACTER_MEDIA_JOB_TYPES).includes(job.type)
       return transaction(pool, async (client) => {
         const result = await client.query(
           `UPDATE generation_jobs
-           SET status = CASE
-                 WHEN attempts < $4 AND $3 <> 'CENSOR' THEN 'queued'
-                 ELSE 'failed'
-               END,
+           SET status = CASE WHEN attempts < $4 THEN 'queued' ELSE 'failed' END,
                last_error_code = $3,
                available_at = now() + make_interval(
                  secs => LEAST($5::int, power(8, attempts)::int)

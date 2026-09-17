@@ -826,8 +826,10 @@ export async function requestCoverImageWithFallback(options) {
     return await requestCoverImage({ ...options, requestId, retryIndex: 0 })
   } catch (error) {
     previousAttempts = Array.isArray(error?.attempts) ? error.attempts : []
+    const canFallback = shouldFallbackAfterImageError(error) ||
+      (options.allowCensorFallback === true && error?.code === 'CENSOR')
     if (
-      !shouldFallbackAfterImageError(error) ||
+      !canFallback ||
       !config.fallbackModel ||
       config.fallbackModel === config.model
     ) {

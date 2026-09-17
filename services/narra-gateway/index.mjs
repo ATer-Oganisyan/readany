@@ -390,7 +390,8 @@ async function measuredInternalImageRequest({
   quality,
   referenceImages = [],
   signal,
-  costContext
+  costContext,
+  allowCensorFallback = false
 }) {
   try {
     const generated = await requestCoverImageObserved({
@@ -399,6 +400,7 @@ async function measuredInternalImageRequest({
       quality,
       referenceImages,
       requestId: randomUUID(),
+      allowCensorFallback,
       signal
     })
     await recordInternalGenerationCost({
@@ -458,6 +460,7 @@ async function generateInternalCharacterPortrait(prompt, signal, costContext) {
       aspectRatio: '3:4',
       quality: CHARACTER_PORTRAIT_IMAGE_QUALITY,
       costContext,
+      allowCensorFallback: true,
       signal
     })
     const bytes = Buffer.from(generated.image, 'base64')
