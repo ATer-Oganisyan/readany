@@ -8,7 +8,6 @@ import {
 } from "@/components/ui/Icon";
 import { KeyboardAwareScrollView } from "@/components/ui/KeyboardAwareScrollView";
 import { Text, TextInput } from "@/components/ui/Typography";
-import { getBundledApiKey, hasBundledOpenRouterKey } from "@/config/bundled-ai";
 import { useSettingsStore } from "@/stores";
 import { largeTitleFontFamily, secondLevelTitleFontFamily, useTheme } from "@/styles/theme";
 import { useNavigation } from "@react-navigation/native";
@@ -48,9 +47,9 @@ export function AIPage() {
     useSettingsStore();
   const insets = useSafeAreaInsets();
 
-  const initialProvider: AIProviderType = hasBundledOpenRouterKey ? "openrouter" : "openai";
+  const initialProvider: AIProviderType = "openai";
   const [provider, setProvider] = useState<AIProviderType>(initialProvider);
-  const [apiKey, setApiKey] = useState(getBundledApiKey({ provider: initialProvider }));
+  const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(getDefaultBaseUrl(initialProvider));
   const [status, setStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [showApiKey, setShowApiKey] = useState(false);
@@ -201,36 +200,35 @@ export function AIPage() {
             </View>
           </View>
 
-          {providerRequiresApiKey(provider) &&
-            !(provider === "openrouter" && hasBundledOpenRouterKey) && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>{t("settings.apiKey", "API Key")}</Text>
-                <View
-                  style={[
-                    styles.inputContainer,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <TextInput
-                    style={[styles.inputWithIcon, { color: colors.foreground }]}
-                    value={apiKey}
-                    onChangeText={handleApiKeyChange}
-                    placeholder="sk-..."
-                    placeholderTextColor={colors.mutedForeground}
-                    secureTextEntry={!showApiKey}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <Pressable onPress={() => setShowApiKey(!showApiKey)} style={styles.eyeIcon}>
-                    {showApiKey ? (
-                      <EyeOff size={20} color={colors.mutedForeground} />
-                    ) : (
-                      <Eye size={20} color={colors.mutedForeground} />
-                    )}
-                  </Pressable>
-                </View>
+          {providerRequiresApiKey(provider) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>{t("settings.apiKey", "API Key")}</Text>
+              <View
+                style={[
+                  styles.inputContainer,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <TextInput
+                  style={[styles.inputWithIcon, { color: colors.foreground }]}
+                  value={apiKey}
+                  onChangeText={handleApiKeyChange}
+                  placeholder="sk-..."
+                  placeholderTextColor={colors.mutedForeground}
+                  secureTextEntry={!showApiKey}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Pressable onPress={() => setShowApiKey(!showApiKey)} style={styles.eyeIcon}>
+                  {showApiKey ? (
+                    <EyeOff size={20} color={colors.mutedForeground} />
+                  ) : (
+                    <Eye size={20} color={colors.mutedForeground} />
+                  )}
+                </Pressable>
               </View>
-            )}
+            </View>
+          )}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("settings.baseUrl", "Base URL")}</Text>

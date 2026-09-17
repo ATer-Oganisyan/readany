@@ -3,10 +3,6 @@ vi.mock("@/lib/ai/narra-gateway-fetch", () => ({ narraGatewayRequest: vi.fn() })
 vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
 vi.mock("expo-file-system/legacy", () => ({ documentDirectory: "file:///documents/" }));
 vi.mock("expo/fetch", () => ({ fetch: vi.fn() }));
-vi.mock("@/config/bundled-ai", () => ({
-  getBundledApiKey: vi.fn(),
-  hasBundledOpenRouterKey: false,
-}));
 import { narraGatewayRequest } from "@/lib/ai/narra-gateway-fetch";
 import { type CoverJobSnapshot, acknowledgeCoverJob, boundedCoverBookFacts } from "./cover-jobs";
 import { generateBookCoverImage } from "./media";
