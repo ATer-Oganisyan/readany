@@ -19,6 +19,38 @@ it("rejects separators but preserves speech, numbers and non-Latin text", () => 
   }
 });
 
+it("trims Foliate's sentence range to the same CFI the page extractor produces", () => {
+  const source = template.slice(
+    template.indexOf("    function trimTTSDetailCfi("),
+    template.indexOf("    function getTTSSegmentContextFromEngine("),
+  );
+  const node = { nodeType: 3, nodeValue: "   — Я, пожалуй, пойду. " };
+  const range = {
+    startContainer: node,
+    endContainer: node,
+    startOffset: 1,
+    endOffset: node.nodeValue.length,
+    cloneRange() {
+      return { ...this };
+    },
+    setStart(_: unknown, offset: number) {
+      this.startOffset = offset;
+    },
+    setEnd(_: unknown, offset: number) {
+      this.endOffset = offset;
+    },
+  };
+  const context = vm.createContext({
+    view: { getCFI: (_: number, r: typeof range) => `epubcfi(/6/6!/4/2,/1:${r.startOffset},/1:${r.endOffset})` },
+    resolveRangeForCfi: () => ({ index: 2, range }),
+  });
+  vm.runInContext(source, context);
+  expect(context.trimTTSDetailCfi("epubcfi(/6/6!/4/2,/1:1,/1:25)")).toBe("epubcfi(/6/6!/4/2,/1:3,/1:23)");
+  // Unresolvable CFI (another section) is returned untouched.
+  context.resolveRangeForCfi = () => null;
+  expect(context.trimTTSDetailCfi("epubcfi(/6/8!/4/2,/1:0,/1:8)")).toBe("epubcfi(/6/8!/4/2,/1:0,/1:8)");
+});
+
 it("excludes scene controls and translations in Foliate's fallback walker", () => {
   const source = readFileSync("../foliate-js/text-walker.js", "utf8");
   const context = vm.createContext({ NodeFilter: { FILTER_REJECT: 2, FILTER_SKIP: 3, FILTER_ACCEPT: 1 } });
