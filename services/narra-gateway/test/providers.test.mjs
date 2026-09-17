@@ -676,7 +676,10 @@ test('character portrait preserves both moderation refusals and stops after the 
           model: JSON.parse(init.body).model,
           requestId: new Headers(init.headers).get('x-request-id')
         })
-        return new Response('content moderation blocked', { status: 400 })
+        return new Response(
+          calls.length === 1 ? 'primary moderation blocked' : 'fallback moderation blocked',
+          { status: 400 }
+        )
       },
       env: {
         COVER_IMAGE_PROVIDER: 'litellm',
@@ -688,6 +691,7 @@ test('character portrait preserves both moderation refusals and stops after the 
     (error) => {
       assert.equal(error.code, 'CENSOR')
       assert.equal(error.status, 400)
+      assert.equal(error.providerDetail, 'fallback moderation blocked')
       assert.equal(error.requestId, requestId)
       assert.deepEqual(error.attempts.map((attempt) => ({
         model: attempt.model,
