@@ -55,6 +55,7 @@ vi.mock("react-native", () => ({
   },
   useWindowDimensions: () => ({ width: 393, height: 852, scale: 3, fontScale: 1 }),
 }));
+vi.mock("@react-navigation/elements", () => ({ useHeaderHeight: () => 116 }));
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 59, right: 0, bottom: 34, left: 0 }),
 }));
