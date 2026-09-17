@@ -81,13 +81,10 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
   );
   const category = useMemo(() => {
     countRender("catalog.group");
-    return buildCatalogShelves(
-      catalog.books,
-      catalog.genres,
-      i18n.resolvedLanguage ?? "ru",
-      t("library.catalogUncategorized", "Без категории"),
-    ).find((shelf) => shelf.id === genreId);
-  }, [catalog.books, catalog.genres, genreId, i18n.resolvedLanguage, t]);
+    return buildCatalogShelves(catalog.books, catalog.genres, i18n.resolvedLanguage ?? "ru").find(
+      (shelf) => shelf.id === genreId,
+    );
+  }, [catalog.books, catalog.genres, genreId, i18n.resolvedLanguage]);
   const books = category?.books ?? EMPTY_BOOKS;
   const title = category?.title ?? route.params.title;
   const usesWrappedTitle = process.env.EXPO_OS === "ios";
