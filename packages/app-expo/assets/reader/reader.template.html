@@ -3554,6 +3554,9 @@ a { color: var(--readany-link, ${primary}) !important; }
         if (typeof resolved.anchor === 'function') {
           for (const content of contents) {
             if (!content?.doc) continue;
+            // A CFI names its spine item; do not resolve it against another
+            // loaded section just because the element path happens to exist there.
+            if (resolved.index != null && content.index != null && content.index !== resolved.index) continue;
             try {
               const range = anchorToRange(content.doc, resolved.anchor(content.doc));
               if (range) return { range, doc: content.doc, index: content.index ?? resolved.index ?? 0 };
@@ -4011,17 +4014,15 @@ a { color: var(--readany-link, ${primary}) !important; }
         const tts = view && view.tts;
         if (!tts || !cfi) return { before: [], after: [] };
 
+        // A CFI from a section that is not loaded (e.g. the prefetched next
+        // chapter) has no context here. The old alignCfi fallback silently left
+        // the cursor where it was and handed back sentences of the current chapter.
         const resolved = resolveRangeForCfi(cfi);
+        if (!resolved?.range || typeof tts.from !== 'function') return { before: [], after: [] };
         try {
-          if (resolved?.range && typeof tts.from === 'function') {
-            const caretRange = resolved.range.cloneRange ? resolved.range.cloneRange() : resolved.range;
-            if (caretRange.collapse) caretRange.collapse(true);
-            tts.from(caretRange);
-          } else if (typeof tts.alignCfi === 'function') {
-            tts.alignCfi(cfi);
-          } else if (typeof tts.highlightCfi === 'function') {
-            tts.highlightCfi(cfi);
-          }
+          const caretRange = resolved.range.cloneRange ? resolved.range.cloneRange() : resolved.range;
+          if (caretRange.collapse) caretRange.collapse(true);
+          tts.from(caretRange);
         } catch (e) {
           console.log('[ttsSegmentContext] failed to align cfi:', e);
           return { before: [], after: [] };
@@ -4291,7 +4292,7 @@ a { color: var(--readany-link, ${primary}) !important; }
         for (let index = sectionIndex; index <= lastSection; index++) {
           const section = currentBook.sections[index];
           if (!section || typeof section.createDocument !== 'function') return [];
-          const doc = await section.createDocument();
+          const doc = await createTTSSectionDocument(section);
           const start = index === sectionIndex && typeof resolved?.anchor === 'function'
             ? anchorToRange(doc, resolved.anchor(doc)) : null;
           const end = index === lastSection && typeof endLocation?.resolved?.anchor === 'function'
@@ -4325,12 +4326,22 @@ a { color: var(--readany-link, ${primary}) !important; }
         const section = currentBook.sections[index];
         if (!section || typeof section.createDocument !== 'function') return [];
 
-        const doc = await section.createDocument();
+        const doc = await createTTSSectionDocument(section);
         return extractTTSSegmentsFromDocument(doc, index, maxCount, null, null);
       } catch (e) {
         console.log('[sectionTTSSegments] error:', e);
         return [];
       }
+    }
+
+    // Chapters extracted off-screen must look like the rendered ones: the
+    // renderer's load hook splits ficbook-style <br> walls into paragraphs,
+    // and the TTS block selector only sees paragraphs. Without this the next
+    // chapter yields nothing but its heading.
+    async function createTTSSectionDocument(section) {
+      const doc = await section.createDocument();
+      normalizeBrOnlyParagraphs(doc);
+      return doc;
     }
 
     function extractVisibleTTSSegments(alignCfi) {

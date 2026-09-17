@@ -57,8 +57,16 @@ const getSegmenter = (lang = "en", granularity = "word") => {
     let name = 0;
     let strIndex = -1;
     let sum = 0;
-    for (const { index, segment, isWordLike } of segmenter.segment(str)) {
+    for (const { index: rawIndex, segment: rawSegment, isWordLike } of segmenter.segment(str)) {
       if (granularityIsWord && !isWordLike) continue;
+      // Sentence segments carry the paragraph indent and the trailing space.
+      // Trim them so the range (and its CFI) matches a sentence cut by
+      // trimmed text, as the reader's page extractor does; skip pure whitespace.
+      const segment = granularityIsWord ? rawSegment : rawSegment.trim();
+      if (!segment) continue;
+      const index = granularityIsWord
+        ? rawIndex
+        : rawIndex + (rawSegment.length - rawSegment.trimStart().length);
       while (sum <= index) sum += strs[++strIndex].length;
       const startIndex = strIndex;
       const startOffset = index - (sum - strs[strIndex].length);
