@@ -62,8 +62,8 @@ export async function generateNarraAudioScenario(
   excerpt: string,
   characters: NarraCharacter[],
 ): Promise<NarraSceneAudioSegment[]> {
-  // Словарь ударений имён книги (P9) — синтез сегментов сцены пойдёт через
-  // synthesizeNarraSpeech, который читает активный словарь.
+  // Словарь ударений имён книги (P9) — синтез сегментов пойдёт через
+  // synthesizeNarraGatewaySpeech, который читает активный словарь.
   primeCharacterStressForms(characters);
   const roster = characters.map((character) => `${character.id}: ${character.fullName}`).join("; ");
   const response = await narraGatewayRequest("/v2/ai/chat/complete", {

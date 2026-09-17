@@ -85,14 +85,36 @@ const defaultAIConfig: AIConfig = {
   slidingWindowSize: 8,
 };
 
+/** Эндпоинт прежних сборок с ключом OpenRouter в бандле — ключа больше нет, запись вычищается. */
+const LEGACY_BUNDLED_ENDPOINT_ID = "bundled-openrouter";
+
 function migrateSettingsState(state: SettingsState): SettingsState {
   const shouldMigrateTokens = state.aiConfig.maxTokens === 4096;
   const narraChatMode = ["proxy-first", "index-first"].includes(state.narraChatMode)
     ? state.narraChatMode
     : DEFAULT_NARRA_CHAT_MODE;
-  if (!shouldMigrateTokens && narraChatMode === state.narraChatMode) return state;
+  const hasLegacyEndpoint = state.aiConfig.endpoints.some(
+    (endpoint) => endpoint.id === LEGACY_BUNDLED_ENDPOINT_ID,
+  );
+  if (!shouldMigrateTokens && !hasLegacyEndpoint && narraChatMode === state.narraChatMode)
+    return state;
 
-  const aiConfig = state.aiConfig;
+  let aiConfig = state.aiConfig;
+  if (hasLegacyEndpoint) {
+    const endpoints = aiConfig.endpoints.filter(
+      (endpoint) => endpoint.id !== LEGACY_BUNDLED_ENDPOINT_ID,
+    );
+    const legacyWasActive = aiConfig.activeEndpointId === LEGACY_BUNDLED_ENDPOINT_ID;
+    aiConfig = {
+      ...aiConfig,
+      endpoints: endpoints.length > 0 ? endpoints : defaultAIConfig.endpoints,
+      activeEndpointId: legacyWasActive
+        ? (endpoints[0]?.id ?? defaultAIConfig.activeEndpointId)
+        : aiConfig.activeEndpointId,
+      activeModel: legacyWasActive ? defaultAIConfig.activeModel : aiConfig.activeModel,
+    };
+  }
+
   return {
     ...state,
     narraChatMode,

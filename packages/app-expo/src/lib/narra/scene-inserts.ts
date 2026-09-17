@@ -21,7 +21,7 @@ export function sceneSourceKeyForAnchor(anchor: string): string {
 /**
  * Якоря сцен книги, пригодных для восстановления в тексте: только сцены,
  * сохранённые с явным полем anchor (врезки). Сцены со старым sourceKey
- * `page:<cfi>` без якоря (экран NarraScene) в текст не возвращаются.
+ * `page:<cfi>` без якоря (удалённый экран сцены) в текст не возвращаются.
  */
 export function sceneInsertAnchors(
   scenes: Record<string, NarraSceneImage> | undefined,

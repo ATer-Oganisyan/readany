@@ -11,8 +11,8 @@
  * текстовых узлов SSML ({ssml}) — при XML-экранировании превращается в
  * &apos; и корректно декодируется на стороне синтеза.
  *
- * Точка применения — synthesizeNarraSpeech (media.ts): через неё проходят все
- * чанки книги (edge-плеер), сегменты сцен и реплики чата. Активный словарь =
+ * Точка применения — synthesizeNarraGatewaySpeech (media.ts): через неё проходят
+ * все чанки книги (edge-плеер) и реплики персонажей. Активный словарь =
  * базовый (stress-dictionary.ts: имена bundled-каталога + частотные слова) +
  * словоформы имён персонажей текущей книги (stressedName из анализа глав),
  * см. primeCharacterStressForms.
@@ -116,7 +116,7 @@ export function applyStressMarkup(text: string, dictionary: CompiledStressDictio
     .join("");
 }
 
-// ─── Активный словарь (читается synthesizeNarraSpeech при каждом синтезе) ────
+// ─── Активный словарь (читается synthesizeNarraGatewaySpeech при каждом синтезе) ──
 
 let baseDictionaryCache: Map<string, string> | null = null;
 

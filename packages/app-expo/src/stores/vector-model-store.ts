@@ -111,7 +111,7 @@ export const useVectorModelStore = create<VectorModelState>()(
         ? persisted.autoVectorizeOnImport
         : true;
 
-      const vectorModels = persisted.vectorModels.filter(
+      const vectorModels = (persisted.vectorModels ?? []).filter(
         (model) => model.id !== LEGACY_BUNDLED_EMBEDDING_ID,
       );
       const selectedVectorModelId =
@@ -123,6 +123,9 @@ export const useVectorModelStore = create<VectorModelState>()(
         ...persisted,
         vectorModels,
         selectedVectorModelId,
+        // Локальных моделей на мобильном нет: режим "builtin" из старых
+        // состояний уронил бы каждую векторизацию при импорте.
+        vectorModelMode: "remote",
         autoVectorizeOnImport,
         autoVectorizeDefaultApplied: true,
       };

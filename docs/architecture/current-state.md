@@ -219,8 +219,9 @@ production topology: серверный search включается feature flag
 - Expo TTS пока не потребляет серверную `book-tts-script-v1`; multi-voice
   speaker assignment на устройстве остаётся локальной эвристикой Foliate.
 - Structured durable `/v2/media/scene/jobs` реализован на сервере, но в Expo
-  нет production call site; активны legacy selected-text flow и canonical
-  book-bound `/scenes/at`.
+  нет production call site; активен только canonical book-bound `/scenes/at`
+  (legacy selected-text экран удалён 2026-09-17 вместе с ключом OpenRouter в
+  клиенте — единственный путь к AI теперь gateway).
 - В `ChatScreen` semantic context не передаётся прямо в system prompt; актуальный
   reader context доступен агенту через tools и приложенную selection.
 - Полный профиль уже открытого персонажа может содержать сведения из более
