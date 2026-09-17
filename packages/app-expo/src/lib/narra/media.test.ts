@@ -48,10 +48,6 @@ vi.mock("@/lib/ai/narra-gateway-fetch", async () => {
   };
 });
 vi.mock("@/lib/analytics/telemetry", () => ({ recordTelemetry: vi.fn() }));
-vi.mock("@/config/bundled-ai", () => ({
-  getBundledApiKey: vi.fn(() => "test-openrouter-key"),
-  hasBundledOpenRouterKey: true,
-}));
 
 const speechFetchMock = vi.hoisted(() => vi.fn());
 vi.mock("expo/fetch", () => ({ fetch: speechFetchMock }));
@@ -75,7 +71,6 @@ import {
   resolvePortraitGenre,
   synthesizeNarraBookSpeech,
   synthesizeNarraGatewaySpeech,
-  synthesizeNarraSpeech,
 } from "./media";
 import { PORTRAIT_PROMPT_CHAR_LIMIT, buildCharacterPortraitPrompt } from "./portrait-prompt";
 import { applyActiveStressMarkup, primeCharacterStressForms } from "./stress-markup";
@@ -463,11 +458,7 @@ describe("speech SSML (просодия и скорость)", () => {
   });
 });
 
-describe("synthesizeNarraSpeech — разметка ударений (P9)", () => {
-  beforeEach(() => {
-    vi.stubEnv("EXPO_PUBLIC_NARRA_TTS_PROVIDER", "gateway");
-  });
-
+describe("synthesizeNarraGatewaySpeech — разметка ударений (P9)", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     primeCharacterStressForms([]);
@@ -482,9 +473,9 @@ describe("synthesizeNarraSpeech — разметка ударений (P9)", () 
       }),
     );
 
-    await expect(synthesizeNarraSpeech("Анна звонит Хлестакову.", "Che")).rejects.toThrow(
-      "stop after request inspection",
-    );
+    await expect(
+      synthesizeNarraGatewaySpeech("Анна звонит Хлестакову.", "Che"),
+    ).rejects.toMatchObject({ code: "SERVICE" });
 
     const [path, request] = vi.mocked(narraGatewayRequest).mock.calls[0] ?? [];
     expect(path).toBe("/v2/speech/synthesize");
@@ -492,129 +483,6 @@ describe("synthesizeNarraSpeech — разметка ударений (P9)", () 
       text: "А'нна звони'т Хлестако'ву.",
       voice: "Che",
     });
-  });
-});
-
-describe("speech telemetry", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("records first-audio readiness from the gateway sample-rate contract", async () => {
-    vi.stubEnv("EXPO_PUBLIC_NARRA_TTS_PROVIDER", "gateway");
-    vi.mocked(narraGatewayRequest).mockResolvedValueOnce(
-      new Response(new Uint8Array([1, 2, 3]), {
-        status: 200,
-        headers: { "x-audio-sample-rate": "48000" },
-      }),
-    );
-
-    await expect(synthesizeNarraSpeech("Привет", "Che")).resolves.toContain(
-      "file:///documents/narra-media/speech-",
-    );
-
-    expect(recordTelemetry).toHaveBeenCalledWith(
-      "tts_first_audio_ready",
-      expect.objectContaining({ sample_rate: 48_000, origin: "user" }),
-    );
-  });
-});
-
-describe("synthesizeNarraSpeech — Grok TTS через OpenRouter", () => {
-  beforeEach(() => {
-    speechFetchMock.mockReset();
-    primeCharacterStressForms([]);
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-    primeCharacterStressForms([]);
-  });
-
-  function audioResponse(): Response {
-    return new Response(new Uint8Array([0xff, 0xfb, 0x90, 0x00]), {
-      status: 200,
-      headers: { "content-type": "audio/mpeg" },
-    });
-  }
-
-  it("идёт в OpenRouter по умолчанию, минуя гейтвей", async () => {
-    speechFetchMock.mockResolvedValueOnce(audioResponse());
-
-    await expect(synthesizeNarraSpeech("Привет", "Che")).resolves.toContain(
-      "file:///documents/narra-media/speech-",
-    );
-
-    expect(narraGatewayRequest).not.toHaveBeenCalled();
-    const [url, request] = speechFetchMock.mock.calls[0] ?? [];
-    expect(url).toBe("https://openrouter.ai/api/v1/audio/speech");
-    expect(JSON.parse(String(request?.body))).toEqual({
-      model: "x-ai/grok-voice-tts-1.0",
-      input: "Привет",
-      voice: "aurora",
-      response_format: "mp3",
-    });
-  });
-
-  it("пишет mp3, а не wav", async () => {
-    speechFetchMock.mockResolvedValueOnce(audioResponse());
-    await expect(synthesizeNarraSpeech("Привет", "Che")).resolves.toMatch(/\.mp3$/);
-  });
-
-  it("переводит код персонажа в голос Grok и сохраняет пол", async () => {
-    speechFetchMock.mockResolvedValueOnce(audioResponse());
-    await synthesizeNarraSpeech("Реплика", "Bez");
-    expect(JSON.parse(String(speechFetchMock.mock.calls[0]?.[1]?.body)).voice).toBe("perseus");
-  });
-
-  it("разрешает просодию в другой голос — pitch/rate у Grok нет", async () => {
-    speechFetchMock.mockResolvedValueOnce(audioResponse());
-    await synthesizeNarraSpeech("Реплика", "Bez", { prosody: { pitch: -2 } });
-    const body = JSON.parse(String(speechFetchMock.mock.calls[0]?.[1]?.body));
-    expect(body.voice).not.toBe("perseus");
-    // Скорость и высота в запрос не уходят — они не поддерживаются.
-    expect(body).not.toHaveProperty("speed");
-    expect(String(body.input)).not.toContain("<prosody");
-  });
-
-  it("применяет словарь ударений и не собирает SSML", async () => {
-    primeCharacterStressForms([{ ...anna, stressedName: "А'нна" }]);
-    speechFetchMock.mockResolvedValueOnce(audioResponse());
-
-    await synthesizeNarraSpeech("Анна звонит.", "Che", { rate: 1.5 });
-
-    const body = JSON.parse(String(speechFetchMock.mock.calls[0]?.[1]?.body));
-    expect(body.input).toBe("А'нна звони'т.");
-    expect(body.input).not.toContain("<speak>");
-  });
-
-  it("сообщает телеметрии частоту дискретизации Grok", async () => {
-    speechFetchMock.mockResolvedValueOnce(audioResponse());
-    await synthesizeNarraSpeech("Привет", "Che");
-    expect(recordTelemetry).toHaveBeenCalledWith(
-      "tts_first_audio_ready",
-      expect.objectContaining({ sample_rate: 24_000, origin: "user" }),
-    );
-  });
-
-  it("повторяет запрос один раз на ошибке сервиса", async () => {
-    speechFetchMock
-      .mockResolvedValueOnce(new Response("upstream boom", { status: 502 }))
-      .mockResolvedValueOnce(audioResponse());
-
-    await expect(synthesizeNarraSpeech("Привет", "Che")).resolves.toMatch(/\.mp3$/);
-    expect(speechFetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("не повторяет запрос на ошибке запроса", async () => {
-    speechFetchMock.mockResolvedValue(new Response("bad voice", { status: 404 }));
-    await expect(synthesizeNarraSpeech("Привет", "Che")).rejects.toThrow();
-    expect(speechFetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("падает с ошибкой конфигурации на пустом теле ответа", async () => {
-    speechFetchMock.mockResolvedValue(new Response(new Uint8Array(), { status: 200 }));
-    await expect(synthesizeNarraSpeech("Привет", "Che")).rejects.toThrow();
   });
 });
 
@@ -675,8 +543,7 @@ describe("book TTS backend contract", () => {
     primeCharacterStressForms([]);
   });
 
-  it("uses Gateway even if other Narra speech uses Grok; sends only text and voice and saves WAV", async () => {
-    vi.stubEnv("EXPO_PUBLIC_NARRA_TTS_PROVIDER", "grok");
+  it("sends only text and voice to the Gateway and saves WAV", async () => {
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response());
     await expect(synthesizeNarraBookSpeech("Текст.", "Che")).resolves.toMatch(/speech-.*\.wav$/);
     expect(narraGatewayRequest).toHaveBeenCalledWith(
@@ -688,9 +555,12 @@ describe("book TTS backend contract", () => {
       "media_job_enqueued",
       expect.objectContaining({ provider: "salutespeech" }),
     );
+    expect(recordTelemetry).toHaveBeenCalledWith(
+      "tts_first_audio_ready",
+      expect.objectContaining({ sample_rate: 48_000, origin: "user" }),
+    );
   });
   it("offers the same authenticated Gateway path to character voice samples", async () => {
-    vi.stubEnv("EXPO_PUBLIC_NARRA_TTS_PROVIDER", "grok");
     vi.mocked(narraGatewayRequest).mockResolvedValueOnce(response());
 
     await expect(

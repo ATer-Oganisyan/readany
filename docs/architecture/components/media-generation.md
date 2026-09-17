@@ -2,7 +2,7 @@
 type: component
 status: current
 scope: book covers, character media and scene generation
-last-reviewed: 2026-09-07
+last-reviewed: 2026-09-17
 ---
 
 # Генерация медиа
@@ -154,35 +154,19 @@ passport и compliance, поэтому он не эквивалентен canoni
 Для `backendManaged` character локальная автогенерация запрещена: клиент ждёт
 canonical asset и не расходует второй job на тот же portrait.
 
-## Сцены: три разных API-контура
+## Сцены: два API-контура (и один удалённый)
 
-### A. Активный selected-text screen (legacy synchronous)
+### A. Selected-text screen — удалён
 
-Пользователь выделяет текст или выбирает действие сцены; вход на
-`NarraSceneScreen` запускает generation. Это явное действие пользователя,
-даже если HTTP-вызов стартует в `useEffect` экрана.
-
-Client формирует prompt из title/author, description/subjects, определённого
-genre, chapter, excerpt, внешности только упомянутых по имени персонажей и
-одного-двух предыдущих excerpts для визуальной связности серии. Мягкий budget
-2 500, gateway hard limit 4 000.
-
-```http
-POST /v2/media/images
-Content-Type: application/json
-
-{
-  "prompt": "<client-owned prompt>",
-  "width": 1024,
-  "height": 1024,
-  "engine": "openrouter"
-}
-```
-
-Успех синхронный: `200 {"image":"<base64>","mime_type":"image/jpeg"}`.
-При ошибке OpenRouter client делает второй synchronous request в тот же route с
-`engine=kandinsky` и safety-neutralized prompt. Результат сохраняется локально.
-Здесь нет job id, polling, ACK или привязки к publication hash.
+До 2026-09-17 существовал экран `NarraSceneScreen`: пользователь выделял текст,
+клиент сам собирал prompt и синхронно звал `POST /v2/media/images`
+(`1024x1024`, `engine=openrouter`, fallback на `kandinsky`), а озвучку и
+«оживление» сцены в видео делал напрямую в OpenRouter ключом из бандла. Экран
+был недостижим из навигации и удалён вместе с ключом `EXPO_PUBLIC_OPENROUTER_API_KEY`
+и переключателем `EXPO_PUBLIC_NARRA_TTS_PROVIDER`: у приложения остался один
+путь к AI — gateway. Старые сцены с `sourceKey = page:<cfi>` без anchor
+по-прежнему читаются из локального состояния, но в текст не возвращаются
+(`scene-inserts.ts`), и новые не создаются.
 
 ### B. Structured installation scene jobs (durable, пока без Expo call site)
 
@@ -272,13 +256,13 @@ operator backfill, но reader tap использует точную `reader-car
 
 | Свойство | Cover jobs | Structured scene jobs | Inline `/scenes/at` | Legacy `/media/images` |
 | --- | --- | --- | --- | --- |
-| Инициатор | auto после private import | потенциально user | явный tap slot | явный selected-text flow / portrait regenerate |
+| Инициатор | auto после private import | потенциально user | явный tap slot | явный portrait regenerate |
 | Prompt owner | gateway из book facts | gateway из structured facts | gateway из canonical source+markup | client |
 | Identity | installation + UUID v4 | installation + UUID v4 | edition + markup hash + exact anchor | отсутствует |
 | Durable polling | да | да | да, повтором snapshot POST | нет |
 | Результат | base64 | base64 | signed URL | base64 |
 | ACK | после disk+DB verify | после сохранения | нет | нет |
-| Expo используется | да | нет | да | да |
+| Expo используется | да | нет | да | только portrait regenerate |
 | Автоматический backfill | private import trigger; catalog отдельно | нет | отключён | нет |
 
 ## Инварианты

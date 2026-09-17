@@ -1,14 +1,12 @@
 /**
  * Vector Model Store — manages embedding/vector model configurations
  */
-import {
-  BUNDLED_OPENROUTER_EMBEDDING_ID,
-  bundledOpenRouterEmbeddingModel,
-  hasBundledOpenRouterKey,
-} from "@/config/bundled-ai";
 import type { VectorModelConfig } from "@readany/core/types";
 import { create } from "zustand";
 import { withPersist } from "./persist";
+
+/** Встроенная модель прежних сборок с ключом OpenRouter в бандле — вычищается из сохранённого состояния. */
+const LEGACY_BUNDLED_EMBEDDING_ID = "bundled-openrouter-embedding";
 
 export type BuiltinModelStatus = "idle" | "downloading" | "ready" | "error";
 
@@ -47,8 +45,8 @@ export const useVectorModelStore = create<VectorModelState>()(
     "vector-model",
     (set, get) => ({
       _hasHydrated: false,
-      vectorModels: hasBundledOpenRouterKey ? [bundledOpenRouterEmbeddingModel] : [],
-      selectedVectorModelId: hasBundledOpenRouterKey ? BUNDLED_OPENROUTER_EMBEDDING_ID : null,
+      vectorModels: [],
+      selectedVectorModelId: null,
       vectorModelEnabled: true,
       autoVectorizeOnImport: true,
       autoVectorizeDefaultApplied: true,
@@ -113,28 +111,20 @@ export const useVectorModelStore = create<VectorModelState>()(
         ? persisted.autoVectorizeOnImport
         : true;
 
-      if (!hasBundledOpenRouterKey) {
-        return {
-          ...persisted,
-          autoVectorizeOnImport,
-          autoVectorizeDefaultApplied: true,
-        };
-      }
-
-      const withoutBundledModel = persisted.vectorModels.filter(
-        (model) => model.id !== BUNDLED_OPENROUTER_EMBEDDING_ID,
+      const vectorModels = (persisted.vectorModels ?? []).filter(
+        (model) => model.id !== LEGACY_BUNDLED_EMBEDDING_ID,
       );
-      const vectorModels = [bundledOpenRouterEmbeddingModel, ...withoutBundledModel];
-      const hasSelectedModel = vectorModels.some(
-        (model) => model.id === persisted.selectedVectorModelId,
-      );
+      const selectedVectorModelId =
+        persisted.selectedVectorModelId === LEGACY_BUNDLED_EMBEDDING_ID
+          ? null
+          : persisted.selectedVectorModelId;
 
       return {
         ...persisted,
         vectorModels,
-        selectedVectorModelId: hasSelectedModel
-          ? persisted.selectedVectorModelId
-          : BUNDLED_OPENROUTER_EMBEDDING_ID,
+        selectedVectorModelId,
+        // Локальных моделей на мобильном нет: режим "builtin" из старых
+        // состояний уронил бы каждую векторизацию при импорте.
         vectorModelMode: "remote",
         autoVectorizeOnImport,
         autoVectorizeDefaultApplied: true,

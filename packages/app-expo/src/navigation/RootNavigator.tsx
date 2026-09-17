@@ -7,7 +7,6 @@ import { ManualNoteScreen } from "@/screens/ManualNoteScreen";
 import { NarraCharacterChatScreen } from "@/screens/NarraCharacterChatScreen";
 import { NarraCharacterProfileScreen } from "@/screens/NarraCharacterProfileScreen";
 import { NarraCharactersScreen } from "@/screens/NarraCharactersScreen";
-import { NarraSceneScreen } from "@/screens/NarraSceneScreen";
 import { NarraSummaryScreen } from "@/screens/NarraSummaryScreen";
 import { ReaderScreen } from "@/screens/ReaderScreen";
 import SkillsScreen from "@/screens/SkillsScreen";
@@ -69,12 +68,6 @@ export type RootStackParamList = {
     characterId: string;
     /** Профиль открыт поверх уже существующего чата — кнопка «Поговорить» лишь закрывает sheet. */
     openedFromChat?: boolean;
-  };
-  NarraScene: {
-    bookId: string;
-    chapter: string;
-    excerpt: string;
-    sourceKey: string;
   };
   NarraSummary: {
     bookId: string;
@@ -349,16 +342,6 @@ export function RootNavigator() {
             sheetInitialDetentIndex: 0,
             sheetGrabberVisible: true,
             sheetExpandsWhenScrolledToEdge: true,
-          }}
-        />
-        <Stack.Screen
-          name="NarraScene"
-          component={NarraSceneScreen}
-          options={{
-            animation: "slide_from_right",
-            title: t("narra.scene", "Сцена"),
-            headerRight: undefined,
-            unstable_headerRightItems: () => [],
           }}
         />
         <Stack.Screen

@@ -10,12 +10,6 @@ import {
   providerSupportsExactRequestUrl,
 } from "@readany/core/utils/api";
 import { create } from "zustand";
-import {
-  bundledOpenRouterEndpoint,
-  bundledOpenRouterModel,
-  getBundledApiKey,
-  hasBundledOpenRouterKey,
-} from "@/config/bundled-ai";
 import { DEFAULT_NARRA_CHAT_MODE, type NarraChatMode } from "@/lib/ai/narra-chat-routing";
 import { deleteSecure, loadSecure, saveSecure, withPersist } from "./persist";
 
@@ -82,47 +76,42 @@ const configurableDefaultEndpoint: AIEndpoint = {
   modelsFetched: false,
 };
 
-const defaultEndpoint = hasBundledOpenRouterKey
-  ? bundledOpenRouterEndpoint
-  : configurableDefaultEndpoint;
-
 const defaultAIConfig: AIConfig = {
-  endpoints: [defaultEndpoint],
+  endpoints: [configurableDefaultEndpoint],
   activeEndpointId: "default",
-  activeModel: hasBundledOpenRouterKey ? bundledOpenRouterModel : "",
+  activeModel: "",
   temperature: 0.7,
   maxTokens: 8192,
   slidingWindowSize: 8,
 };
+
+/** Эндпоинт прежних сборок с ключом OpenRouter в бандле — ключа больше нет, запись вычищается. */
+const LEGACY_BUNDLED_ENDPOINT_ID = "bundled-openrouter";
 
 function migrateSettingsState(state: SettingsState): SettingsState {
   const shouldMigrateTokens = state.aiConfig.maxTokens === 4096;
   const narraChatMode = ["proxy-first", "index-first"].includes(state.narraChatMode)
     ? state.narraChatMode
     : DEFAULT_NARRA_CHAT_MODE;
-  if (!shouldMigrateTokens && !hasBundledOpenRouterKey && narraChatMode === state.narraChatMode)
+  const hasLegacyEndpoint = state.aiConfig.endpoints.some(
+    (endpoint) => endpoint.id === LEGACY_BUNDLED_ENDPOINT_ID,
+  );
+  if (!shouldMigrateTokens && !hasLegacyEndpoint && narraChatMode === state.narraChatMode)
     return state;
 
   let aiConfig = state.aiConfig;
-  if (hasBundledOpenRouterKey) {
-    const existingOpenRouter = aiConfig.endpoints.find(
-      (endpoint) => endpoint.provider === "openrouter",
+  if (hasLegacyEndpoint) {
+    const endpoints = aiConfig.endpoints.filter(
+      (endpoint) => endpoint.id !== LEGACY_BUNDLED_ENDPOINT_ID,
     );
-    const endpoint = existingOpenRouter
-      ? {
-          ...existingOpenRouter,
-          baseUrl: bundledOpenRouterEndpoint.baseUrl,
-          models: existingOpenRouter.models.includes(bundledOpenRouterModel)
-            ? existingOpenRouter.models
-            : [bundledOpenRouterModel, ...existingOpenRouter.models],
-          modelsFetched: true,
-        }
-      : bundledOpenRouterEndpoint;
+    const legacyWasActive = aiConfig.activeEndpointId === LEGACY_BUNDLED_ENDPOINT_ID;
     aiConfig = {
       ...aiConfig,
-      endpoints: [endpoint, ...aiConfig.endpoints.filter((item) => item.id !== endpoint.id)],
-      activeEndpointId: endpoint.id,
-      activeModel: bundledOpenRouterModel,
+      endpoints: endpoints.length > 0 ? endpoints : defaultAIConfig.endpoints,
+      activeEndpointId: legacyWasActive
+        ? (endpoints[0]?.id ?? defaultAIConfig.activeEndpointId)
+        : aiConfig.activeEndpointId,
+      activeModel: legacyWasActive ? defaultAIConfig.activeModel : aiConfig.activeModel,
     };
   }
 
@@ -381,8 +370,6 @@ async function fetchLMStudioModels(endpoint: AIEndpoint): Promise<string[]> {
 const getApiKeyStorageKey = (endpointId: string) => `apikey_${endpointId}`;
 
 async function loadEndpointApiKey(endpoint: AIEndpoint): Promise<string> {
-  const bundledKey = getBundledApiKey(endpoint);
-  if (bundledKey) return bundledKey;
   try {
     return (await loadSecure(getApiKeyStorageKey(endpoint.id))) || "";
   } catch {
@@ -405,10 +392,10 @@ function normalizeImportedAIConfig(importedConfig: AIConfig, currentConfig: AICo
     ? importedConfig.endpoints
         .filter((endpoint): endpoint is AIEndpoint => Boolean(endpoint?.id))
         .map((endpoint) => ({
-          ...defaultEndpoint,
+          ...configurableDefaultEndpoint,
           ...endpoint,
           id: String(endpoint.id),
-          name: endpoint.name || endpoint.provider || defaultEndpoint.name,
+          name: endpoint.name || endpoint.provider || configurableDefaultEndpoint.name,
           apiKey: typeof endpoint.apiKey === "string" ? endpoint.apiKey : "",
           models: Array.isArray(endpoint.models)
             ? endpoint.models.filter((model): model is string => typeof model === "string")
@@ -516,7 +503,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       addEndpoint: async (endpoint) => {
         // Save API key to secure storage
-        if (endpoint.apiKey && !getBundledApiKey(endpoint)) {
+        if (endpoint.apiKey) {
           await saveSecure(getApiKeyStorageKey(endpoint.id), endpoint.apiKey);
         }
         // Add endpoint to state (apiKey will be loaded from secure storage)
@@ -533,10 +520,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       updateEndpoint: async (id, updates) => {
         // If apiKey is being updated, save it to secure storage
-        const currentEndpoint = get().aiConfig.endpoints.find((endpoint) => endpoint.id === id);
-        const nextProvider = updates.provider ?? currentEndpoint?.provider;
-        const usesBundledKey = nextProvider === "openrouter" && hasBundledOpenRouterKey;
-        if (updates.apiKey !== undefined && !usesBundledKey) {
+        if (updates.apiKey !== undefined) {
           await saveSecure(getApiKeyStorageKey(id), updates.apiKey);
         }
         set((state) => ({

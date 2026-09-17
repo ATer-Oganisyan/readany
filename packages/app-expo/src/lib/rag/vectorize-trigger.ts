@@ -1,4 +1,3 @@
-import { hydrateBundledEmbeddingModel } from "@/config/bundled-ai";
 import { useLibraryStore } from "@/stores/library-store";
 import { useVectorModelStore } from "@/stores/vector-model-store";
 import { triggerVectorizeBook as coreTriggerVectorizeBook } from "@readany/core/rag";
@@ -39,11 +38,10 @@ export async function triggerVectorizeBook(
     remoteModel: (() => {
       const selected = vmState.getSelectedVectorModel();
       if (!selected) return null;
-      const hydrated = hydrateBundledEmbeddingModel(selected);
       return {
-        url: hydrated.url,
-        apiKey: hydrated.apiKey,
-        modelId: hydrated.modelId,
+        url: selected.url,
+        apiKey: selected.apiKey,
+        modelId: selected.modelId,
       };
     })(),
   };

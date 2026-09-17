@@ -35,16 +35,7 @@ function findCallbacks(source: ts.SourceFile, names: string[]) {
 
 function runCallback(expression: ts.Expression, source: ts.SourceFile) {
   const events: string[] = [];
-  const actions = [
-    "hapticLight",
-    "generate",
-    "animateScene",
-    "regenerateAnimation",
-    "playScene",
-    "setTextExpanded",
-    "runSceneSlotGeneration",
-    "handleSceneSlotRestored",
-  ];
+  const actions = ["hapticLight", "runSceneSlotGeneration", "handleSceneSlotRestored"];
   const mocks = Object.fromEntries(actions.map((name) => [name, vi.fn(() => events.push(name))]));
   const handler = new Function(...actions, "console", `return (${expression.getText(source)});`)(
     ...actions.map((name) => mocks[name]),
@@ -54,28 +45,7 @@ function runCallback(expression: ts.Expression, source: ts.SourceFile) {
   return { events, mocks };
 }
 
-describe("scene action haptics", () => {
-  it("fires one light impact before each scene button action, including long press", () => {
-    const screen = parseScreen("NarraSceneScreen");
-    const handlers = findCallbacks(screen, ["onPress", "onLongPress"]);
-    expect(handlers).toHaveLength(5);
-    const performed: string[] = [];
-    for (const handler of handlers) {
-      const { events, mocks } = runCallback(handler, screen);
-      expect(mocks.hapticLight).toHaveBeenCalledTimes(1);
-      expect(events[0]).toBe("hapticLight");
-      expect(events).toHaveLength(2);
-      performed.push(events[1]);
-    }
-    expect(performed).toEqual([
-      "generate",
-      "animateScene",
-      "regenerateAnimation",
-      "playScene",
-      "setTextExpanded",
-    ]);
-  });
-
+describe("scene slot haptics", () => {
   it("gives feedback for generation/retry in the reader, but never automatic restoration", () => {
     const screen = parseScreen("ReaderScreen");
     const [tap] = findCallbacks(screen, ["onSceneSlotTap"]);
