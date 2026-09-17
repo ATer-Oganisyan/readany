@@ -1401,6 +1401,9 @@ function ReaderContent({ route, navigation }: Props) {
       }
     },
     onNoteSelection: ({ text, cfi }) => {
+      // Выделение в WebView снимаем сейчас: после возврата из шторки оно лежало бы
+      // поверх проявляющегося маркера, и анимации было бы не видно.
+      bridge.clearSelection();
       navigation.navigate("ManualNote", { bookId, text, cfi, chapterTitle: currentChapter });
     },
     onCopySelection: copySelection,

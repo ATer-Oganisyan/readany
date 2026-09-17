@@ -1558,6 +1558,17 @@
             await view.addAnnotation(msg.annotation);
           }
           break;
+        case 'clearSelection':
+          // Снимаем выделение во всех загруженных секциях: перед уходом на экран
+          // заметки, иначе после возврата нативная подсветка выделения лежит поверх
+          // проявляющегося маркера и анимации не видно.
+          try {
+            const contents = view && view.renderer && view.renderer.getContents
+              ? view.renderer.getContents()
+              : [];
+            for (const c of contents) if (c && c.doc) clearDocumentSelection(c.doc);
+          } catch { /* секция могла смениться */ }
+          break;
         case 'removeAnnotation':
           if (view && msg.annotation) {
             if (

@@ -298,6 +298,21 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     [],
   );
 
+  // Снимает выделение текста в WebView. Нужно перед открытием экрана заметки: иначе
+  // после возврата нативная подсветка выделения перекрывает проявляющийся маркер.
+  const clearSelection = useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (typeof handleCommand === 'function') {
+              handleCommand(${JSON.stringify({ type: "clearSelection" })});
+            }
+          } catch(e) {}
+        })();
+        true;
+      `);
+  }, []);
+
   const removeAnnotation = useCallback((annotation: { value: string; type?: string }) => {
     const annotationStr = JSON.stringify(annotation);
     webViewRef.current?.injectJavaScript(`
@@ -1190,6 +1205,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       navigateSearch,
       addAnnotation,
       removeAnnotation,
+      clearSelection,
       highlightCFITemporarily,
       applySettings,
       setThemeColors,
@@ -1235,6 +1251,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       navigateSearch,
       addAnnotation,
       removeAnnotation,
+      clearSelection,
       highlightCFITemporarily,
       applySettings,
       setThemeColors,
