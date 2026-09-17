@@ -301,6 +301,15 @@ test('PostgreSQL persists markup and independently publishes character media', {
     })).contentHash, hash)
     const annaAsset = manifest.characters[0].bundle.assets[0]
     const vronskyAsset = manifest.characters[1].bundle.assets[0]
+    const vronskyPortrait = manifest.characters[1].bundle.assets.find(
+      (asset) => asset.type === 'primary_portrait'
+    )
+    assert.ok(vronskyPortrait)
+    assert.equal((await repository.getReaderMediaAsset({
+      subjectId: otherSubjectId,
+      bookEditionId,
+      assetId: vronskyPortrait.assetId
+    })).assetId, vronskyPortrait.assetId)
     assert.equal((await repository.getReaderMediaAsset({
       subjectId,
       bookEditionId,
