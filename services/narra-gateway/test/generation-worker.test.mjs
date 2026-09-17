@@ -176,6 +176,38 @@ test('worker publishes a portrait job without waiting for audio or animation', a
   assert.deepEqual(published.bundle.assets.map((asset) => asset.type), ['primary_portrait'])
 })
 
+test('portrait worker stops after cascade exhaustion and keeps 5xx retries', async () => {
+  for (const [code, terminal] of [
+    ['PORTRAIT_CASCADE_EXHAUSTED', true],
+    ['GENERATOR_HTTP_503', false]
+  ]) {
+    let failure
+    const repository = {
+      async claimGenerationJob() {
+        return {
+          id: `job-${code}`, type: 'character_portrait', bookEditionId: 'book-1',
+          characterKey: 'hero', leaseToken: 'lease-portrait', attempts: 1,
+          payload: { required_media: ['primary_portrait'] }
+        }
+      },
+      async getCharacterBundleInput() { return { characterKey: 'hero' } },
+      async failGenerationJob(job, errorCode, options) {
+        failure = { job, errorCode, options }
+        return { status: terminal ? 'failed' : 'queued' }
+      }
+    }
+    const generator = {
+      async generateCharacterBundle() { throw Object.assign(new Error(code), { code }) }
+    }
+    const worker = createGenerationWorker({
+      repository, generator, workerId: 'worker-portrait-policy', logger: silentLogger
+    })
+    assert.equal((await worker.runOnce()).errorCode, code)
+    assert.equal(failure.errorCode, code)
+    assert.deepEqual(failure.options, { terminal })
+  }
+})
+
 test('worker publishes a catalog cover into the durable repository', async () => {
   let published
   const repository = {

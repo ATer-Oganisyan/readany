@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { extractEmbeddedBookCover } from '../books/book-source-cover.mjs'
 import { extractStructuredBookText, representativeTextSelection } from '../books/book-source-text.mjs'
 import { createOperationalLogger } from '../platform/operational-log.mjs'
+import { INTERNAL_GENERATION_TIMEOUT_MS } from '../platform/generation-timeouts.mjs'
 import { voiceForGender } from '../providers/voices.mjs'
 import { catalogCoverPrompt } from './catalog-cover-prompt.mjs'
 import { normalizeBookDisplayIdentity } from '../books/book-identity.mjs'
@@ -1017,7 +1018,7 @@ export function createInternalGenerationService({
       })
     },
 
-    async generateCharacterBundle(rawInput, signal) {
+    async generateCharacterBundle(rawInput, signal, deadlineAt) {
       const input = normalizeBundleRequest(rawInput)
       const startedAt = Date.now()
       const common = {
@@ -1051,7 +1052,7 @@ export function createInternalGenerationService({
               character_key: input.characterKey,
               bundle_version: input.bundleVersion
             }
-          })
+          }, deadlineAt)
           log.info('bundle.portrait_ready', 'Портрет готов', {
             ...common,
             provider: portrait.provider,
@@ -1167,12 +1168,16 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   router.use(express.json({ limit: '1mb' }))
   const endpoint = (operation) => async (req, res) => {
     const startedAt = Date.now()
+    const deadlineAt = performance.now() + INTERNAL_GENERATION_TIMEOUT_MS
     const controller = new AbortController()
     const abort = () => controller.abort(new Error('internal generation client disconnected'))
     req.once('aborted', abort)
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10 * 60_000)])
+    const signal = AbortSignal.any([
+      controller.signal,
+      AbortSignal.timeout(INTERNAL_GENERATION_TIMEOUT_MS)
+    ])
     try {
-      res.json({ result: await operation(req.body, signal) })
+      res.json({ result: await operation(req.body, signal, deadlineAt) })
     } catch (error) {
       const status = Number.isInteger(error?.status) && error.status >= 400 && error.status < 600
         ? error.status
@@ -1202,7 +1207,8 @@ export function createInternalGenerationRouter({ token, service, logger = consol
   router.post('/v1/book-identities', endpoint((body, signal) => service.generateBookIdentity(body, signal)))
   router.post('/v1/catalog-covers', endpoint((body, signal) => service.generateCatalogCover(body, signal)))
   router.post('/v1/book-scenes', endpoint((body, signal) => service.generateBookScene(body, signal)))
-  router.post('/v1/character-bundles', endpoint((body, signal) => service.generateCharacterBundle(body, signal)))
+  router.post('/v1/character-bundles', endpoint((body, signal, deadlineAt) =>
+    service.generateCharacterBundle(body, signal, deadlineAt)))
   router.post(
     '/v1/book-tts-markup/attribute',
     endpoint((body, signal) => service.generateBookTtsMarkup(body, signal))

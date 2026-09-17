@@ -14,6 +14,7 @@ import {
   createRosterConfirmRunner
 } from '../analysis/book-roster-confirm-runner.mjs'
 import { unexpectedErrorMessage } from '../analysis/book-analysis-observability.mjs'
+import { PORTRAIT_CASCADE_EXHAUSTED } from '../providers/image-policy.mjs'
 
 export const BOOK_MARKUP_WORKER_JOB_TYPES = Object.freeze([
   'book_markup',
@@ -554,7 +555,9 @@ export function createGenerationWorker({
         return { status: 'completed', jobId: job.id, result }
       } catch (error) {
         const errorCode = safeErrorCode(error)
-        const failure = await repository.failGenerationJob(job, errorCode)
+        const failure = await repository.failGenerationJob(job, errorCode, {
+          terminal: errorCode === PORTRAIT_CASCADE_EXHAUSTED
+        })
         const fields = {
           job: job.id,
           type: JOB_LABELS[job.type] || job.type,

@@ -1031,6 +1031,6 @@ test('portrait retries stretch over hours; card retries stay short', async () =>
     )
     return pool.queries.find(({ sql }) => sql.includes('UPDATE generation_jobs')).params
   }
-  assert.deepEqual((await fail('character_portrait')).slice(3), [6, 21_600])
-  assert.deepEqual((await fail('character_card')).slice(3), [3, 300])
+  assert.deepEqual((await fail('character_portrait')).slice(3, 5), [6, 21_600])
+  assert.deepEqual((await fail('character_card')).slice(3, 5), [3, 300])
 })

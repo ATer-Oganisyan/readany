@@ -23,6 +23,32 @@ test('the whole environment is parsed once and handed back frozen', () => {
   assert.equal(typeof config.llmGate.status, 'function')
 })
 
+test('portrait cascade is opt-in and reads an ordered, bounded model list', () => {
+  const disabled = load({ CHARACTER_PORTRAIT_FALLBACK_MODELS: 'model-one,model-two' })
+  assert.equal(disabled.CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED, false)
+  assert.deepEqual(disabled.CHARACTER_PORTRAIT_FALLBACK_MODELS, [])
+
+  const enabled = load({ CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED: 'true' })
+  assert.deepEqual(enabled.CHARACTER_PORTRAIT_FALLBACK_MODELS, [
+    enabled.coverProviderConfig.fallbackModel
+  ])
+
+  const configured = load({
+    CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED: 'true',
+    CHARACTER_PORTRAIT_FALLBACK_MODELS: 'model-one, openai/gpt-image-2, model-one, model-two'
+  })
+  assert.deepEqual(configured.CHARACTER_PORTRAIT_FALLBACK_MODELS, ['model-one', 'model-two'])
+  assert.ok(Object.isFrozen(configured.CHARACTER_PORTRAIT_FALLBACK_MODELS))
+  assert.deepEqual(load({
+    CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED: 'true',
+    CHARACTER_PORTRAIT_FALLBACK_MODELS: ''
+  }).CHARACTER_PORTRAIT_FALLBACK_MODELS, [])
+  assert.throws(() => load({
+    CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED: 'true',
+    CHARACTER_PORTRAIT_FALLBACK_MODELS: Array.from({ length: 9 }, (_, index) => `m${index}`).join(',')
+  }), /at most 8 models/)
+})
+
 test('production refuses the insecure transport escape hatches', () => {
   assert.throws(
     () => load({ NODE_ENV: 'production', ALLOW_INSECURE_TLS: 'true' }),
