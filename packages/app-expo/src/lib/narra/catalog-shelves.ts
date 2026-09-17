@@ -19,7 +19,6 @@ export function buildCatalogShelves(
   books: CachedBackendCatalogBook[],
   genres: BackendCatalogGenre[],
   language: string,
-  uncategorizedTitle: string,
 ): CatalogShelf[] {
   const shelves = [...genres]
     .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
@@ -29,21 +28,20 @@ export function buildCatalogShelves(
       books: [] as CachedBackendCatalogBook[],
     }));
   const byId = new Map(shelves.map((shelf) => [shelf.id, shelf]));
-  const uncategorized: CatalogShelf = {
-    id: "__uncategorized__",
-    title: uncategorizedTitle,
+  const english: CatalogShelf = {
+    id: "__language_en__",
+    title: language.startsWith("en") ? "In English" : "На английском",
     books: [],
   };
   const seen = new Set<string>();
   for (const book of books) {
     if (seen.has(book.bookEditionId)) continue;
     seen.add(book.bookEditionId);
-    const matches = [...new Set(book.genres)].flatMap((id) => byId.get(id) ?? []);
-    // A missing/stale genre dictionary must not make books disappear.
-    if (matches.length === 0) uncategorized.books.push(book);
-    else for (const shelf of matches) shelf.books.push(book);
+    if (book.language === "en") english.books.push(book);
+    // Books without a known genre stay reachable through text search only.
+    for (const id of new Set(book.genres)) byId.get(id)?.books.push(book);
   }
-  return [...shelves, uncategorized].filter((shelf) => shelf.books.length > 0);
+  return [...shelves, english].filter((shelf) => shelf.books.length > 0);
 }
 
 export function chunkShelfBooks<T>(books: readonly T[], count: number): T[][] {

@@ -33,7 +33,6 @@ describe("expanded catalog category", () => {
       [...items, book("history-only", ["history"]), items[0]],
       genres,
       "en",
-      "Uncategorized",
     );
     expect(
       chunkShelfBooks(shelves.find((shelf) => shelf.id === "fiction")?.books ?? [], 2).map((row) =>
@@ -55,9 +54,7 @@ describe("expanded catalog category", () => {
       nextCursor: null,
     }));
     const complete = await completeCatalogSnapshot(initial, loadNext);
-    expect(
-      buildCatalogShelves(complete?.books ?? [], genres, "ru", "Без категории")[0],
-    ).toMatchObject({
+    expect(buildCatalogShelves(complete?.books ?? [], genres, "ru")[0]).toMatchObject({
       title: "Проза",
       books: [book("first"), book("last")],
     });

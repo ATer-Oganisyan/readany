@@ -107,13 +107,8 @@ const SearchContent = memo(function SearchContent() {
   const columns = layout.isTabletLandscape ? 5 : layout.isTablet ? 4 : 2;
   const shelves = useMemo(() => {
     countRender("catalog.group");
-    return buildCatalogShelves(
-      catalog.books,
-      catalog.genres,
-      i18n.resolvedLanguage ?? "ru",
-      t("library.catalogUncategorized", "Без категории"),
-    );
-  }, [catalog.books, catalog.genres, i18n.resolvedLanguage, t]);
+    return buildCatalogShelves(catalog.books, catalog.genres, i18n.resolvedLanguage ?? "ru");
+  }, [catalog.books, catalog.genres, i18n.resolvedLanguage]);
   const libraryKeys = useMemo(
     () =>
       new Set(

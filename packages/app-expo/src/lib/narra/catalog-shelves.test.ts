@@ -61,46 +61,43 @@ describe("catalog shelves", () => {
       [book("a", ["history"]), book("b", ["fiction"])],
       genres,
       "ru",
-      "Без категории",
     );
     expect(shelves.map((shelf) => [shelf.id, shelf.title])).toEqual([
       ["fiction", "Проза"],
       ["history", "История"],
     ]);
-    expect(
-      buildCatalogShelves([book("a", ["history"])], genres, "en-US", "Uncategorized")[0].title,
-    ).toBe("History");
+    expect(buildCatalogShelves([book("a", ["history"])], genres, "en-US")[0].title).toBe("History");
     expect(genres[0].id).toBe("history");
   });
 
   it("places multi-genre books on each shelf without duplicates", () => {
     const a = book("a", ["history", "fiction", "fiction"]);
-    const shelves = buildCatalogShelves([a, a], genres, "en", "Uncategorized");
+    const shelves = buildCatalogShelves([a, a], genres, "en");
     expect(shelves.map((shelf) => shelf.books.map((item) => item.bookEditionId))).toEqual([
       ["a"],
       ["a"],
     ]);
   });
 
-  it("keeps unclassified books and books with an unavailable dictionary discoverable", () => {
-    const books = [book("a", []), book("b", ["new-genre"])];
-    expect(buildCatalogShelves(books, genres, "ru", "Без категории")).toEqual([
-      { id: "__uncategorized__", title: "Без категории", books },
+  it("collects English books on their own shelf while keeping their genres", () => {
+    const en = { ...book("en", ["history"]), language: "en" };
+    const shelves = buildCatalogShelves([en, book("ru", ["history"])], genres, "ru");
+    expect(shelves.map((shelf) => [shelf.id, shelf.title, shelf.books.length])).toEqual([
+      ["history", "История", 2],
+      ["__language_en__", "На английском", 1],
     ]);
-    expect(
-      buildCatalogShelves([book("c", ["fiction"])], [], "en", "Uncategorized")[0].books,
-    ).toHaveLength(1);
-    expect(buildCatalogShelves([], genres, "en", "Uncategorized")).toEqual([]);
+  });
+
+  it("hides books without a known genre from the shelves", () => {
+    const books = [book("a", []), book("b", ["new-genre"])];
+    expect(buildCatalogShelves(books, genres, "ru")).toEqual([]);
+    expect(buildCatalogShelves([book("c", ["fiction"])], [], "en")).toEqual([]);
+    expect(buildCatalogShelves([], genres, "en")).toEqual([]);
   });
 
   it("appends later catalog pages without losing books from other shelves", () => {
     const initial = [book("a", ["fiction"]), book("b", ["history"])];
-    const next = buildCatalogShelves(
-      [...initial, book("c", ["history"])],
-      genres,
-      "en",
-      "Uncategorized",
-    );
+    const next = buildCatalogShelves([...initial, book("c", ["history"])], genres, "en");
     expect(next[0].books).toEqual([initial[0]]);
     expect(next[1].books.map((item) => item.catalogKey)).toEqual(["b", "c"]);
   });
@@ -157,11 +154,9 @@ describe("catalog shelves", () => {
     }));
     expect(result?.books).toHaveLength(2);
     expect(result?.nextCursor).toBeNull();
-    expect(
-      buildCatalogShelves(result?.books ?? [], genres, "en", "Uncategorized").map(
-        (shelf) => shelf.id,
-      ),
-    ).toEqual(["fiction", "history"]);
+    expect(buildCatalogShelves(result?.books ?? [], genres, "en").map((shelf) => shelf.id)).toEqual(
+      ["fiction", "history"],
+    );
   });
 
   it("does not publish an incomplete catalog after failure or a cancelled refresh", async () => {
