@@ -3554,6 +3554,9 @@ a { color: var(--readany-link, ${primary}) !important; }
         if (typeof resolved.anchor === 'function') {
           for (const content of contents) {
             if (!content?.doc) continue;
+            // A CFI names its spine item; do not resolve it against another
+            // loaded section just because the element path happens to exist there.
+            if (resolved.index != null && content.index != null && content.index !== resolved.index) continue;
             try {
               const range = anchorToRange(content.doc, resolved.anchor(content.doc));
               if (range) return { range, doc: content.doc, index: content.index ?? resolved.index ?? 0 };
@@ -3998,45 +4001,12 @@ a { color: var(--readany-link, ${primary}) !important; }
       for (const detail of [current, ...(following || [])]) {
         if (!detail || !detail.text || !detail.cfi) continue;
         const text = normalizeTTSText(detail.text);
-        const cfi = trimTTSDetailCfi(detail.cfi);
-        const identity = getTTSSegmentIdentity(cfi, text);
+        const identity = getTTSSegmentIdentity(detail.cfi, text);
         if (!text || seen.has(identity)) continue;
         seen.add(identity);
-        result.push({ text, cfi, paragraphId: getTTSParagraphIdFromCfi(cfi) });
+        result.push({ text, cfi: detail.cfi, paragraphId: getTTSParagraphIdFromCfi(detail.cfi) });
       }
       return result;
-    }
-
-    // Foliate's sentence ranges keep the paragraph indent and the trailing
-    // space, while extractTTSSegmentsFromDocument trims them. The native side
-    // tells segments apart by CFI start + text, so the same sentence coming
-    // from both sources must produce the same CFI: trim the range here too.
-    function trimTTSDetailCfi(cfi) {
-      try {
-        if (!view || typeof view.getCFI !== 'function') return cfi;
-        const resolved = resolveRangeForCfi(cfi);
-        if (!resolved?.range || !resolved.range.cloneRange) return cfi;
-        const range = resolved.range.cloneRange();
-        const start = range.startContainer;
-        const end = range.endContainer;
-        if (start.nodeType === 3) {
-          const text = start.nodeValue || '';
-          const limit = start === end ? range.endOffset : text.length;
-          let offset = range.startOffset;
-          while (offset < limit && /\s/u.test(text[offset])) offset++;
-          range.setStart(start, offset);
-        }
-        if (end.nodeType === 3) {
-          const text = end.nodeValue || '';
-          const limit = start === end ? range.startOffset : 0;
-          let offset = range.endOffset;
-          while (offset > limit && /\s/u.test(text[offset - 1])) offset--;
-          range.setEnd(end, offset);
-        }
-        return view.getCFI(resolved.index, range) || cfi;
-      } catch (e) {
-        return cfi;
-      }
     }
 
     function getTTSSegmentContextFromEngine(cfi, beforeCount, afterCount) {
@@ -4045,9 +4015,8 @@ a { color: var(--readany-link, ${primary}) !important; }
         if (!tts || !cfi) return { before: [], after: [] };
 
         // A CFI from a section that is not loaded (e.g. the prefetched next
-        // chapter) has no context here. Aligning by CFI string never matches
-        // Foliate's untrimmed ranges, and it would silently leave the cursor
-        // wherever it was and hand back sentences of the current chapter.
+        // chapter) has no context here. The old alignCfi fallback silently left
+        // the cursor where it was and handed back sentences of the current chapter.
         const resolved = resolveRangeForCfi(cfi);
         if (!resolved?.range || typeof tts.from !== 'function') return { before: [], after: [] };
         try {
@@ -4067,9 +4036,7 @@ a { color: var(--readany-link, ${primary}) !important; }
           current && current.text
             ? normalizeTTSText(current.text)
             : '';
-        const currentIdentity = currentText
-          ? getTTSSegmentIdentity(trimTTSDetailCfi(current && current.cfi), currentText)
-          : null;
+        const currentIdentity = currentText ? getTTSSegmentIdentity(current && current.cfi, currentText) : null;
 
         const normalize = function(details) {
           const result = [];
@@ -4077,11 +4044,10 @@ a { color: var(--readany-link, ${primary}) !important; }
           for (const detail of details || []) {
             if (!detail || !detail.text || !detail.cfi) continue;
             const text = normalizeTTSText(detail.text);
-            const detailCfi = trimTTSDetailCfi(detail.cfi);
-            const identity = getTTSSegmentIdentity(detailCfi, text);
+            const identity = getTTSSegmentIdentity(detail.cfi, text);
             if (!text || (currentIdentity && identity === currentIdentity) || seen.has(identity)) continue;
             seen.add(identity);
-            result.push({ text, cfi: detailCfi, paragraphId: getTTSParagraphIdFromCfi(detailCfi) });
+            result.push({ text, cfi: detail.cfi, paragraphId: getTTSParagraphIdFromCfi(detail.cfi) });
           }
           return result;
         };

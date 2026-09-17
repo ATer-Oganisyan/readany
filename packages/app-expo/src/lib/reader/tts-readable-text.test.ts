@@ -19,36 +19,26 @@ it("rejects separators but preserves speech, numbers and non-Latin text", () => 
   }
 });
 
-it("trims Foliate's sentence range to the same CFI the page extractor produces", () => {
-  const source = template.slice(
-    template.indexOf("    function trimTTSDetailCfi("),
-    template.indexOf("    function getTTSSegmentContextFromEngine("),
+it("Foliate's sentence segmenter trims indent and trailing space like the page extractor", () => {
+  const source = readFileSync("../foliate-js/tts.js", "utf8");
+  const context = vm.createContext({ Intl });
+  vm.runInContext(
+    source.slice(source.indexOf("const getSegmenter ="), source.indexOf("const fragmentToSSML")) +
+      "\nglobalThis.getSegmenter = getSegmenter;",
+    context,
   );
-  const node = { nodeType: 3, nodeValue: "   — Я, пожалуй, пойду. " };
-  const range = {
-    startContainer: node,
-    endContainer: node,
-    startOffset: 1,
-    endOffset: node.nodeValue.length,
-    cloneRange() {
-      return { ...this };
-    },
-    setStart(_: unknown, offset: number) {
-      this.startOffset = offset;
-    },
-    setEnd(_: unknown, offset: number) {
-      this.endOffset = offset;
-    },
-  };
-  const context = vm.createContext({
-    view: { getCFI: (_: number, r: typeof range) => `epubcfi(/6/6!/4/2,/1:${r.startOffset},/1:${r.endOffset})` },
-    resolveRangeForCfi: () => ({ index: 2, range }),
-  });
-  vm.runInContext(source, context);
-  expect(context.trimTTSDetailCfi("epubcfi(/6/6!/4/2,/1:1,/1:25)")).toBe("epubcfi(/6/6!/4/2,/1:3,/1:23)");
-  // Unresolvable CFI (another section) is returned untouched.
-  context.resolveRangeForCfi = () => null;
-  expect(context.trimTTSDetailCfi("epubcfi(/6/8!/4/2,/1:0,/1:8)")).toBe("epubcfi(/6/8!/4/2,/1:0,/1:8)");
+  const makeRange = (...bounds: number[]) => bounds;
+  const strs = ["   — Я, пожалуй, пойду. ", "За ним тотчас захлопнулась дверь."];
+  const sentences = [...context.getSegmenter("ru", "sentence")(strs, makeRange)].map(
+    ([, range]: [string, number[]]) => range,
+  );
+  // First sentence starts after the indent and ends before the trailing space.
+  expect(sentences[0]).toEqual([0, 3, 0, 23]);
+  // Second sentence starts at offset 0 of the next node, not at its whitespace.
+  expect(sentences[1]).toEqual([1, 0, 1, strs[1].length]);
+  // Word granularity is untouched: words never carry whitespace anyway.
+  const words = [...context.getSegmenter("ru", "word")(["  Я пойду"], makeRange)];
+  expect(words.map(([, range]: [string, number[]]) => range)).toEqual([[0, 2, 0, 3], [0, 4, 0, 9]]);
 });
 
 it("excludes scene controls and translations in Foliate's fallback walker", () => {
