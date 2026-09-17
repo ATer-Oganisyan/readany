@@ -663,6 +663,58 @@ test('character portrait can fall back after a moderation rejection', async () =
   assert.deepEqual(result.attempts.map(({ error_code }) => error_code), ['CENSOR', undefined])
 })
 
+test('character portrait preserves both moderation refusals and stops after the fallback', async () => {
+  const requestId = 'portrait-refused-twice'
+  const calls = []
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'fictional character portrait',
+      requestId,
+      allowCensorFallback: true,
+      fetchImpl: async (_url, init) => {
+        calls.push({
+          model: JSON.parse(init.body).model,
+          requestId: new Headers(init.headers).get('x-request-id')
+        })
+        return new Response('content moderation blocked', { status: 400 })
+      },
+      env: {
+        COVER_IMAGE_PROVIDER: 'litellm',
+        LITELLM_BASE_URL: 'https://litellm.test',
+        LITELLM_API_KEY: 'proxy-key',
+        LITELLM_IMAGE_MODEL: 'gpt-image-2'
+      }
+    }),
+    (error) => {
+      assert.equal(error.code, 'CENSOR')
+      assert.equal(error.status, 400)
+      assert.equal(error.requestId, requestId)
+      assert.deepEqual(error.attempts.map((attempt) => ({
+        model: attempt.model,
+        status: attempt.status,
+        httpStatus: attempt.http_status,
+        errorCode: attempt.error_code,
+        retryIndex: attempt.retry_index
+      })), [
+        {
+          model: 'gpt-image-2', status: 'failed', httpStatus: 400,
+          errorCode: 'CENSOR', retryIndex: 0
+        },
+        {
+          model: 'openrouter/google/gemini-3.1-flash-image', status: 'failed',
+          httpStatus: 400, errorCode: 'CENSOR', retryIndex: 1
+        }
+      ])
+      assert.notEqual(error.attempts[0].attempt_id, error.attempts[1].attempt_id)
+      return true
+    }
+  )
+  assert.deepEqual(calls, [
+    { model: 'gpt-image-2', requestId },
+    { model: 'openrouter/google/gemini-3.1-flash-image', requestId }
+  ])
+})
+
 test('raw AbortSignal timeout is normalized and falls back to Nano Banana', async () => {
   const models = []
   const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError')
