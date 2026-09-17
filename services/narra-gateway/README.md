@@ -41,6 +41,16 @@ GPT Image requests. The legacy `/v2/media/images` route treats vertical images
 as portraits and square or landscape images as scenes. Provider credentials
 never enter the mobile contract.
 
+Character portraits can opt into `CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED=true`.
+In this mode a provider 5xx stops the current request so the durable media job
+retries with increasing delay (up to six attempts). HTTP 400 moves immediately
+to the next model in `CHARACTER_PORTRAIT_FALLBACK_MODELS`, in order; after the
+last model returns 400, the job fails without another delayed retry. The list
+uses the selected `COVER_IMAGE_PROVIDER`, supports up to eight fallback models,
+and defaults to its existing single fallback when unset. An explicitly empty
+list disables fallback. With the toggle off, the current routing and retry
+behavior is unchanged. This setting does not change cover or scene generation.
+
 GPT-5.6 Luna's model and reasoning modes are documented by
 [OpenAI](https://developers.openai.com/api/docs/models/gpt-5.6-luna), while
 OpenRouter documents its OpenAI-style `reasoning_effort` shorthand in the

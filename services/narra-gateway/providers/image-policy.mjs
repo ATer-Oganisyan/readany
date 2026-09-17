@@ -1,6 +1,8 @@
 const MODERATION_PATTERN =
   /(?:censor|moderation|safety|unsafe|blocked|bad[_ -]?\w*lemmas|ценз|запрещ|небезопас)/i
 
+export const PORTRAIT_CASCADE_EXHAUSTED = 'PORTRAIT_CASCADE_EXHAUSTED'
+
 function providerError(code, provider, phase, status) {
   const error = new Error(
     `${provider}: ${code === 'CENSOR' ? 'запрос или результат отклонён политикой безопасности' : `ошибка ${phase}${status ? ` (${status})` : ''}`}`

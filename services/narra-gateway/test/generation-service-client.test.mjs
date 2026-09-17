@@ -341,3 +341,27 @@ test('generator client preserves safe scan validation codes instead of hiding th
     (error) => error.code === 'SCAN_RELATION_PARTICIPANT_MISSING'
   )
 })
+
+test('generator client preserves only the portrait cascade exhaustion signal on HTTP 400', async () => {
+  for (const [code, expected] of [
+    ['PORTRAIT_CASCADE_EXHAUSTED', 'PORTRAIT_CASCADE_EXHAUSTED'],
+    ['CENSOR', 'GENERATOR_HTTP_400']
+  ]) {
+    const client = createGenerationServiceClient({
+      baseUrl: 'http://localhost:8790',
+      token: TOKEN,
+      production: false,
+      async fetchImpl() {
+        return new Response(JSON.stringify({ code }), { status: 400 })
+      }
+    })
+    await assert.rejects(
+      () => client.generateCharacterBundle({
+        bookEditionId: 'book-1',
+        characterKey: 'hero',
+        bundleVersion: 'v1'
+      }, ['primary_portrait']),
+      (error) => error.code === expected
+    )
+  }
+})

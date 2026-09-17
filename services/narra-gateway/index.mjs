@@ -122,7 +122,9 @@ const {
   COVER_JOB_MAX, COVER_JOB_TTL_HOURS, COVER_JOB_MAX_RESULT_MIB, COVER_JOB_MAX_ATTEMPTS,
   COVER_JOB_ATTEMPT_TIMEOUT_SECONDS, COVER_JOB_WORKER_ENABLED, SCENE_JOB_MAX, SCENE_JOB_TTL_HOURS,
   SCENE_JOB_MAX_ATTEMPTS, SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS, SCENE_JOB_WORKER_ENABLED, coverProviderConfig,
-  COVER_IMAGE_QUALITY, CHARACTER_PORTRAIT_IMAGE_QUALITY, SCENE_IMAGE_QUALITY, coverProviderCallsPerAttempt,
+  COVER_IMAGE_QUALITY, CHARACTER_PORTRAIT_IMAGE_QUALITY,
+  CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED, CHARACTER_PORTRAIT_FALLBACK_MODELS,
+  SCENE_IMAGE_QUALITY, coverProviderCallsPerAttempt,
   minimumCoverAttemptTimeoutMs, llmGate, speechGate, imageGate,
   coverGate, importGate, SALUTE_CLIENT, SALUTE_KEY,
   LLM_BASE_URL, LLM_TRANSPORT_SECURE, LLM_API_KEY, LLM_MODEL,
@@ -391,7 +393,9 @@ async function measuredInternalImageRequest({
   referenceImages = [],
   signal,
   costContext,
-  allowCensorFallback = false
+  allowCensorFallback = false,
+  cascadeOnHttp400 = false,
+  fallbackModels
 }) {
   try {
     const generated = await requestCoverImageObserved({
@@ -401,6 +405,8 @@ async function measuredInternalImageRequest({
       referenceImages,
       requestId: randomUUID(),
       allowCensorFallback,
+      cascadeOnHttp400,
+      fallbackModels,
       signal
     })
     await recordInternalGenerationCost({
@@ -461,6 +467,8 @@ async function generateInternalCharacterPortrait(prompt, signal, costContext) {
       quality: CHARACTER_PORTRAIT_IMAGE_QUALITY,
       costContext,
       allowCensorFallback: true,
+      cascadeOnHttp400: CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED,
+      fallbackModels: CHARACTER_PORTRAIT_FALLBACK_MODELS,
       signal
     })
     const bytes = Buffer.from(generated.image, 'base64')

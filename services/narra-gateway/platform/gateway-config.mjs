@@ -157,6 +157,23 @@ export function loadGatewayConfig(env = process.env) {
   // openrouter вместе с его моделью и таймаутом, а проверка бюджета времени
   // ниже считалась по этим же чужим настройкам.
   const coverProviderConfig = coverImageConfig(env)
+  const CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED = parseEnvBool(
+    env,
+    'CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED',
+    false
+  )
+  const configuredPortraitFallbacks = Object.hasOwn(env, 'CHARACTER_PORTRAIT_FALLBACK_MODELS')
+    ? String(env.CHARACTER_PORTRAIT_FALLBACK_MODELS ?? '').split(',')
+    : [coverProviderConfig.fallbackModel]
+  const CHARACTER_PORTRAIT_FALLBACK_MODELS = Object.freeze(
+    CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED
+      ? [...new Set(configuredPortraitFallbacks.map((model) => model?.trim()).filter(Boolean))]
+        .filter((model) => model !== coverProviderConfig.model)
+      : []
+  )
+  if (CHARACTER_PORTRAIT_FALLBACK_MODELS.length > 8) {
+    throw new Error('CHARACTER_PORTRAIT_FALLBACK_MODELS supports at most 8 models')
+  }
   const COVER_IMAGE_QUALITY = normalizeImageQuality(env.COVER_IMAGE_QUALITY)
   const CHARACTER_PORTRAIT_IMAGE_QUALITY = normalizeImageQuality(
     env.CHARACTER_PORTRAIT_IMAGE_QUALITY
@@ -344,6 +361,8 @@ export function loadGatewayConfig(env = process.env) {
     SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS,
     SCENE_JOB_WORKER_ENABLED,
     coverProviderConfig,
+    CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED,
+    CHARACTER_PORTRAIT_FALLBACK_MODELS,
     COVER_IMAGE_QUALITY,
     CHARACTER_PORTRAIT_IMAGE_QUALITY,
     SCENE_IMAGE_QUALITY,

@@ -1,11 +1,13 @@
 import { characterCardIdempotencyKey } from '../analysis/book-character-card.mjs'
 import { serviceUrl } from '../platform/service-url.mjs'
+import { PORTRAIT_CASCADE_EXHAUSTED } from './image-policy.mjs'
 
 const SAFE_GENERATOR_ERROR_CODES = new Set([
   'SCAN_EMPTY_OBSERVATIONS',
   'EVIDENCE_MISMATCH',
   'GENERATION_RESULT_INVALID',
-  'SCAN_RELATION_PARTICIPANT_MISSING'
+  'SCAN_RELATION_PARTICIPANT_MISSING',
+  PORTRAIT_CASCADE_EXHAUSTED
 ])
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{1,48}$/
 

@@ -719,6 +719,158 @@ test('character portrait preserves both moderation refusals and stops after the 
   ])
 })
 
+const portraitCascadeEnv = {
+  COVER_IMAGE_PROVIDER: 'litellm',
+  LITELLM_BASE_URL: 'https://litellm.test',
+  LITELLM_API_KEY: 'proxy-key',
+  LITELLM_IMAGE_MODEL: 'gpt-image-2'
+}
+
+test('enabled portrait cascade follows every HTTP 400 until a model succeeds', async () => {
+  const requestId = 'portrait-cascade'
+  const calls = []
+  const result = await requestCoverImageWithFallback({
+    prompt: 'fictional character portrait',
+    requestId,
+    cascadeOnHttp400: true,
+    fallbackModels: ['fallback-one', 'fallback-two'],
+    env: portraitCascadeEnv,
+    fetchImpl: async (_url, init) => {
+      calls.push({
+        model: JSON.parse(init.body).model,
+        requestId: new Headers(init.headers).get('x-request-id')
+      })
+      return calls.length < 3
+        ? new Response('invalid for this model', { status: 400 })
+        : new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+    }
+  })
+
+  assert.deepEqual(calls, [
+    { model: 'gpt-image-2', requestId },
+    { model: 'fallback-one', requestId },
+    { model: 'fallback-two', requestId }
+  ])
+  assert.equal(result.model, 'fallback-two')
+  assert.deepEqual(result.attempts.map(({ http_status, retry_index }) => [http_status, retry_index]), [
+    [400, 0], [400, 1], [200, 2]
+  ])
+})
+
+test('enabled portrait cascade sends a 5xx to the delayed job retry without switching models', async () => {
+  const calls = []
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'fictional character portrait',
+      cascadeOnHttp400: true,
+      fallbackModels: ['fallback-one', 'fallback-two'],
+      env: portraitCascadeEnv,
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(init.body).model)
+        return new Response('upstream unavailable', { status: 503 })
+      }
+    }),
+    (error) => {
+      assert.equal(error.status, 503)
+      assert.equal(error.code, 'NETWORK')
+      assert.deepEqual(error.attempts.map(({ http_status }) => http_status), [503])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ['gpt-image-2'])
+})
+
+test('enabled portrait cascade switches models only for HTTP 400', async () => {
+  for (const [status, expectedCode] of [[422, 'CENSOR'], [429, 'RATE']]) {
+    const calls = []
+    await assert.rejects(
+      requestCoverImageWithFallback({
+        prompt: 'fictional character portrait',
+        cascadeOnHttp400: true,
+        fallbackModels: ['fallback-one'],
+        env: portraitCascadeEnv,
+        fetchImpl: async (_url, init) => {
+          calls.push(JSON.parse(init.body).model)
+          return new Response('upstream refused', { status })
+        }
+      }),
+      (error) => error.status === status && error.code === expectedCode
+    )
+    assert.deepEqual(calls, ['gpt-image-2'])
+  }
+})
+
+test('enabled portrait cascade stops on a fallback 5xx and retries the whole job later', async () => {
+  const calls = []
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'fictional character portrait',
+      cascadeOnHttp400: true,
+      fallbackModels: ['fallback-one', 'fallback-two'],
+      env: portraitCascadeEnv,
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(init.body).model)
+        return new Response(calls.length === 1 ? 'invalid' : 'upstream unavailable', {
+          status: calls.length === 1 ? 400 : 502
+        })
+      }
+    }),
+    (error) => {
+      assert.equal(error.status, 502)
+      assert.equal(error.code, 'NETWORK')
+      assert.deepEqual(error.attempts.map(({ http_status }) => http_status), [400, 502])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one'])
+})
+
+test('enabled portrait cascade ends after every model returns HTTP 400', async () => {
+  const calls = []
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'fictional character portrait',
+      cascadeOnHttp400: true,
+      fallbackModels: ['fallback-one', 'fallback-two'],
+      env: portraitCascadeEnv,
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(init.body).model)
+        return new Response('content moderation blocked', { status: 400 })
+      }
+    }),
+    (error) => {
+      assert.equal(error.status, 400)
+      assert.equal(error.code, 'PORTRAIT_CASCADE_EXHAUSTED')
+      assert.deepEqual(error.attempts.map(({ error_code, retry_index }) => [error_code, retry_index]), [
+        ['CENSOR', 0], ['CENSOR', 1], ['CENSOR', 2]
+      ])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one', 'fallback-two'])
+})
+
+test('disabled portrait cascade keeps the original single-fallback rule', async () => {
+  const calls = []
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'fictional character portrait',
+      cascadeOnHttp400: false,
+      fallbackModels: ['fallback-one', 'fallback-two'],
+      env: portraitCascadeEnv,
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(init.body).model)
+        return new Response('invalid request', { status: 400 })
+      }
+    }),
+    (error) => error.code === 'VALIDATION'
+  )
+  assert.deepEqual(calls, ['gpt-image-2'])
+})
+
 test('raw AbortSignal timeout is normalized and falls back to Nano Banana', async () => {
   const models = []
   const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError')

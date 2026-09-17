@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { withTimeout } from '../platform/concurrency.mjs'
-import { imageUpstreamError, shouldFallbackAfterImageError } from './image-policy.mjs'
+import {
+  PORTRAIT_CASCADE_EXHAUSTED,
+  imageUpstreamError,
+  shouldFallbackAfterImageError
+} from './image-policy.mjs'
 import { purposeChain } from './purpose-inheritance.mjs'
 import { requestOptionsForModel } from './model-request-config.mjs'
 export { omitsJsonResponseFormat } from './model-request-config.mjs'
@@ -818,8 +822,40 @@ export async function requestCoverImage({
   }
 }
 
+async function requestPortraitImageCascade(options, config) {
+  const requestId = options.requestId || randomUUID()
+  const models = [...new Set([
+    config.model,
+    ...(options.fallbackModels ?? [config.fallbackModel])
+  ].map((model) => String(model || '').trim()).filter(Boolean))]
+  const attempts = []
+
+  for (const [retryIndex, model] of models.entries()) {
+    try {
+      const result = await requestCoverImage({ ...options, requestId, retryIndex, model })
+      return { ...result, attempts: [...attempts, ...result.attempts] }
+    } catch (error) {
+      attempts.push(...(Array.isArray(error?.attempts) ? error.attempts : []))
+      error.requestId = requestId
+      error.attempts = [...attempts]
+      const status = Number(error?.status)
+      const nextModel = models[retryIndex + 1]
+      if (status === 400 && !nextModel) {
+        error.code = PORTRAIT_CASCADE_EXHAUSTED
+        throw error
+      }
+      // Only HTTP 400 advances the cascade; 5xx stays with the delayed job retry.
+      if (status !== 400 || !nextModel) throw error
+      console.error(`[image] ${config.provider}/${model} не удалось, фоллбэк на ${nextModel}:`, error.message)
+    }
+  }
+}
+
 export async function requestCoverImageWithFallback(options) {
   const config = coverImageConfig(options.env)
+  if (options.cascadeOnHttp400 === true) {
+    return requestPortraitImageCascade(options, config)
+  }
   const requestId = options.requestId || randomUUID()
   let previousAttempts = []
   try {

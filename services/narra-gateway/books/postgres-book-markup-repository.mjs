@@ -4460,12 +4460,13 @@ export function createPostgresBookMarkupRepository(pool, {
      * у окна не останется заданий в работе, и отложенная на час карточка
      * останавливает книгу целиком. Медиа цепочку не держит.
      */
-    async failGenerationJob(job, errorCode, { maxAttempts = 3 } = {}) {
+    async failGenerationJob(job, errorCode, { maxAttempts = 3, terminal = false } = {}) {
       const media = Object.values(CHARACTER_MEDIA_JOB_TYPES).includes(job.type)
       return transaction(pool, async (client) => {
         const result = await client.query(
           `UPDATE generation_jobs
-           SET status = CASE WHEN attempts < $4 THEN 'queued' ELSE 'failed' END,
+           SET status = CASE WHEN $6::boolean THEN 'failed'
+                             WHEN attempts < $4 THEN 'queued' ELSE 'failed' END,
                last_error_code = $3,
                available_at = now() + make_interval(
                  secs => LEAST($5::int, power(8, attempts)::int)
@@ -4476,7 +4477,8 @@ export function createPostgresBookMarkupRepository(pool, {
           [
             job.id, job.leaseToken, errorCode,
             media ? 6 : maxAttempts,
-            media ? 21_600 : 300
+            media ? 21_600 : 300,
+            terminal
           ]
         )
         if (!result.rows[0]) throw leaseLost(job.id)
