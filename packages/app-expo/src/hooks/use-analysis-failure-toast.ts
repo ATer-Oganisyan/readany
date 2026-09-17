@@ -15,6 +15,7 @@ export function useAnalysisFailureToast(bookId: string, active = true) {
     (state) => state.books[bookId]?.manifest?.analysis?.updatedAt,
   );
   const retry = useCallback(() => {
+    toast.dismiss();
     void retryBackendBookAnalysis(bookId)
       .then(() => toast.success(t("narra.analysisRetried", "Разметка запущена заново")))
       .catch(() => undefined);
