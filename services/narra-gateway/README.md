@@ -48,8 +48,13 @@ to the next model in `CHARACTER_PORTRAIT_FALLBACK_MODELS`, in order; after the
 last model returns 400, the job fails without another delayed retry. The list
 uses the selected `COVER_IMAGE_PROVIDER`, supports up to eight fallback models,
 and defaults to its existing single fallback when unset. An explicitly empty
-list disables fallback. With the toggle off, the current routing and retry
-behavior is unchanged. This setting does not change cover or scene generation.
+list disables fallback. The whole cascade has at most eight minutes, shared
+between the remaining models, with two minutes reserved for storing the
+portrait, generating other bundle assets and returning the response. A timed-out
+model stops the cascade for a delayed job retry. The media worker needs
+`GENERATOR_TIMEOUT_MS=600000`; the production compose file already sets it.
+With the toggle off, the current routing and retry behavior is unchanged. This
+setting does not change cover or scene generation.
 
 GPT-5.6 Luna's model and reasoning modes are documented by
 [OpenAI](https://developers.openai.com/api/docs/models/gpt-5.6-luna), while

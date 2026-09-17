@@ -783,6 +783,39 @@ test('enabled portrait cascade sends a 5xx to the delayed job retry without swit
   assert.deepEqual(calls, ['gpt-image-2'])
 })
 
+test('enabled portrait cascade limits a slow model to its share of the total budget', async () => {
+  const calls = []
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'fictional character portrait',
+      cascadeOnHttp400: true,
+      cascadeBudgetMs: 180,
+      fallbackModels: ['fallback-one', 'fallback-two'],
+      env: portraitCascadeEnv,
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(init.body).model)
+        if (calls.length === 1) return new Response('invalid', { status: 400 })
+        return new Promise((_resolve, reject) => {
+          const guard = setTimeout(() => reject(new Error('model exceeded its cascade budget')), 2_000)
+          init.signal.addEventListener('abort', () => {
+            clearTimeout(guard)
+            reject(init.signal.reason)
+          }, { once: true })
+        })
+      }
+    }),
+    (error) => {
+      assert.equal(error.status, 504)
+      assert.equal(error.code, 'TIMEOUT')
+      assert.deepEqual(error.attempts.map(({ error_code, retry_index }) => [error_code, retry_index]), [
+        ['VALIDATION', 0], ['TIMEOUT', 1]
+      ])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one'])
+})
+
 test('enabled portrait cascade switches models only for HTTP 400', async () => {
   for (const [status, expectedCode] of [[422, 'CENSOR'], [429, 'RATE']]) {
     const calls = []

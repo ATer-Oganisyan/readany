@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { withTimeout } from '../platform/concurrency.mjs'
+import { PORTRAIT_CASCADE_MAX_BUDGET_MS } from '../platform/generation-timeouts.mjs'
 import {
   PORTRAIT_CASCADE_EXHAUSTED,
   imageUpstreamError,
@@ -756,6 +757,7 @@ export async function requestCoverImage({
     quality: selectedQuality,
     parts
   })
+  const requestSignal = withTimeout(signal, config.timeoutMs)
   let response
   try {
     response = await fetchImpl(request.url, {
@@ -768,10 +770,13 @@ export async function requestCoverImage({
         ...config.headers
       },
       body: request.form ?? JSON.stringify(request.body),
-      signal: withTimeout(signal, config.timeoutMs)
+      signal: requestSignal
     })
   } catch (error) {
-    failedAttempt(normalizeImageTransportError(error, config.label))
+    failedAttempt(normalizeImageTransportError(
+      requestSignal.aborted ? requestSignal.reason : error,
+      config.label
+    ))
   }
   if (!response.ok) {
     const detail = (await response.text().catch(() => '')).slice(0, 4_000)
@@ -829,10 +834,28 @@ async function requestPortraitImageCascade(options, config) {
     ...(options.fallbackModels ?? [config.fallbackModel])
   ].map((model) => String(model || '').trim()).filter(Boolean))]
   const attempts = []
+  const cascadeBudgetMs = Number.isFinite(options.cascadeBudgetMs)
+    ? Math.min(options.cascadeBudgetMs, PORTRAIT_CASCADE_MAX_BUDGET_MS)
+    : PORTRAIT_CASCADE_MAX_BUDGET_MS
+  const deadlineAt = performance.now() + cascadeBudgetMs
 
   for (const [retryIndex, model] of models.entries()) {
+    const remainingMs = deadlineAt - performance.now()
+    if (remainingMs <= 0) {
+      throw imageAttemptError(
+        normalizeImageTransportError(new DOMException('Portrait cascade timed out', 'TimeoutError'), config.label),
+        { requestId, attempts }
+      )
+    }
+    const attemptBudgetMs = Math.max(1, Math.floor(remainingMs / (models.length - retryIndex)))
     try {
-      const result = await requestCoverImage({ ...options, requestId, retryIndex, model })
+      const result = await requestCoverImage({
+        ...options,
+        requestId,
+        retryIndex,
+        model,
+        signal: withTimeout(options.signal, attemptBudgetMs)
+      })
       return { ...result, attempts: [...attempts, ...result.attempts] }
     } catch (error) {
       attempts.push(...(Array.isArray(error?.attempts) ? error.attempts : []))

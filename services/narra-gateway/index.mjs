@@ -33,6 +33,7 @@ import { createEventStore } from './platform/event-store.mjs'
 import { readBoundedBody } from './platform/safe-fetch.mjs'
 import { fetchImportSource, importSourceFailure } from './platform/import-source.mjs'
 import { requestAbortSignal, withTimeout } from './platform/concurrency.mjs'
+import { portraitCascadeBudgetMs } from './platform/generation-timeouts.mjs'
 import {
   analyticsRoute,
   completionProperties,
@@ -395,7 +396,8 @@ async function measuredInternalImageRequest({
   costContext,
   allowCensorFallback = false,
   cascadeOnHttp400 = false,
-  fallbackModels
+  fallbackModels,
+  cascadeBudgetMs
 }) {
   try {
     const generated = await requestCoverImageObserved({
@@ -407,6 +409,7 @@ async function measuredInternalImageRequest({
       allowCensorFallback,
       cascadeOnHttp400,
       fallbackModels,
+      cascadeBudgetMs,
       signal
     })
     await recordInternalGenerationCost({
@@ -457,7 +460,7 @@ async function generateInternalCover(prompt, signal, costContext) {
   }
 }
 
-async function generateInternalCharacterPortrait(prompt, signal, costContext) {
+async function generateInternalCharacterPortrait(prompt, signal, costContext, deadlineAt) {
   let release
   try {
     release = await imageGate.acquire(signal)
@@ -469,6 +472,9 @@ async function generateInternalCharacterPortrait(prompt, signal, costContext) {
       allowCensorFallback: true,
       cascadeOnHttp400: CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED,
       fallbackModels: CHARACTER_PORTRAIT_FALLBACK_MODELS,
+      cascadeBudgetMs: CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED
+        ? portraitCascadeBudgetMs(deadlineAt)
+        : undefined,
       signal
     })
     const bytes = Buffer.from(generated.image, 'base64')

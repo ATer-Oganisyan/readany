@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { EventEmitter } from 'node:events'
 import test from 'node:test'
 import { strToU8, zipSync } from 'fflate'
 import {
@@ -129,12 +130,14 @@ test('internal generation service creates all three required bundle assets', asy
   const storage = memoryStorage()
   const lines = []
   let generatedPortraitPrompt = ''
+  let portraitDeadlineAt
   const service = createInternalGenerationService({
     storage,
     logger: { info(line) { lines.push(line) }, error(line) { lines.push(line) } },
     async completeChat() { throw new Error('unused') },
-    async generatePortrait(prompt) {
+    async generatePortrait(prompt, _signal, _costContext, deadlineAt) {
       generatedPortraitPrompt = prompt
+      portraitDeadlineAt = deadlineAt
       return {
         bytes: Buffer.from('jpeg'),
         mimeType: 'image/jpeg',
@@ -148,6 +151,7 @@ test('internal generation service creates all three required bundle assets', asy
       return { bytes: Buffer.from('mp4'), mimeType: 'video/mp4', provider: 'local-ffmpeg' }
     }
   })
+  const deadlineAt = performance.now() + 1_000
   const result = await service.generateCharacterBundle({
     idempotencyKey: '11111111-1111-4111-8111-111111111111:character:anna:character-bundle-v3:primary_portrait+greeting_audio+idle_animation',
     bookEditionId: '11111111-1111-4111-8111-111111111111', characterKey: 'character:anna',
@@ -159,7 +163,7 @@ test('internal generation service creates all three required bundle assets', asy
       age: '', role: '', description: '', appearancePrompt: 'portrait', greeting: 'Привет', voice: 'Che',
       firstAppearanceTextOffset: 0, warmupTextOffset: 0
     }
-  })
+  }, undefined, deadlineAt)
   assert.deepEqual(result.assets.map((asset) => asset.type), [
     'primary_portrait', 'greeting_audio', 'idle_animation'
   ])
@@ -170,6 +174,7 @@ test('internal generation service creates all three required bundle assets', asy
   assert.match(generatedPortraitPrompt, /Внешность \(соблюдать точно\): portrait/)
   assert.match(generatedPortraitPrompt, /классический живописный портрет/)
   assert.ok(generatedPortraitPrompt.length <= 1_600)
+  assert.equal(portraitDeadlineAt, deadlineAt)
   assert.ok(lines.some((line) => line.includes('event="bundle.portrait_ready"') && line.includes('provider="openrouter:openai/gpt-image-2"')))
   assert.ok(lines.some((line) => line.includes('event="bundle.audio_ready"') && line.includes('provider="salute-speech"')))
   assert.ok(lines.some((line) => line.includes('event="bundle.animation_ready"') && line.includes('provider="local-ffmpeg"')))
@@ -2134,4 +2139,28 @@ test('internal router exposes all worker endpoints', () => {
     '/v1/book-analysis/synthesize-character-card',
     '/v1/book-analysis/confirm-roster'
   ])
+})
+
+test('internal character bundle route passes its request deadline to generation', async () => {
+  let receivedDeadlineAt
+  const router = createInternalGenerationRouter({
+    token: 's'.repeat(48),
+    service: {
+      async generateCharacterBundle(_body, _signal, deadlineAt) {
+        receivedDeadlineAt = deadlineAt
+        return { ok: true }
+      }
+    }
+  })
+  const route = router.stack.find((layer) => layer.route?.path === '/v1/character-bundles').route
+  const req = new EventEmitter()
+  req.body = {}
+  req.path = '/v1/character-bundles'
+  let result
+  const res = { json(value) { result = value } }
+  const before = performance.now()
+  await route.stack[0].handle(req, res)
+  assert.deepEqual(result, { result: { ok: true } })
+  assert.ok(receivedDeadlineAt >= before + 590_000)
+  assert.ok(receivedDeadlineAt <= performance.now() + 600_000)
 })
