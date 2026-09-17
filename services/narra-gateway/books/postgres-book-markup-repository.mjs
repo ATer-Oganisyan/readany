@@ -1669,7 +1669,7 @@ export function createPostgresBookMarkupRepository(pool, {
         )
         const row = result.rows[0]
         if (!row) return null
-        if (!hasReaderReachedCharacter({
+        if (!(row.scope === 'catalog' && row.type === 'primary_portrait') && !hasReaderReachedCharacter({
           characterKey: row.character_key,
           firstAppearanceTextOffset: Number(row.first_appearance_text_offset),
           warmupTextOffset: Number(row.warmup_text_offset),
