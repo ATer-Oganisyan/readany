@@ -4,7 +4,9 @@ import { toast } from "@/lib/notifications";
 import { type ReactTestRenderer, act, create } from "react-test-renderer";
 import { beforeEach, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/notifications", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/lib/notifications", () => ({
+  toast: { error: vi.fn(), success: vi.fn(), dismiss: vi.fn() },
+}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (_key: string, fallback: string) => fallback }),
 }));
@@ -78,6 +80,7 @@ it("shows one toast per failure and per screen opening, retry reports success", 
     await Promise.resolve();
   });
   expect(retryBackendBookAnalysis).toHaveBeenCalledExactlyOnceWith("b1");
+  expect(toast.dismiss).toHaveBeenCalledOnce();
   expect(toast.success).toHaveBeenCalledExactlyOnceWith("Разметка запущена заново");
   act(() => tree.unmount());
 });
