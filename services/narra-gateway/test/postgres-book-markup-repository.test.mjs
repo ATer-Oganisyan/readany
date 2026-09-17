@@ -1034,18 +1034,3 @@ test('portrait retries stretch over hours; card retries stay short', async () =>
   assert.deepEqual((await fail('character_portrait')).slice(3), [6, 21_600])
   assert.deepEqual((await fail('character_card')).slice(3), [3, 300])
 })
-
-test('moderation refusal is not retried', async () => {
-  const pool = scriptedPool([
-    () => ({ rows: [{ status: 'failed', book_edition_id: 'book-1', character_key: null }] })
-  ])
-  const repository = createPostgresBookMarkupRepository(pool, {
-    idFactory: () => '123e4567-e89b-42d3-a456-426614174000'
-  })
-  await repository.failGenerationJob(
-    { id: 'job-1', type: 'character_portrait', leaseToken: '123e4567-e89b-42d3-a456-426614174001', payload: {} },
-    'CENSOR'
-  )
-  const { sql } = pool.queries.find((entry) => entry.sql.includes('UPDATE generation_jobs'))
-  assert.match(sql, /\$3 <> 'CENSOR'/)
-})

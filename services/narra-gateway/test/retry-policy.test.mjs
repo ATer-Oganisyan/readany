@@ -28,7 +28,7 @@ test('Kandinsky status polling keeps the same task after transient transport fai
   assert.equal(shouldRetryKandinskyStatus({ code: 'AUTH' }), false)
 })
 
-test('provider fallback never bypasses an image censorship decision', () => {
+test('provider fallback does not bypass an image censorship decision by default', () => {
   assert.equal(shouldFallbackAfterImageError({ code: 'CENSOR' }), false)
   assert.equal(shouldFallbackAfterImageError({ code: 'VALIDATION' }), false)
   assert.equal(shouldFallbackAfterImageError({ code: 'UNKNOWN' }), false)
