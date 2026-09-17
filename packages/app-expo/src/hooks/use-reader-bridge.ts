@@ -274,18 +274,22 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
   const addAnnotation = useCallback(
     (annotation: { value: string; type?: string; color?: string; note?: string }) => {
       const annotationStr = JSON.stringify(annotation);
-      // Direct view.addAnnotation for immediate render + handleCommand to maintain userAnnotations map
+      // handleCommand сам вызывает view.addAnnotation и заодно ведёт userAnnotations,
+      // поэтому прямой вызов остаётся только запасным путём. Рисовать дважды нельзя:
+      // foliate на повторный addAnnotation снимает предыдущий overlay из DOM, и
+      // проявление жёлтого маркера обрывается на первом же кадре.
       webViewRef.current?.injectJavaScript(`
         (function() {
           try {
+            if (typeof handleCommand === 'function') {
+              handleCommand(${JSON.stringify({ type: "addAnnotation", annotation })});
+              return;
+            }
             if (!window.__view && document.querySelector('foliate-view')) {
               window.__view = document.querySelector('foliate-view');
             }
             var v = window.__view;
             if (v) v.addAnnotation(${annotationStr}).catch(function(){});
-            if (typeof handleCommand === 'function') {
-              handleCommand(${JSON.stringify({ type: "addAnnotation", annotation })});
-            }
           } catch(e) {}
         })();
         true;
@@ -293,6 +297,21 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
     },
     [],
   );
+
+  // Снимает выделение текста в WebView. Нужно перед открытием экрана заметки: иначе
+  // после возврата нативная подсветка выделения перекрывает проявляющийся маркер.
+  const clearSelection = useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
+        (function() {
+          try {
+            if (typeof handleCommand === 'function') {
+              handleCommand(${JSON.stringify({ type: "clearSelection" })});
+            }
+          } catch(e) {}
+        })();
+        true;
+      `);
+  }, []);
 
   const removeAnnotation = useCallback((annotation: { value: string; type?: string }) => {
     const annotationStr = JSON.stringify(annotation);
@@ -1186,6 +1205,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       navigateSearch,
       addAnnotation,
       removeAnnotation,
+      clearSelection,
       highlightCFITemporarily,
       applySettings,
       setThemeColors,
@@ -1231,6 +1251,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
       navigateSearch,
       addAnnotation,
       removeAnnotation,
+      clearSelection,
       highlightCFITemporarily,
       applySettings,
       setThemeColors,
