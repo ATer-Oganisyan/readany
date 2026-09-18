@@ -556,42 +556,6 @@ export function ProfileScreen() {
             </View>
           </View>
         ))}
-        {__DEV__ && (
-          <View style={s.menuSection}>
-            <Text style={s.menuSectionTitle} maxFontSizeMultiplier={1.5}>
-              {t("profile.development")}
-            </Text>
-            <View style={s.menuCard}>
-              <Pressable
-                style={({ pressed }) => [
-                  s.menuItem,
-                  pressed && { backgroundColor: colors.primary5 },
-                ]}
-                onPress={() => nav.navigate("Storybook")}
-                android_ripple={{ color: colors.primary5 }}
-                accessibilityRole="button"
-                accessibilityLabel={t("profile.openComponentPreview")}
-              >
-                <NativeSymbol
-                  name="bell"
-                  fallback="notifications"
-                  variant="filled"
-                  size={20}
-                  color={colors.mutedForeground}
-                />
-                <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
-                  {t("profile.componentPreview")}
-                </Text>
-                <NativeSymbol
-                  name="chevron.forward"
-                  fallback="chevron_right"
-                  size={16}
-                  color={colors.mutedForeground}
-                />
-              </Pressable>
-            </View>
-          </View>
-        )}
         <View style={s.menuSection}>
           <View style={s.menuCard}>
             <Pressable
