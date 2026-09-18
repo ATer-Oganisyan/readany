@@ -25,8 +25,11 @@ function run(
   containers: { childNodes: unknown[]; contains?: (other: unknown) => boolean }[],
 ) {
   const normalized: unknown[] = [];
+  const textOf = (nodes: unknown[]) =>
+    nodes.map((n) => (n as { nodeValue?: string; textContent?: string }).nodeValue ?? "").join("");
   const body = {
     childNodes: [],
+    textContent: textOf(paragraphs) + textOf(containers.flatMap((c) => c.childNodes)),
     querySelectorAll: (selector: string) => (selector === "p" ? paragraphs : containers),
     contains: () => false,
   };
@@ -64,8 +67,18 @@ it("режет полотно, даже когда внутри стоят ра�
   expect(normalized).toEqual([container]);
 });
 
+it("режет полотно, даже когда внутри десяток центрированных записок", () => {
+  // Записок много, но по тексту это крохи на фоне главы.
+  const container = flatChapter();
+  for (let i = 0; i < 10; i += 1) container.childNodes.push(...flatChapter().childNodes);
+  const notes = Array.from({ length: 12 }, () =>
+    element("p", "Малфой, я сожалею о своём вчерашнем поведении. Грейнджер."),
+  );
+  expect(run(notes, [container])).toEqual([container]);
+});
+
 it("не трогает книгу, где абзацы уже свёрстаны", () => {
-  const realParagraphs = Array.from({ length: 3 }, () =>
+  const realParagraphs = Array.from({ length: 30 }, () =>
     element("p", "Полноценный абзац книги, свёрстанный издателем как положено."),
   );
   expect(run(realParagraphs, [flatChapter()])).toEqual([]);
