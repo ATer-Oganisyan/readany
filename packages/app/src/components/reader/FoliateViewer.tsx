@@ -2957,13 +2957,16 @@ function normalizeBrOnlyParagraphs(doc: Document) {
   docWithMarker.__readanyBrParagraphsNormalized = true;
 
   const body = doc.body;
-  // Экспорт с фикбука ставит внутри полотна разделители <p>***</p> и заголовки.
-  // Короткий обрывок за абзац не считаем, иначе пара звёздочек отменяет разбивку.
+  // Экспорт с фикбука ставит внутри полотна разделители <p>***</p>, заголовки
+  // и центрированные записки. Считать их по штукам нельзя: десяток записок
+  // выглядит как свёрстанная книга. Свёрстанной считаем главу, где в <p>
+  // лежит больше половины текста.
   if (!body) return;
-  const realParagraphs = Array.from(body.querySelectorAll("p")).filter(
-    (paragraph) => (paragraph.textContent || "").trim().length > BR_PARAGRAPH_MIN_TEXT,
+  const paragraphText = Array.from(body.querySelectorAll("p")).reduce(
+    (sum, paragraph) => sum + (paragraph.textContent || "").trim().length,
+    0,
   );
-  if (realParagraphs.length > 2) return;
+  if (paragraphText * 2 > (body.textContent || "").trim().length) return;
 
   const candidates: Element[] = Array.from(body.querySelectorAll("div, section, article, main")).filter(
     shouldNormalizeBrParagraphContainer,
@@ -2980,7 +2983,6 @@ function normalizeBrOnlyParagraphs(doc: Document) {
   }
 }
 
-const BR_PARAGRAPH_MIN_TEXT = 40;
 // Белый список: незнакомый тег считаем строчным и оставляем внутри абзаца.
 // Обратная полярность рвала бы абзац на <tt>, <strike>, <wbr>, <svg> и прочем.
 const BR_BLOCK_TAGS = new Set([
