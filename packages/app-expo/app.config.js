@@ -7,7 +7,7 @@ module.exports = {
     owner: "mishanaer",
     name: variant.name,
     slug: "readany",
-    version: "1.3.5",
+    version: "1.4.0",
     orientation: "portrait",
     icon: "./assets/app-icon.png",
     userInterfaceStyle: "automatic",
