@@ -7,8 +7,20 @@ import { Message, MessageScroller, Shimmer, useMessageScroller } from "panelui-n
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { type ScrollViewProps, StyleSheet, type TextStyle, View } from "react-native";
-import type { KeyboardChatScrollViewRef } from "react-native-keyboard-controller";
+import {
+  type LayoutChangeEvent,
+  Platform,
+  type ScrollViewProps,
+  StyleSheet,
+  type TextStyle,
+  View,
+} from "react-native";
+import {
+  type KeyboardChatScrollViewRef,
+  useKeyboardHandler,
+} from "react-native-keyboard-controller";
+import { runOnJS } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NarraKeyboardChatScrollView } from "./narra-keyboard-chat-scroll-view";
 import { StreamingWords } from "./streaming-words";
 
@@ -379,6 +391,45 @@ export function NarraChatTranscript({
     [renderText, tailMessage],
   );
 
+  // Короткий чат прижат к низу пустым наполнителем сверху. KeyboardChatScrollView
+  // поднимает ленту под клавиатуру через contentInset.bottom и прокрутку на её
+  // высоту, а сам контент не меняет — поэтому наполнитель становится
+  // «домотать вниз» можно, и над первым сообщением открывалась пустота.
+  // Отрицательный contentInset.top на ту же величину схлопывает диапазон
+  // прокрутки: лента стоит над клавиатурой, а пан по ней по-прежнему тянет
+  // клавиатуру вниз (interactive dismiss не требует прокручиваемого контента).
+  const { bottom: safeAreaBottom } = useSafeAreaInsets();
+  const [fillerHeight, setFillerHeight] = useState(0);
+  const [keyboardLift, setKeyboardLift] = useState(0);
+  const onFillerLayout = useCallback((event: LayoutChangeEvent) => {
+    setFillerHeight(Math.round(event.nativeEvent.layout.height));
+  }, []);
+  useKeyboardHandler(
+    {
+      onStart: (event) => {
+        "worklet";
+        // Клавиатура уходит: снимаем ограничение до того, как библиотека
+        // вернёт прокрутку к нулю.
+        if (event.height === 0) runOnJS(setKeyboardLift)(0);
+      },
+      onEnd: (event) => {
+        "worklet";
+        // Та же эффективная высота, что у KeyboardChatScrollView с offset=safeAreaBottom.
+        runOnJS(setKeyboardLift)(Math.max(0, event.height - safeAreaBottom));
+      },
+    },
+    [safeAreaBottom],
+  );
+  const topClamp = Platform.OS === "ios" ? Math.min(keyboardLift, fillerHeight) : 0;
+  const listContentInset = useMemo(
+    () => (topClamp > 0 ? { top: -topClamp } : undefined),
+    [topClamp],
+  );
+  const renderFiller = useCallback(
+    () => <View onLayout={onFillerLayout} style={styles.filler} />,
+    [onFillerLayout],
+  );
+
   const fadeColor = colors.background;
   const chatScrollViewRef = useRef<KeyboardChatScrollViewRef>(null);
   const scrollOffsetRef = useRef(0);
@@ -460,8 +511,11 @@ export function NarraChatTranscript({
             paddingTop: topInset + ROW_HALF_GAP,
             paddingBottom: bottomInset + ROW_HALF_GAP,
           }}
+          contentInset={listContentInset}
           data={rows}
           keyboardDismissMode="interactive"
+          ListHeaderComponent={renderFiller}
+          ListHeaderComponentStyle={styles.filler}
           keyboardShouldPersistTaps="handled"
           renderItem={renderRow}
           renderScrollComponent={renderScrollComponent}
@@ -535,6 +589,8 @@ export function NarraChatTranscript({
 
 const styles = StyleSheet.create({
   host: { flex: 1 },
+  /** Забирает свободную высоту короткого чата, чтобы сообщения стояли у инпута. */
+  filler: { flexGrow: 1, flexShrink: 0 },
   messageRow: { paddingHorizontal: spacingPixels[16], paddingVertical: ROW_HALF_GAP },
   messageBubble: { borderCurve: "continuous", borderRadius: MESSAGE_RADIUS },
   dayRow: { alignItems: "center", paddingVertical: ROW_HALF_GAP },
