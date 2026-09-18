@@ -49,6 +49,7 @@ import {
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { rnSessionEventSource } from "@/hooks";
+import { useSharedBookImport } from "@/hooks/use-shared-book-import";
 import { setStreamingFetch } from "@readany/core/ai/llm-provider";
 import { initDatabase } from "@readany/core/db/database";
 import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
@@ -365,6 +366,7 @@ function AppInner() {
   const { colors, isDark } = useTheme();
   const loadBooks = useLibraryStore((s) => s.loadBooks);
   useAutoSync(loadBooks);
+  useSharedBookImport();
 
   const toastBackground =
     Platform.OS === "ios" && isLiquidGlassAvailable() ? (

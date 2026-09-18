@@ -16,14 +16,12 @@ type ImportToastId = string | number;
 
 const RESULT_TOAST_DURATION_MS = 3000;
 
-export function useBookImportActions({ onImportComplete }: UseBookImportActionsOptions = {}) {
+/** Тост с результатом импорта — общий для пикера и для книг, пришедших из шеринга. */
+export function useImportSummaryToast(onImportComplete?: (importedCount: number) => void) {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const importBooks = useLibraryStore((state) => state.importBooks);
-  const [isPickingImport, setIsPickingImport] = useState(false);
-  const localImportInFlightRef = useRef(false);
 
-  const showImportSummary = useCallback(
+  return useCallback(
     (summary: ImportBooksResult, toastId?: ImportToastId, announceEnrichment = false) => {
       onImportComplete?.(summary.imported.length);
       const description = t("library.importResultSummary", {
@@ -67,6 +65,14 @@ export function useBookImportActions({ onImportComplete }: UseBookImportActionsO
     },
     [colors.primary60, onImportComplete, t],
   );
+}
+
+export function useBookImportActions({ onImportComplete }: UseBookImportActionsOptions = {}) {
+  const { t } = useTranslation();
+  const importBooks = useLibraryStore((state) => state.importBooks);
+  const [isPickingImport, setIsPickingImport] = useState(false);
+  const localImportInFlightRef = useRef(false);
+  const showImportSummary = useImportSummaryToast(onImportComplete);
 
   const handleLocalImport = useCallback(async () => {
     if (localImportInFlightRef.current) return;

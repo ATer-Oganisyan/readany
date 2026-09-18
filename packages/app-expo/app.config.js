@@ -27,6 +27,15 @@ module.exports = {
         NSLocalNetworkUsageDescription:
           "Локальная сеть нужна Narra для синхронизации с другими устройствами и подключения к серверу разработки.",
         ITSAppUsesNonExemptEncryption: false,
+        // «Скопировать в Narra» в шер-шите и «Открыть в Narra» для книг из других приложений.
+        CFBundleDocumentTypes: [
+          {
+            CFBundleTypeName: "Книга",
+            CFBundleTypeRole: "Viewer",
+            LSHandlerRank: "Alternate",
+            LSItemContentTypes: ["public.data"],
+          },
+        ],
       },
     },
     android: {
@@ -37,6 +46,16 @@ module.exports = {
       },
       softwareKeyboardLayoutMode: "resize",
       package: variant.androidPackage,
+      intentFilters: [
+        {
+          action: "VIEW",
+          category: ["DEFAULT", "BROWSABLE"],
+          data: [
+            { scheme: "content", mimeType: "application/*" },
+            { scheme: "content", mimeType: "text/plain" },
+          ],
+        },
+      ],
       permissions: [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
