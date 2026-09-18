@@ -1,7 +1,7 @@
 {
   "configVersion": 0,
   "apple": {
-    "version": "1.3.5",
+    "version": "1.4.0",
     "copyright": "2026 Mikhail Naer",
     "categories": ["BOOKS", "ENTERTAINMENT"],
     "release": {
@@ -12,18 +12,18 @@
       "ru": {
         "title": "Narra: книги и AI",
         "subtitle": "Читайте, слушайте, обсуждайте",
-        "description": "Narra — читалка, которая оживляет любую вашу книгу.\n\nДобавьте свой файл — EPUB, FB2, TXT, UMD — или сохраните главу из сети, и Narra разберёт текст: найдёт персонажей, построит хронологию, нарисует портреты и обложку, озвучит книгу голосом рассказчика.\n\nЧто внутри\n\n• Читалка. Постраничный и свиточный режим, шрифты, темы, оглавление, закладки, перелистывание кнопками громкости.\n• Аудиокнига. Синтез речи по главам, фоновое воспроизведение, продолжение с того места, где остановились.\n• Персонажи. Имена в тексте подчёркнуты: нажмите — и увидите портрет, роль в сюжете и связи с другими героями.\n• Диалог. Поговорите с героем книги о том, что уже прочитано, без спойлеров о будущих главах.\n• Сцены. Ключевые моменты книги превращаются в иллюстрации.\n• Смысловой поиск. Ищите по значению, а не по точному слову: «где он впервые сомневается в брате».\n• Библиотека. Полки, прогресс чтения, синхронизация между своими устройствами.\n\nРегистрация не нужна: ни почты, ни пароля. Чтобы разобрать книгу, Narra загружает её на свой сервер — разбор и загруженный файл удаляются автоматически через неделю.",
+        "description": "Narra — читалка, которая оживляет любую вашу книгу.\n\nДобавьте свой файл — EPUB, FB2, TXT, UMD — или отправьте книгу в Narra из другого приложения, и Narra разберёт текст: найдёт персонажей, нарисует портреты и обложку, озвучит книгу голосом рассказчика.\n\nЧто внутри\n\n• Читалка. Постраничный и свиточный режим, шрифты, темы, оглавление, закладки, перелистывание кнопками громкости.\n• Аудиокнига. Синтез речи по главам, фоновое воспроизведение, продолжение с того места, где остановились.\n• Персонажи. Имена в тексте подчёркнуты: нажмите — и увидите портрет, биографию и роль в сюжете.\n• Диалог. Поговорите с героем книги о том, что уже прочитано, без спойлеров о будущих главах.\n• Сцены. Ключевые моменты книги превращаются в иллюстрации.\n• Библиотека. Ваши книги и встроенная подборка классики, прогресс чтения, возврат к последней странице.\n\nРегистрация не нужна: ни почты, ни пароля. Чтобы разобрать книгу, Narra загружает её на свой сервер — разбор и загруженный файл удаляются автоматически через неделю после того, как вы перестали открывать книгу.",
         "keywords": [
           "читалка",
           "epub",
           "fb2",
-          "аудиокнига",
+          "аудиокниги",
           "озвучка",
-          "книги",
           "библиотека",
           "чтение",
           "персонажи",
-          "конспект"
+          "герои",
+          "классика"
         ],
         "promoText": "Любая ваша книга — с портретами героев, озвучкой и живым разговором о прочитанном.",
         "supportUrl": "https://get-narra.app/contact",
@@ -33,9 +33,8 @@
       "en-US": {
         "title": "Narra: AI Book Reader",
         "subtitle": "Read, listen, talk it over",
-        "description": "Narra is a reader that brings your own books to life.\n\nAdd a file — EPUB, FB2, TXT, UMD — or save a chapter from the web, and Narra reads it with you: it finds the characters, lays out the timeline, paints portraits and a cover, and narrates the book aloud.\n\nWhat's inside\n\n• Reader. Paged and scrolling modes, fonts, themes, table of contents, bookmarks, volume-button page turns.\n• Audiobook. Chapter-by-chapter narration, background playback, resume where you left off.\n• Characters. Names are underlined in the text: tap one for a portrait, their role in the plot and their ties to everyone else.\n• Conversation. Talk to a character about what you have read so far, with no spoilers from later chapters.\n• Scenes. Key moments become illustrations.\n• Semantic search. Search by meaning instead of exact words: \"where he first doubts his brother\".\n• Library. Shelves, reading progress, sync across your own devices.\n\nNo account is required — no email, no password. To analyse a book Narra uploads it to its own server, and the upload and its analysis are deleted automatically after a week.",
+        "description": "Narra is a reader that brings your own books to life.\n\nAdd a file — EPUB, FB2, TXT, UMD — or send a book to Narra from another app, and Narra reads it with you: it finds the characters, paints portraits and a cover, and narrates the book aloud.\n\nWhat's inside\n\n• Reader. Paged and scrolling modes, fonts, themes, table of contents, bookmarks, volume-button page turns.\n• Audiobook. Chapter-by-chapter narration, background playback, resume where you left off.\n• Characters. Names are underlined in the text: tap one for a portrait, a biography and their role in the plot.\n• Conversation. Talk to a character about what you have read so far, with no spoilers from later chapters.\n• Scenes. Key moments become illustrations.\n• Library. Your own books and a built-in shelf of classics, reading progress, back to the page you left.\n\nNo account is required — no email, no password. To analyse a book Narra uploads it to its own server, and the upload and its analysis are deleted automatically a week after you last open the book.",
         "keywords": [
-          "book reader",
           "epub",
           "fb2",
           "audiobook",
@@ -44,7 +43,8 @@
           "library",
           "reading",
           "characters",
-          "summary"
+          "heroes",
+          "classics"
         ],
         "promoText": "Any book you own — with character portraits, narration and a real conversation about it.",
         "supportUrl": "https://get-narra.app/contact",
