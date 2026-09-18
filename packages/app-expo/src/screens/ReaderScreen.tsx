@@ -68,6 +68,7 @@ import {
 } from "@/stores";
 import { darkColors, lightColors, useTheme } from "@/styles/ThemeContext";
 import { useColors, withOpacity } from "@/styles/theme";
+import PdfHintToastIcon from "../../assets/icons/file-slash-circle.svg";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
@@ -1044,6 +1045,16 @@ function ReaderContent({ route, navigation }: Props) {
     }
   }, [isFocused, paintedThemeColors.background, isReaderThemeDark]);
   useReaderErrorToast(error, isFocused, navigation, `${bookId}:${loadAttempt}`);
+  // В PDF нет разметки под портреты — предупреждаем об этом один раз за установку.
+  useEffect(() => {
+    if (!isFocused || !settingsHydrated || book?.format !== "pdf") return;
+    const settings = useSettingsStore.getState();
+    if (settings.hasSeenPdfCharactersHint) return;
+    settings.markPdfCharactersHintSeen();
+    toast.info(t("reader.pdfCharactersHint", "В PDF персонажи могут не отображаться"), {
+      icon: <PdfHintToastIcon width={24} height={24} color={colors.primary60} />,
+    });
+  }, [isFocused, settingsHydrated, book?.format, t, colors.primary60]);
   useBackendBook(book, isFocused, progress);
   const [appActive, setAppActive] = useState(true);
 

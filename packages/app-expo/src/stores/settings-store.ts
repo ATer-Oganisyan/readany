@@ -21,11 +21,13 @@ export interface SettingsState {
   settingsUpdatedAt: number;
   hasCompletedOnboarding: boolean;
   showOnboardingGuide: boolean;
+  hasSeenPdfCharactersHint: boolean;
   _hasHydrated: boolean;
   _apiKeysLoaded: boolean;
 
   completeOnboarding: () => void;
   setShowOnboardingGuide: (show: boolean) => void;
+  markPdfCharactersHintSeen: () => void;
   updateReadSettings: (updates: Partial<ReadSettings>) => void;
   updateTranslationConfig: (updates: Partial<TranslationConfig>) => void;
   updateAIConfig: (
@@ -474,6 +476,7 @@ export const useSettingsStore = create<SettingsState>()(
       settingsUpdatedAt: 0,
       hasCompletedOnboarding: false,
       showOnboardingGuide: true,
+      hasSeenPdfCharactersHint: false,
       _hasHydrated: false,
       _apiKeysLoaded: false,
 
@@ -481,6 +484,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       completeOnboarding: () => set({ hasCompletedOnboarding: true }),
       setShowOnboardingGuide: (show: boolean) => set({ showOnboardingGuide: show }),
+      markPdfCharactersHintSeen: () => set({ hasSeenPdfCharactersHint: true }),
 
       updateReadSettings: (updates) =>
         set((state) => ({
