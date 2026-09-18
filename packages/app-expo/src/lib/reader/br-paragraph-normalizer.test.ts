@@ -25,16 +25,11 @@ function run(
   containers: { childNodes: unknown[]; contains?: (other: unknown) => boolean }[],
 ) {
   const normalized: unknown[] = [];
-  const textOf = (nodes: unknown[]): string =>
-    nodes
-      .map((node) => {
-        const n = node as { nodeValue?: string; textContent?: string; childNodes?: unknown[] };
-        return n.nodeValue ?? n.textContent ?? textOf(n.childNodes ?? []);
-      })
-      .join("");
+  const textOf = (nodes: unknown[]) =>
+    nodes.map((n) => (n as { nodeValue?: string; textContent?: string }).nodeValue ?? "").join("");
   const body = {
     childNodes: [],
-    textContent: textOf(paragraphs) + textOf(containers.map((c) => c.childNodes).flat()),
+    textContent: textOf(paragraphs) + textOf(containers.flatMap((c) => c.childNodes)),
     querySelectorAll: (selector: string) => (selector === "p" ? paragraphs : containers),
     contains: () => false,
   };
