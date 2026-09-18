@@ -22,7 +22,6 @@ import AISettingsScreen from "@/screens/settings/AISettingsScreen";
 import AboutScreen from "@/screens/settings/AboutScreen";
 import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
 import FontSettingsScreen from "@/screens/settings/FontSettingsScreen";
-import SyncSettingsScreen from "@/screens/settings/SyncSettingsScreen";
 import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
@@ -79,7 +78,6 @@ export type RootStackParamList = {
   AISettings: undefined;
   TTSSettings: undefined;
   TranslationSettings: undefined;
-  SyncSettings: undefined;
   About: undefined;
   FullScreenNotes: { bookId: string };
   ManualNote:
@@ -377,11 +375,6 @@ export function RootNavigator() {
           name="TranslationSettings"
           component={TranslationSettingsScreen}
           options={{ title: t("settings.translation_title", "Перевод") }}
-        />
-        <Stack.Screen
-          name="SyncSettings"
-          component={SyncSettingsScreen}
-          options={{ title: t("settings.syncTitle", "Синхронизация") }}
         />
         <Stack.Screen
           name="About"

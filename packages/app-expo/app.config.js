@@ -24,10 +24,6 @@ module.exports = {
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: true,
         UIBackgroundModes: ["audio"],
-        NSCameraUsageDescription:
-          "Камера нужна Narra для сканирования QR‑кодов синхронизации и настройки.",
-        NSLocalNetworkUsageDescription:
-          "Локальная сеть нужна Narra для синхронизации с другими устройствами и подключения к серверу разработки.",
         ITSAppUsesNonExemptEncryption: false,
         // «Скопировать в Narra» в шер-шите и «Открыть в Narra» для книг из других приложений.
         CFBundleDocumentTypes: [
@@ -59,7 +55,6 @@ module.exports = {
         },
       ],
       permissions: [
-        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.MODIFY_AUDIO_SETTINGS",
@@ -120,13 +115,6 @@ module.exports = {
       "./plugins/withIosPodsDeploymentTarget",
       "./plugins/withReactNativeScreensGamma",
       "./plugins/withVolumeKeyPaging",
-      [
-        "expo-camera",
-        {
-          cameraPermission:
-            "Разрешите Narra доступ к камере, чтобы сканировать QR‑коды синхронизации.",
-        },
-      ],
     ],
     scheme: variant.scheme,
     extra: {

@@ -2,9 +2,6 @@
  * Stores index for React Native
  */
 
-export { useAppStore } from "./app-store";
-export type { Tab, TabType, SidebarTab, SettingsTab, AppState } from "./app-store";
-
 export { useReaderStore } from "./reader-store";
 export type { NavigationHistoryItem, ReaderTab, ReaderState } from "./reader-store";
 export { useNarraStore } from "./narra-store";

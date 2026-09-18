@@ -1,7 +1,6 @@
 vi.mock("./backend-character-media", () => ({ loadBackendCharacterMedia: vi.fn(async () => {}) }));
 import type { Book } from "@readany/core/types";
 import type * as React from "react";
-import { useCallback } from "react";
 import { View } from "react-native";
 import { type ReactTestInstance, type ReactTestRenderer, act, create } from "react-test-renderer";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -183,7 +182,6 @@ import { CatalogBookCard } from "../../components/library/CatalogBookCard";
 import { ConnectedCatalogBookCard } from "../../components/library/ConnectedCatalogBookCard";
 import { BookCoverTypography } from "../../components/library/book-cover-typography";
 import { ChatsScreen } from "../../screens/ChatsScreen";
-import { useBookDownload } from "../../screens/library/useBookDownload";
 import { useNarraStore as persistedNarraStore } from "../../stores/narra-store";
 import { catalogCoverStore } from "./catalog-cover-store";
 import { emptyNarraBookState } from "./domain";
@@ -557,55 +555,6 @@ describe("Catalog card render and decode", () => {
     renderer = undefined;
     expect(catalogCoverStore.getDiagnostics().listeners).toBe(0);
     expect(catalogCoverStore.getDiagnostics().subscribedIdentities).toBe(0);
-  });
-
-  it("isolates cards from parent updates when the real download hook receives a stable callback", async () => {
-    const catalogBooks = catalogFixtures();
-    catalogCoverStore.retainBooks(catalogBooks);
-    const localBook = book("local");
-    const loadBooks = vi.fn(async () => {});
-    const onSuccess = vi.fn();
-    const onRetryCover = vi.fn();
-    function DownloadBoundary({
-      onSuccess,
-    }: { onSuccess: (bookId: string) => void; iteration: number }) {
-      const { downloadBook } = useBookDownload({ loadBooks, onSuccess });
-      const handleOpen = useCallback(() => downloadBook(localBook), [downloadBook]);
-      const handleCatalogOpen = useCallback(() => void handleOpen(), [handleOpen]);
-      return (
-        <View>
-          {catalogBooks.map((item) => (
-            <ConnectedCatalogBookCard
-              key={item.catalogKey}
-              book={item}
-              cardWidth={170}
-              isInLibrary={false}
-              onPress={handleCatalogOpen}
-              onRetryCover={onRetryCover}
-            />
-          ))}
-        </View>
-      );
-    }
-    const view = await render(<DownloadBoundary onSuccess={onSuccess} iteration={0} />);
-    runtime.counters.clear();
-    for (let iteration = 1; iteration <= 5; iteration++) {
-      await act(() =>
-        view.update(<DownloadBoundary onSuccess={onSuccess} iteration={iteration} />),
-      );
-    }
-    expect(count("catalog.card")).toBe(0);
-    expect(count("catalog.perspective")).toBe(0);
-
-    // Control: the previous inline callback invalidates the actual hook and
-    // action chain even though every book, cover and visual prop is unchanged.
-    for (let iteration = 6; iteration <= 10; iteration++) {
-      await act(() => view.update(<DownloadBoundary onSuccess={() => {}} iteration={iteration} />));
-    }
-    expect(count("catalog.card")).toBe(catalogBooks.length * 5);
-    expect(count("catalog.perspective")).toBe(catalogBooks.length * 5);
-    expect(loadBooks).not.toHaveBeenCalled();
-    expect(onSuccess).not.toHaveBeenCalled();
   });
 
   it("does not rerender an unchanged card when the parent rerenders", async () => {

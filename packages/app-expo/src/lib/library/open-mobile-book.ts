@@ -1,4 +1,3 @@
-import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
@@ -96,7 +95,6 @@ async function resolveBookForOpen(bookId: string): Promise<Book | null> {
 
 async function hasAccessibleLocalFile(book: Book): Promise<boolean> {
   if (!book.filePath) return false;
-  if (book.syncStatus === "remote") return true;
 
   const platform = getPlatformService();
   const targetPath = isLikelyRelativeAppPath(book.filePath)
@@ -125,21 +123,6 @@ export async function openMobileBook({
 }): Promise<boolean> {
   const book = await resolveBookForOpen(bookId);
   if (!book) {
-    return false;
-  }
-
-  if (book.syncStatus === "remote") {
-    navigation.navigate("Reader", { bookId, cfi, highlight });
-    return true;
-  }
-
-  if (book.syncStatus === "downloading") {
-    toast.loading(t("library.downloading", "Загрузка"), {
-      description: t(
-        "library.downloadInProgress",
-        "Книга ещё загружается. Откройте её чуть позже.",
-      ),
-    });
     return false;
   }
 

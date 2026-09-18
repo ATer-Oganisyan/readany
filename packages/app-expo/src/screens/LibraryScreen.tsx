@@ -19,7 +19,6 @@ import {
 import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
-import { SyncButton } from "@/components/ui/SyncButton";
 import { Text, TextInput } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
 import {
@@ -57,7 +56,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { getPlatformService } from "@readany/core";
 import { setFallbackContentProvider } from "@readany/core/ai";
 import { onLibraryChanged } from "@readany/core/events/library-events";
-import { useSyncStore } from "@readany/core/stores";
 import type { Book, BookGroup } from "@readany/core/types";
 import { File as ExpoFile } from "expo-file-system";
 /**
@@ -80,7 +78,6 @@ import {
   View,
 } from "react-native";
 import { TagManagementSheet } from "./library/TagManagementSheet";
-import { useBookDownload } from "./library/useBookDownload";
 import { useVectorizationQueue } from "./library/useVectorizationQueue";
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -130,7 +127,6 @@ type LibraryGridItem =
 type LibrarySection = "catalog" | "my-books";
 const LIBRARY_SECTION_STORAGE_KEY = "library_last_section";
 // Download finishes silently — user can re-tap the book to open it.
-const onBookDownloaded = () => {};
 
 export function LibraryScreen() {
   return (
@@ -275,10 +271,6 @@ function LibraryScreenContent() {
     renameTag,
   } = useLibraryStore();
   const hasBooks = books.length > 0;
-  const syncNow = useSyncStore((state) => state.syncNow);
-  const syncStatus = useSyncStore((state) => state.status);
-  const syncBackendType = useSyncStore((state) => state.backendType);
-  const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
 
   const selectLibrarySection = useCallback((section: LibrarySection) => {
     librarySectionChangedRef.current = true;
@@ -326,11 +318,6 @@ function LibraryScreenContent() {
       cancelled = true;
     };
   }, []);
-
-  const { downloadingBookId, downloadProgress, downloadBook } = useBookDownload({
-    loadBooks,
-    onSuccess: onBookDownloaded,
-  });
 
   const { vectorQueue, vectorizingBookId, vectorProgress, handleVectorize } = useVectorizationQueue(
     { extractorRef, nav },
@@ -490,13 +477,9 @@ function LibraryScreenContent() {
 
   const handleOpen = useCallback(
     async (book: Book) => {
-      if (book.syncStatus === "remote") {
-        await downloadBook(book);
-        return;
-      }
       await openMobileBook({ bookId: book.id, navigation: nav, t });
     },
-    [downloadBook, nav, t],
+    [nav, t],
   );
 
   const catalogCoverLoadingEnabled = showCatalog && librarySection === "catalog";
@@ -666,10 +649,6 @@ function LibraryScreenContent() {
     setTagSheetOpen(true);
   }, []);
 
-  const handleSync = useCallback(() => {
-    if (!isSyncBusy) void syncNow();
-  }, [isSyncBusy, syncNow]);
-
   useLayoutEffect(() => {
     if (selectionMode) {
       nav.setOptions(
@@ -683,21 +662,6 @@ function LibraryScreenContent() {
     if (Platform.OS === "ios") {
       nav.setOptions({
         unstable_headerRightItems: () => [
-          ...(syncBackendType
-            ? [
-                {
-                  type: "button" as const,
-                  label: t("sync.syncNow", "Синхронизировать"),
-                  accessibilityLabel: t("sync.syncNow", "Синхронизировать"),
-                  icon: {
-                    type: "image" as const,
-                    source: getStrokeIconImageSource("repeat"),
-                  },
-                  disabled: isSyncBusy,
-                  onPress: handleSync,
-                },
-              ]
-            : []),
           {
             type: "menu" as const,
             // Заголовок пустой: с ним iOS рисует в баре текст вместо плюса.
@@ -730,11 +694,6 @@ function LibraryScreenContent() {
     nav.setOptions({
       headerRight: () => (
         <View style={s.nativeHeaderActions}>
-          {syncBackendType ? (
-            <View style={s.nativeHeaderButton}>
-              <SyncButton size={20} color={colors.mutedForeground} />
-            </View>
-          ) : null}
           <ImportSourceHeaderMenuButton
             accessibilityLabel={t("library.importFirst", "Добавить книгу")}
             localLabel={t("library.importSourceLocal", "Выбрать файл")}
@@ -747,18 +706,13 @@ function LibraryScreenContent() {
       ),
     });
   }, [
-    colors.mutedForeground,
     colors.primary,
     handleLocalImport,
     handleOpenImportSources,
-    handleSync,
     isBookImporting,
-    isSyncBusy,
     nav,
     s.nativeHeaderActions,
-    s.nativeHeaderButton,
     selectionMode,
-    syncBackendType,
     t,
   ]);
 
@@ -925,7 +879,6 @@ function LibraryScreenContent() {
             isVectorizing={vectorizingBookId === item.book.id}
             isQueued={vectorQueue.some((b) => b.id === item.book.id)}
             vectorProgress={vectorizingBookId === item.book.id ? vectorProgress : null}
-            downloadProgress={downloadingBookId === item.book.id ? downloadProgress : null}
             isSelectionMode={selectionMode}
             isSelected={selectedBookIds.has(item.book.id)}
             onSelect={toggleBookSelection}
@@ -950,8 +903,6 @@ function LibraryScreenContent() {
       vectorProgress,
       vectorQueue,
       vectorizingBookId,
-      downloadingBookId,
-      downloadProgress,
     ],
   );
 
@@ -1313,13 +1264,6 @@ const makeStyles = (
     },
     headerActions: { flexDirection: "row", alignItems: "center", gap: 4 },
     nativeHeaderActions: { flexDirection: "row", alignItems: "center" },
-    nativeHeaderButton: {
-      width: 40,
-      height: 40,
-      borderRadius: radius.full,
-      alignItems: "center",
-      justifyContent: "center",
-    },
     headerBtn: {
       width: 36,
       height: 36,
