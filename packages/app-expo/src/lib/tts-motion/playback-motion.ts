@@ -1,4 +1,6 @@
 export type MotionTarget = "play" | "loading" | "pause";
+/** Seek direction the loader reflects: 1 forward (clockwise), -1 backward. */
+export type MotionDirection = 1 | -1;
 const clips = {
   forward: [0, 0.3],
   reverse: [0.7, 1],
@@ -21,6 +23,9 @@ type Transition = {
 export type MotionState = {
   state: MotionTarget;
   target: MotionTarget;
+  /** Direction the running sequence reflects; only updated between sequences. */
+  direction: MotionDirection;
+  desiredDirection: MotionDirection;
   transition?: Transition;
   spinStart: number;
   spinPhase: number;
@@ -33,6 +38,8 @@ export function createMotion(initial: MotionTarget = "play"): MotionState {
   return {
     state: initial === "loading" ? "play" : initial,
     target: initial,
+    direction: 1,
+    desiredDirection: 1,
     spinStart: 0,
     spinPhase: 0,
   };
@@ -59,7 +66,7 @@ export function sampleMotion(
   motion: MotionState,
   now: number,
   reducedMotion = false,
-): { seconds: number; active: boolean } {
+): { seconds: number; active: boolean; mirror: boolean } {
   "worklet";
   if (reducedMotion) {
     motion.transition = undefined;
@@ -74,12 +81,23 @@ export function sampleMotion(
             ? clips.forward[1]
             : 0,
       active: false,
+      mirror: false,
     };
   }
+  // Flipping mid-sequence would reverse a loop the listener is already watching.
+  if (!motion.transition && motion.state !== "loading") motion.direction = motion.desiredDirection;
   if (motion.transition) {
     const t = motion.transition;
     const p = Math.max(0, Math.min(1, (now - t.start) / t.duration));
-    if (p < 1) return { seconds: t.from + (t.to - t.from) * p, active: true };
+    // Only the pause morphs reflect: every other clip draws the play triangle,
+    // which is not mirror-symmetric.
+    const reflects = t.from === clips.pauseEnter[0] || t.from === clips.exit[0];
+    if (p < 1)
+      return {
+        seconds: t.from + (t.to - t.from) * p,
+        active: true,
+        mirror: reflects && motion.direction === -1,
+      };
     motion.transition = undefined;
     motion.state = t.end;
     if (t.end === "loading") {
@@ -109,14 +127,14 @@ export function sampleMotion(
       return sampleMotion(motion, now);
     }
     const phase = (((turns + motion.spinPhase) % 1) + 1) % 1;
-    return { seconds: clips.spin[0] + phase * 0.4, active: true };
+    return { seconds: clips.spin[0] + phase * 0.4, active: true, mirror: motion.direction === -1 };
   }
   if (motion.target !== motion.state) {
     if (motion.target === "loading") {
       // Briefly defer entry so already-ready audio uses the direct morph.
       motion.waitingSince ??= now;
       if (motion.state === "play" && now - motion.waitingSince < 80)
-        return { seconds: 0, active: true };
+        return { seconds: 0, active: true, mirror: false };
       if (motion.state === "pause")
         run(motion, clips.pauseEnter[0], clips.pauseEnter[1], now, "loading", 0.25);
       else run(motion, ...clips.enter, now, "loading", 0);
@@ -128,7 +146,11 @@ export function sampleMotion(
     return sampleMotion(motion, now);
   }
   motion.waitingSince = undefined;
-  return { seconds: motion.state === "pause" ? clips.forward[1] : 0, active: false };
+  return {
+    seconds: motion.state === "pause" ? clips.forward[1] : 0,
+    active: false,
+    mirror: false,
+  };
 }
 /** Test adapter; production executes the same sampler on the UI thread. */
 export class PlaybackMotion {
@@ -138,6 +160,9 @@ export class PlaybackMotion {
   }
   setTarget(target: MotionTarget) {
     this.motion.target = target;
+  }
+  setDirection(direction: MotionDirection) {
+    this.motion.desiredDirection = direction;
   }
   sample(now: number, reducedMotion = false) {
     return sampleMotion(this.motion, now, reducedMotion);
