@@ -62,7 +62,6 @@ type ProfileMenuItem = {
   icon: ProfileMenuIcon;
   label: string;
   action: () => void;
-  disabled?: boolean;
 };
 type ProfileMenuSection = {
   key: "general";
@@ -523,10 +522,6 @@ export function ProfileScreen() {
                 </>
               )}
               {section.items.map((item, idx) => {
-                const handlePress = () => {
-                  if (item.disabled) return;
-                  item.action();
-                };
                 return (
                   <Pressable
                     key={item.label}
@@ -535,8 +530,7 @@ export function ProfileScreen() {
                       idx < section.items.length - 1 && s.menuItemBorder,
                       pressed && { backgroundColor: colors.primary5 },
                     ]}
-                    onPress={handlePress}
-                    disabled={"disabled" in item && item.disabled}
+                    onPress={item.action}
                     android_ripple={{ color: colors.primary5 }}
                     accessibilityRole="button"
                   >
@@ -550,7 +544,6 @@ export function ProfileScreen() {
                     <Text style={s.menuItemLabel} maxFontSizeMultiplier={1.7}>
                       {item.label}
                     </Text>
-                    {"showDot" in item && item.showDot ? <View style={s.menuItemDot} /> : null}
                     <NativeSymbol
                       name="chevron.forward"
                       fallback="chevron_right"
@@ -785,11 +778,5 @@ const makeStyles = (colors: ThemeColors) =>
       fontSize: fontSize.md,
       lineHeight: fontSize.md * 1.5,
       color: colors.foreground,
-    },
-    menuItemDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: colors.destructive,
     },
   });

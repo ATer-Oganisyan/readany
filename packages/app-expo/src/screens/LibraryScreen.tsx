@@ -706,14 +706,12 @@ function LibraryScreenContent() {
       ),
     });
   }, [
-    colors.mutedForeground,
     colors.primary,
     handleLocalImport,
     handleOpenImportSources,
     isBookImporting,
     nav,
     s.nativeHeaderActions,
-    s.nativeHeaderButton,
     selectionMode,
     t,
   ]);
@@ -1266,13 +1264,6 @@ const makeStyles = (
     },
     headerActions: { flexDirection: "row", alignItems: "center", gap: 4 },
     nativeHeaderActions: { flexDirection: "row", alignItems: "center" },
-    nativeHeaderButton: {
-      width: 40,
-      height: 40,
-      borderRadius: radius.full,
-      alignItems: "center",
-      justifyContent: "center",
-    },
     headerBtn: {
       width: 36,
       height: 36,

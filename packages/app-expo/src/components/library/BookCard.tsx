@@ -1,4 +1,3 @@
-import { Text } from "@/components/ui/Typography";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
@@ -31,7 +30,6 @@ interface BookCardProps {
   isVectorizing?: boolean;
   isQueued?: boolean;
   vectorProgress?: { status: string; processedChunks: number; totalChunks: number } | null;
-  downloadProgress?: { downloaded: number; total: number } | null;
   cardWidth?: number;
   isSelectionMode?: boolean;
   isSelected?: boolean;
@@ -127,12 +125,6 @@ export const BookCard = memo(function BookCard({
                 textTone={coverTextTone}
                 coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
               />
-              {/* Remote status overlay (on-demand download) */}
-              {book.syncStatus === "remote" && (
-                <View style={s.remoteOverlay}>
-                  <Text style={s.remoteOverlayText}>{t("home.remote", "需下载")}</Text>
-                </View>
-              )}
             </View>
           </View>
         </Animated.View>
