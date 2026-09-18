@@ -55,7 +55,6 @@ import { initDatabase } from "@readany/core/db/database";
 import { setSessionEventSource } from "@readany/core/hooks/use-reading-session";
 import i18n, { i18nReady, initI18nLanguage } from "@readany/core/i18n";
 import { setPlatformService } from "@readany/core/services";
-import { setSyncAdapter } from "@readany/core/sync";
 import { setAudioModeAsync } from "expo-audio";
 import { I18nextProvider } from "react-i18next";
 import TrackPlayer, {
@@ -78,17 +77,14 @@ import { navigationRef } from "@/lib/navigationRef";
 import { ExpoPlatformService } from "@/lib/platform/expo-platform-service";
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
 import { prewarmReader } from "@/lib/reader/reader-runtime";
-import { MobileSyncAdapter } from "@/lib/sync/sync-adapter-mobile";
 import { RootNavigator } from "@/navigation/RootNavigator";
 import { ReaderTOCSheetProvider } from "@/screens/reader/reader-toc-sheet-context";
-import { useLibraryStore } from "@/stores/library-store";
 import {
   type ThemeMode,
   ThemeProvider,
   loadStoredThemeMode,
   useTheme,
 } from "@/styles/ThemeContext";
-import { useAutoSync } from "@readany/core/hooks/use-auto-sync";
 
 const toastEnterAnimation: EntryExitAnimationFunction = () => {
   "worklet";
@@ -152,9 +148,6 @@ export default function App() {
         void prewarmReader().catch((error) => {
           console.warn("[App] Reader prewarm failed; will retry on book open:", error);
         });
-
-        console.log("[App] bootstrap: register sync adapter");
-        setSyncAdapter(new MobileSyncAdapter());
 
         console.log("[App] bootstrap: init database");
         await initDatabase();
@@ -364,8 +357,6 @@ export default function App() {
 
 function AppInner() {
   const { colors, isDark } = useTheme();
-  const loadBooks = useLibraryStore((s) => s.loadBooks);
-  useAutoSync(loadBooks);
   useSharedBookImport();
 
   const toastBackground =

@@ -76,7 +76,6 @@ import { runWithDbRetry } from "@readany/core/db/write-retry";
 import { useChapterTranslation } from "@readany/core/hooks";
 import { useReadingSession } from "@readany/core/hooks/use-reading-session";
 import type { Book, ReadSettings, TOCItem } from "@readany/core/types";
-import { eventBus } from "@readany/core/utils/event-bus";
 import { throttle } from "@readany/core/utils/throttle";
 import * as FileSystem from "expo-file-system/legacy";
 /**
@@ -1788,12 +1787,6 @@ function ReaderContent({ route, navigation }: Props) {
     };
   }, [bookId]);
 
-  useEffect(() => {
-    return eventBus.on("sync:completed", () => {
-      void loadAnnotations(bookId);
-    });
-  }, [bookId, loadAnnotations]);
-
   // Save progress immediately on unmount
   useEffect(() => {
     return () => {
@@ -1808,8 +1801,6 @@ function ReaderContent({ route, navigation }: Props) {
           { attempts: 10, initialDelayMs: 150 },
         ).catch((err: Error) => console.error("Failed to save progress on unmount:", err));
       }
-      const { useSyncStore } = require("@readany/core/stores/sync-store");
-      useSyncStore.getState().syncNow?.();
     };
   }, [bookId]);
 

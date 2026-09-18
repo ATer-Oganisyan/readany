@@ -6,8 +6,6 @@ import { Text } from "@/components/ui/Typography";
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
 import { shareDiagnosticLogs } from "@/lib/diagnostics/diagnostics";
 import { toast } from "@/lib/notifications";
-import { clearMobileRuntimeCache, formatCacheSize } from "@/lib/platform/mobile-cache";
-import { stopTTSPreview } from "@/lib/platform/tts-preview";
 import {
   mergeCurrentSessionIntoDailyStats,
   mergeCurrentSessionIntoOverallStats,
@@ -15,7 +13,7 @@ import {
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { ProfileTabStackParamList } from "@/navigation/TabNavigator";
 import { NATIVE_SCROLL_EDGE_EFFECTS, topScrollEdgeEffect } from "@/navigation/scroll-edge-effects";
-import { useReadingSessionStore, useTTSStore } from "@/stores";
+import { useReadingSessionStore } from "@/stores";
 import type { ThemeMode } from "@/styles/ThemeContext";
 import {
   type ThemeColors,
@@ -33,7 +31,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { changeAndPersistLanguage } from "@readany/core/i18n";
 import { readingStatsService } from "@readany/core/stats";
 import type { DailyStats, OverallStats } from "@readany/core/stats";
-import { eventBus } from "@readany/core/utils/event-bus";
 /**
  * ProfileScreen — matching Tauri mobile ProfilePage exactly.
  * Features: reading stats cards, heatmap, settings menu (general/skills/about),
@@ -42,7 +39,6 @@ import { eventBus } from "@readany/core/utils/event-bus";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -62,22 +58,14 @@ type ProfileMenuIcon = {
   name: string;
   fallback: string;
 };
-type ProfileMenuRoute = Extract<keyof RootStackParamList, "SyncSettings">;
-type ProfileMenuItem =
-  | {
-      icon: ProfileMenuIcon;
-      label: string;
-      route: ProfileMenuRoute;
-      showDot?: boolean;
-    }
-  | {
-      icon: ProfileMenuIcon;
-      label: string;
-      action: () => void;
-      disabled?: boolean;
-    };
+type ProfileMenuItem = {
+  icon: ProfileMenuIcon;
+  label: string;
+  action: () => void;
+  disabled?: boolean;
+};
 type ProfileMenuSection = {
-  key: "general" | "storage";
+  key: "general";
   title: string;
   items: ProfileMenuItem[];
 };
@@ -309,11 +297,9 @@ export function ProfileScreen() {
   const isFocused = useIsFocused();
   const [overall, setOverall] = useState<OverallStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
-  const [clearingCache, setClearingCache] = useState(false);
   const [sharingLogs, setSharingLogs] = useState(false);
   const saveCurrentSession = useReadingSessionStore((s) => s.saveCurrentSession);
   const currentSession = useReadingSessionStore((s) => (isFocused ? s.currentSession : null));
-  const stopTTS = useTTSStore((s) => s.stop);
   const themeLabels = [
     t("settings.system", "Системная"),
     t("settings.light", "Светлая"),
@@ -354,12 +340,6 @@ export function ProfileScreen() {
     }, [loadStats]),
   );
 
-  useEffect(() => {
-    return eventBus.on("sync:completed", () => {
-      void loadStats();
-    });
-  }, [loadStats]);
-
   const liveDailyStats = useMemo(
     () => mergeCurrentSessionIntoDailyStats(dailyStats, currentSession),
     [dailyStats, currentSession],
@@ -368,47 +348,6 @@ export function ProfileScreen() {
     () => mergeCurrentSessionIntoOverallStats(overall, dailyStats, currentSession),
     [overall, dailyStats, currentSession],
   );
-  const handleClearCache = useCallback(() => {
-    Alert.alert(
-      t("profile.clearCacheTitle", "清除缓存"),
-      t(
-        "profile.clearCacheConfirm",
-        "将清除临时导入文件、TTS 音频缓存和其他运行缓存。书籍、笔记、设置和同步数据不会被删除。",
-      ),
-      [
-        { text: t("common.cancel", "取消"), style: "cancel" },
-        {
-          text: t("profile.clearCacheAction", "清除缓存"),
-          style: "destructive",
-          onPress: async () => {
-            setClearingCache(true);
-            try {
-              stopTTS();
-              stopTTSPreview();
-              const result = await clearMobileRuntimeCache();
-              toast.success(t("profile.clearCacheDoneTitle", "Кэш очищен"), {
-                description: t("profile.clearCacheDoneDesc", {
-                  count: result.deletedFiles,
-                  size: formatCacheSize(result.deletedBytes),
-                }),
-              });
-            } catch (error) {
-              console.error("[ProfileScreen] Failed to clear cache:", error);
-              toast.error(t("profile.clearCacheFailedTitle", "Не удалось очистить кэш"), {
-                description:
-                  error instanceof Error
-                    ? error.message
-                    : t("profile.clearCacheFailedDesc", "Попробуйте ещё раз позже."),
-              });
-            } finally {
-              setClearingCache(false);
-            }
-          },
-        },
-      ],
-    );
-  }, [stopTTS, t]);
-
   const handleShareLogs = async () => {
     if (sharingLogs) return;
     setSharingLogs(true);
@@ -436,32 +375,13 @@ export function ProfileScreen() {
             label: t("tabs.notes", "Заметки"),
             action: () => nav.navigate("ProfileNotes"),
           },
-          {
-            icon: { name: "icloud", fallback: "cloud" },
-            label: t("settings.sync", "同步"),
-            route: "SyncSettings" as const,
-          },
           // TODO(P3): «Поиск по книгам» — готового поиска библиотеки в мобильном
           // приложении нет (LibraryScreen ищет только оригинальный файл книги);
           // добавить пункт, когда появится полноценный поиск по библиотеке.
         ],
       },
-      {
-        key: "storage",
-        title: t("profile.storage", "存储"),
-        items: [
-          {
-            icon: { name: "trash", fallback: "delete" },
-            label: clearingCache
-              ? t("profile.clearingCache", "清除中...")
-              : t("profile.clearCache", "清除缓存"),
-            action: handleClearCache,
-            disabled: clearingCache,
-          },
-        ],
-      },
     ],
-    [t, clearingCache, handleClearCache, nav],
+    [t, nav],
   );
 
   const booksRead = liveOverall?.totalBooks ?? 0;
@@ -603,20 +523,13 @@ export function ProfileScreen() {
                 </>
               )}
               {section.items.map((item, idx) => {
-                const itemKey = "route" in item ? item.route : item.label;
                 const handlePress = () => {
-                  if ("disabled" in item && item.disabled) {
-                    return;
-                  }
-                  if ("action" in item && item.action) {
-                    item.action();
-                  } else if ("route" in item) {
-                    nav.navigate(item.route);
-                  }
+                  if (item.disabled) return;
+                  item.action();
                 };
                 return (
                   <Pressable
-                    key={itemKey}
+                    key={item.label}
                     style={({ pressed }) => [
                       s.menuItem,
                       idx < section.items.length - 1 && s.menuItemBorder,

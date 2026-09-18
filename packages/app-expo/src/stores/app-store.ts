@@ -25,7 +25,6 @@ export type SettingsTab =
   | "vectorModel"
   | "tts"
   | "translation"
-  | "sync"
   | "about";
 
 export interface AppState {

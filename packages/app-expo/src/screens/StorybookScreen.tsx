@@ -16,7 +16,6 @@ import { ProfileScreen } from "@/screens/ProfileScreen";
 import AISettingsScreen from "@/screens/settings/AISettingsScreen";
 import AboutScreen from "@/screens/settings/AboutScreen";
 import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
-import SyncSettingsScreen from "@/screens/settings/SyncSettingsScreen";
 import TTSSettingsScreen from "@/screens/settings/TTSSettingsScreen";
 import TranslationSettingsScreen from "@/screens/settings/TranslationSettingsScreen";
 import VectorModelSettingsScreen from "@/screens/settings/VectorModelSettingsScreen";
@@ -249,13 +248,6 @@ const pageItems: CatalogItem[] = [
     subtitle: "Язык и модель перевода",
     icon: "translate",
     preview: TranslationSettingsScreen,
-  },
-  {
-    id: "sync",
-    title: "Синхронизация",
-    subtitle: "Резервная копия библиотеки",
-    icon: "cloud",
-    preview: SyncSettingsScreen,
   },
   {
     id: "about",

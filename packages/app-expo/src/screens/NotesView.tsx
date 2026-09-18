@@ -27,7 +27,6 @@ import type { HighlightWithBook } from "@readany/core/db/database";
 import { AnnotationExporter, type ExportFormat } from "@readany/core/export";
 import { sortAnnotationsByPosition } from "@readany/core/reader";
 import type { Highlight } from "@readany/core/types";
-import { eventBus } from "@readany/core/utils/event-bus";
 /** Notes list plus the existing per-book annotation detail view. */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -119,13 +118,6 @@ export function NotesView({
       };
     }, [initialBookId, loadAllHighlightsWithBooks]),
   );
-
-  useEffect(() => {
-    return eventBus.on("sync:completed", () => {
-      setIsLoading(true);
-      loadAllHighlightsWithBooks(500).finally(() => setIsLoading(false));
-    });
-  }, [loadAllHighlightsWithBooks]);
 
   // Handle incoming bookId
   useEffect(() => {

@@ -1,7 +1,6 @@
 import { AudiobookPlayerAccessory } from "@/components/tts/audiobook-player-accessory";
 import { getFilledIconImageSource, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
-import { SyncButton } from "@/components/ui/SyncButton";
 import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
 import { ChatsScreen } from "@/screens/ChatsScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
@@ -25,8 +24,6 @@ import {
   type NativeStackNavigationOptions,
   createNativeStackNavigator,
 } from "@react-navigation/native-stack";
-import { useSyncStore } from "@readany/core/stores";
-import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Platform, View } from "react-native";
 import { SafeAreaView } from "react-native-screens/experimental";
@@ -170,23 +167,8 @@ function SearchTabStackNavigator() {
 
 function ProfileTabStackNavigator() {
   const { t } = useTranslation();
-  const { colors } = useTheme();
   const screenOptions = useTabStackScreenOptions();
   const largeTitleOptions = useLargeTitleOptions();
-  const syncNow = useSyncStore((state) => state.syncNow);
-  const syncStatus = useSyncStore((state) => state.status);
-  const syncBackendType = useSyncStore((state) => state.backendType);
-  const loadSyncConfig = useSyncStore((state) => state.loadConfig);
-  const isSyncBusy = syncStatus !== "idle" && syncStatus !== "error";
-
-  useEffect(() => {
-    if (!syncBackendType) void loadSyncConfig();
-  }, [loadSyncConfig, syncBackendType]);
-
-  const handleSync = useCallback(() => {
-    if (!isSyncBusy) void syncNow();
-  }, [isSyncBusy, syncNow]);
-
   return (
     <ProfileStack.Navigator screenOptions={screenOptions}>
       <ProfileStack.Screen
@@ -195,28 +177,6 @@ function ProfileTabStackNavigator() {
         options={{
           title: t("tabs.profile", "Профиль"),
           ...largeTitleOptions,
-          ...(Platform.OS === "ios"
-            ? {
-                unstable_headerRightItems: () =>
-                  syncBackendType
-                    ? [
-                        {
-                          type: "button" as const,
-                          label: t("common.sync", "Синхронизировать"),
-                          accessibilityLabel: t("common.sync", "Синхронизировать"),
-                          icon: {
-                            type: "image" as const,
-                            source: getStrokeIconImageSource("repeat"),
-                          },
-                          disabled: isSyncBusy,
-                          onPress: handleSync,
-                        },
-                      ]
-                    : [],
-              }
-            : {
-                headerRight: () => <SyncButton size={20} color={colors.mutedForeground} />,
-              }),
         }}
       />
       <ProfileStack.Screen
