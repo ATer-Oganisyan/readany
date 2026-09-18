@@ -89,7 +89,9 @@ export type ReaderCharacterCardHandle = {
 
 const DEFAULT_PORTRAIT_BACKGROUND = "#2c2219";
 const PORTRAIT_BACKGROUND_SAMPLE_FRACTION = 0.1;
-const PROGRESSIVE_TRANSITION_START = 0.35;
+// Доля высоты портрета (3:4), с которой начинается блюр-переход; конец всегда у низа
+// портрета, так что меньше START = длиннее переход. 0.03 ≈ 16 pt на ширине 402.
+const PROGRESSIVE_TRANSITION_START = 0.32;
 const PROGRESSIVE_TRANSITION_STOPS = [
   { offset: 0, opacity: 0 },
   { offset: 0.15, opacity: 0.03 },
@@ -954,7 +956,9 @@ const makeStyles = (colors: ThemeColors) =>
     },
     embeddedCharacterSection: {
       minHeight: 340,
-      marginTop: "-32%",
+      // Фиксированный наезд на портрет: процент от ширины давал разный зазор
+      // имя → кнопки на разных экранах (Pro Max теснее на ~9 pt). Зазор = 152 − |marginTop|.
+      marginTop: -132,
       overflow: "visible",
       paddingTop: spacing.xl,
       paddingBottom: 40,
