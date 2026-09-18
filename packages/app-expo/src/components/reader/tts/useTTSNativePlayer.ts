@@ -1,4 +1,5 @@
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
+import type { MotionDirection } from "@/lib/tts-motion/playback-motion";
 import type { TTSPlayState } from "@readany/core/tts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { State, usePlaybackState, useProgress } from "react-native-track-player";
@@ -57,6 +58,10 @@ export function useTTSNativePlayer(
   const progress = useProgress(100);
   const { buffering, confirmedBuffering } = useTTSBuffering(playState);
   const [isSeeking, setIsSeeking] = useState(false);
+  // The loader spins the way the listener is moving. Plain buffering keeps the
+  // last direction; nothing the user did points backwards by default.
+  const [seekDirection, setSeekDirection] = useState<MotionDirection>(1);
+  const seekOrigin = useRef(0);
   const seekGeneration = useRef(0);
   useEffect(
     () => () => {
@@ -106,10 +111,12 @@ export function useTTSNativePlayer(
   );
 
   const beginSeeking = useCallback(() => {
+    seekOrigin.current = localPositionRef.current;
     setIsEditing(true);
   }, []);
   const commitSeeking = useCallback(() => {
     setIsEditing(false);
+    setSeekDirection(localPositionRef.current < seekOrigin.current ? -1 : 1);
     const generation = ++seekGeneration.current;
     setIsSeeking(playState === "playing" || playState === "loading");
     void (async () => {
@@ -133,9 +140,28 @@ export function useTTSNativePlayer(
       }
     })().catch((error) => console.warn("[TTS] Seek failed:", error));
   }, [activeTrackDuration, chapterProgress, chapterTimeline, playState]);
-  const seekBackward = useCallback(() => void seekActiveTTSBy(-15), []);
-  const seekForward = useCallback(() => void seekActiveTTSBy(15), []);
-  const togglePlayback = useCallback(() => void onPlayPause(), [onPlayPause]);
+  const seekBackward = useCallback(() => {
+    setSeekDirection(-1);
+    void seekActiveTTSBy(-15);
+  }, []);
+  const seekForward = useCallback(() => {
+    setSeekDirection(1);
+    void seekActiveTTSBy(15);
+  }, []);
+  const isLoading =
+    playState === "loading" ||
+    (playState === "playing" && (isSeeking || (buffering && confirmedBuffering)));
+  // Once the loader is gone the backward gesture is over: a later buffering
+  // hiccup the listener did not cause must spin the authored way.
+  useEffect(() => {
+    if (!isLoading) setSeekDirection(1);
+  }, [isLoading]);
+  const noteSeek: (direction: MotionDirection) => void = setSeekDirection;
+  const togglePlayback = useCallback(() => {
+    // Pressing play is not a move backwards, even right after seeking back.
+    setSeekDirection(1);
+    void onPlayPause();
+  }, [onPlayPause]);
 
   const progressLabel = chapterTimeline.enabled
     ? `${Math.round((localPosition / chapterTimeline.total) * 100)}%`
@@ -153,16 +179,16 @@ export function useTTSNativePlayer(
     duration,
     durationLabel,
     hasDuration: duration > 0,
-    isLoading:
-      playState === "loading" ||
-      (playState === "playing" && (isSeeking || (buffering && confirmedBuffering))),
+    isLoading,
     isPlaying: playState === "playing",
+    loadingDirection: seekDirection,
     localPosition,
     progressPercent,
     progressLabel,
     setPosition,
     beginSeeking,
     commitSeeking,
+    noteSeek,
     seekBackward,
     seekForward,
     togglePlayback,

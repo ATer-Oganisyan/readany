@@ -43,7 +43,10 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
       Icon: PreviousSentenceIcon,
       label: t("tts.prevSentence"),
       enabled: props.canGoToPreviousSentence,
-      onPress: props.onPreviousSentence,
+      onPress: () => {
+        player.noteSeek(-1);
+        props.onPreviousSentence();
+      },
     },
     {
       key: "play",
@@ -57,7 +60,10 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
       Icon: NextSentenceIcon,
       label: t("tts.nextSentence"),
       enabled: props.canGoToNextSentence,
-      onPress: props.onNextSentence,
+      onPress: () => {
+        player.noteSeek(1);
+        props.onNextSentence();
+      },
     },
   ];
   return (
@@ -215,6 +221,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
               <AnimatedPlayPause
                 isPlaying={player.isPlaying}
                 isLoading={player.isLoading}
+                direction={player.loadingDirection}
                 color={color}
               />
             )}

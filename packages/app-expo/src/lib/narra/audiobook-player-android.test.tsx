@@ -45,10 +45,11 @@ it("uses sentence actions and chapter boundaries instead of timed seeking on And
   const next = vi.fn();
   const seekBackward = vi.fn();
   const seekForward = vi.fn();
+  const noteSeek = vi.fn();
   const props = {
     title: "Book",
     chapter: "Chapter",
-    player: { hasDuration: false, duration: 0, seekBackward, seekForward },
+    player: { hasDuration: false, duration: 0, seekBackward, seekForward, noteSeek },
     onPreviousSentence: previous,
     onNextSentence: next,
     canGoToPreviousSentence: true,
@@ -73,6 +74,8 @@ it("uses sentence actions and chapter boundaries instead of timed seeking on And
     expect(next).toHaveBeenCalledTimes(1);
     expect(seekBackward).not.toHaveBeenCalled();
     expect(seekForward).not.toHaveBeenCalled();
+    // The loader mirrors the direction the listener moved in.
+    expect(noteSeek.mock.calls).toEqual([[-1], [1]]);
     for (const [canGoToPreviousSentence, canGoToNextSentence] of [
       [false, true],
       [true, false],

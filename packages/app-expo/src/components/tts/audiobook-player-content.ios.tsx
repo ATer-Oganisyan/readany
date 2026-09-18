@@ -211,7 +211,10 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
             color={color}
             direction="previous"
             enabled={props.canGoToPreviousSentence}
-            onPress={props.onPreviousSentence}
+            onPress={() => {
+              player.noteSeek(-1);
+              props.onPreviousSentence();
+            }}
             label={t("tts.prevSentence")}
           />
           <Button
@@ -230,6 +233,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
               <AnimatedPlayPause
                 isPlaying={player.isPlaying}
                 isLoading={player.isLoading}
+                direction={player.loadingDirection}
                 color={contentIsDark ? "#ffffff" : "#000000"}
               />
             </RNHostView>
@@ -238,7 +242,10 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
             color={color}
             direction="next"
             enabled={props.canGoToNextSentence}
-            onPress={props.onNextSentence}
+            onPress={() => {
+              player.noteSeek(1);
+              props.onNextSentence();
+            }}
             label={t("tts.nextSentence")}
           />
         </HStack>
