@@ -1,6 +1,6 @@
 /**
  * useResolvedCovers — resolves relative book cover paths to absolute platform paths.
- * Shared between NotesView and StatsScreen.
+ * Shared between NotesView and the library/search screens.
  */
 import { getPlatformService } from "@readany/core/services";
 import { useEffect, useState } from "react";
