@@ -55,7 +55,7 @@
     "advisory": {
       "ageRatingOverride": "SEVENTEEN_PLUS",
       "ageRatingOverrideV2": "EIGHTEEN_PLUS",
-      "koreaAgeRatingOverride": "NINETEEN_PLUS",
+      "koreaAgeRatingOverride": "NONE",
       "userGeneratedContent": true,
       "messagingAndChat": true,
       "matureOrSuggestiveThemes": "INFREQUENT_OR_MILD",
