@@ -5,7 +5,8 @@ import { AIInput } from "panelui-native";
 import type { ComponentPropsWithRef } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Animated, Easing, Pressable, StyleSheet, type TextInput, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardController } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { IMessage, InputToolbarProps } from "../../../vendor/react-native-chat/src";
 
@@ -72,6 +73,52 @@ export function NarraChatComposer<TMessage extends IMessage>({
     return () => placeholderOpacity.stopAnimation();
   }, [placeholder, placeholderOpacity, text]);
 
+  // Иногда поле остаётся first responder без клавиатуры: после смены языка
+  // клавиатуры или интерактивного свайпа iOS её убирает, а фокус с TextInput
+  // не снимает. Повторный тап по уже сфокусированному полю фокус не меняет,
+  // и клавиатура не поднимается — только всплывает системное меню «AutoFill».
+  // Лечение то же, что в UIKit: снять фокус и вернуть его.
+  const fieldFocusedRef = useRef(false);
+  const focusRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // С подключённой аппаратной клавиатурой экранной нет и при живом фокусе, поэтому
+  // без этого флага перефокусировка сама себя перезапускала бы бесконечно.
+  const didRetryRef = useRef(false);
+  const refocusIfKeyboardHidden = useCallback(() => {
+    const input = TextInput.State.currentlyFocusedInput();
+    if (!input || !fieldFocusedRef.current || KeyboardController.isVisible()) return;
+    didRetryRef.current = true;
+    TextInput.State.blurTextInput(input);
+    requestAnimationFrame(() => TextInput.State.focusTextInput(input));
+  }, []);
+  // Тап — новое намерение пользователя: разрешаем следующий повтор.
+  const handleFieldPressIn = useCallback(() => {
+    didRetryRef.current = false;
+    refocusIfKeyboardHidden();
+  }, [refocusIfKeyboardHidden]);
+  const handleFieldFocus = useCallback(() => {
+    fieldFocusedRef.current = true;
+    if (didRetryRef.current) return;
+    // Фокус получен, а клавиатура так и не показалась — один повтор.
+    if (focusRetryTimer.current) clearTimeout(focusRetryTimer.current);
+    focusRetryTimer.current = setTimeout(() => {
+      focusRetryTimer.current = null;
+      refocusIfKeyboardHidden();
+    }, KEYBOARD_SHOW_GRACE_MS);
+  }, [refocusIfKeyboardHidden]);
+  const handleFieldBlur = useCallback(() => {
+    fieldFocusedRef.current = false;
+    if (focusRetryTimer.current) {
+      clearTimeout(focusRetryTimer.current);
+      focusRetryTimer.current = null;
+    }
+  }, []);
+  useEffect(
+    () => () => {
+      if (focusRetryTimer.current) clearTimeout(focusRetryTimer.current);
+    },
+    [],
+  );
+
   const handleSubmit = useCallback(
     (value: string) => {
       const trimmed = value.trim();
@@ -124,6 +171,9 @@ export function NarraChatComposer<TMessage extends IMessage>({
               autoFocus={inputProps?.autoFocus}
               editable={inputProps?.editable}
               nativeID={inputProps?.nativeID}
+              onBlur={handleFieldBlur}
+              onFocus={handleFieldFocus}
+              onPressIn={handleFieldPressIn}
               placeholder=""
               style={styles.field}
             />
@@ -172,6 +222,8 @@ export function NarraChatComposer<TMessage extends IMessage>({
 // а снизу остаётся запас под безопасную зону, когда клавиатура убрана.
 /** Зазор между полем и клавиатурой. */
 const KEYBOARD_GAP = spacingPixels[8];
+/** Сколько ждать клавиатуру после фокуса, прежде чем перефокусировать поле. */
+const KEYBOARD_SHOW_GRACE_MS = 400;
 /** Библиотечный md-радиус равен 26; по макету внешний контур на 6 пунктов круглее. */
 const INPUT_RADIUS = radiusPixels[34];
 /** Диаметр кнопки отправки внутри поля. */
