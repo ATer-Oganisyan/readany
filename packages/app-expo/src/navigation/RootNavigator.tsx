@@ -1,6 +1,5 @@
 import { MissingBookPrompt } from "@/components/shared/MissingBookPrompt";
 import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache";
-import BadgesScreen from "@/screens/BadgesScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { FullScreenNotesScreen } from "@/screens/FullScreenNotesScreen";
 import { ManualNoteScreen } from "@/screens/ManualNoteScreen";
@@ -10,7 +9,6 @@ import { NarraCharactersScreen } from "@/screens/NarraCharactersScreen";
 import { NarraSummaryScreen } from "@/screens/NarraSummaryScreen";
 import { ReaderScreen } from "@/screens/ReaderScreen";
 import SkillsScreen from "@/screens/SkillsScreen";
-import StatsScreen from "@/screens/StatsScreen";
 import {
   StorybookPreviewScreen,
   StorybookScreen,
@@ -75,8 +73,6 @@ export type RootStackParamList = {
     excerpt: string;
     sourceKey: string;
   };
-  Stats: undefined;
-  Badges: undefined;
   Skills: undefined;
   VectorModelSettings: undefined;
   AppearanceSettings: undefined;
@@ -348,19 +344,6 @@ export function RootNavigator() {
           name="NarraSummary"
           component={NarraSummaryScreen}
           options={{ animation: "slide_from_right", title: t("narra.summary", "Краткий пересказ") }}
-        />
-        <Stack.Screen
-          name="Stats"
-          component={StatsScreen}
-          options={{ animation: "slide_from_right", title: t("stats.title", "Статистика") }}
-        />
-        <Stack.Screen
-          name="Badges"
-          component={BadgesScreen}
-          options={{
-            animation: "slide_from_right",
-            title: t("stats.desktop.myBadges", "Награды"),
-          }}
         />
         <Stack.Screen
           name="Skills"

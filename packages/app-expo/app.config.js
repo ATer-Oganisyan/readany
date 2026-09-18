@@ -16,8 +16,10 @@ module.exports = {
       // Keep release archives compatible with the stable Xcode toolchain used by App Store Connect.
       // This opaque PNG is generated from the same Narra icon artwork as the Icon Composer package.
       icon: "./assets/app-icon.png",
-      supportsTablet: true,
+      supportsTablet: false,
       bundleIdentifier: variant.bundleIdentifier,
+      // Читает script/build_and_run.sh, чтобы сверить установленный dev-клиент.
+      // EAS его игнорирует: appVersionSource "remote", счётчик живёт на сервере.
       buildNumber: "36",
       infoPlist: {
         UIViewControllerBasedStatusBarAppearance: true,
@@ -110,12 +112,6 @@ module.exports = {
       ],
       "./plugins/withAndroidReleaseOptimization",
       "expo-font",
-      [
-        "expo-image-picker",
-        {
-          photosPermission: "Доступ к медиатеке нужен Narra, чтобы выбирать обложки книг.",
-        },
-      ],
       "expo-secure-store",
       "expo-sharing",
       "expo-sqlite",

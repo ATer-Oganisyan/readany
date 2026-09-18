@@ -13,7 +13,6 @@ import { ChatScreen } from "@/screens/ChatScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesView } from "@/screens/NotesView";
 import { ProfileScreen } from "@/screens/ProfileScreen";
-import StatsScreen from "@/screens/StatsScreen";
 import AISettingsScreen from "@/screens/settings/AISettingsScreen";
 import AboutScreen from "@/screens/settings/AboutScreen";
 import AppearanceSettingsScreen from "@/screens/settings/AppearanceSettingsScreen";
@@ -215,13 +214,6 @@ const pageItems: CatalogItem[] = [
     subtitle: "Статистика и настройки",
     icon: "person",
     preview: ProfileScreen,
-  },
-  {
-    id: "stats",
-    title: "Статистика",
-    subtitle: "Прогресс и активность чтения",
-    icon: "chart-bar",
-    preview: StatsScreen,
   },
   {
     id: "appearance",
