@@ -6,12 +6,12 @@ import Footer from "../components/Footer.astro";
 
 const lang = defaultLang;
 const t = useTranslations(lang);
-const lastUpdated = "May 30, 2026";
+const lastUpdated = "September 22, 2026";
 ---
 
 <Layout
   title="Privacy Policy - ReadAny"
-  description="ReadAny privacy policy, including local-first storage, WebDAV sync, third-party AI providers, text-to-speech, diagnostics, and user rights."
+  description="ReadAny privacy policy, including local-first storage, mobile analytics, sync, third-party AI providers, diagnostics, and user rights."
 >
   <Header lang={lang} t={t} />
 
@@ -87,6 +87,21 @@ const lastUpdated = "May 30, 2026";
           If you install or purchase ReadAny through an app store, purchase records, refunds, taxes, billing, and
           account details are handled by the relevant platform, such as Apple App Store or Google Play. We receive
           only the information those platforms make available to developers.
+        </p>
+      </section>
+
+      <section>
+        <h2>Mobile Usage Analytics</h2>
+        <p>
+          Mobile builds may send limited usage events to ReadAny's analytics gateway, such as app opens, feature use,
+          and broad error categories. If AppMetrica is enabled for a mobile build, Yandex also receives selected
+          usage events and SDK-collected information about installations, sessions, devices, and attribution.
+          AppMetrica is provided by YANDEX LLC. We do not include book text, titles, notes, prompts, or responses
+          in custom analytics events sent to AppMetrica.
+        </p>
+        <p>
+          AppMetrica applies to the iOS and Android apps, not the desktop app. For details about the service and
+          its data processing, see <a href="https://appmetrica.yandex.com/" target="_blank" rel="noopener noreferrer">AppMetrica</a>.
         </p>
       </section>
 
