@@ -6,12 +6,12 @@ import Footer from "../../components/Footer.astro";
 
 const lang = "zh";
 const t = useTranslations(lang);
-const lastUpdated = "2026 年 5 月 30 日";
+const lastUpdated = "2026 年 9 月 22 日";
 ---
 
 <Layout
   title="隐私政策 - ReadAny"
-  description="ReadAny 隐私政策，说明本地优先存储、WebDAV 同步、第三方 AI 服务、语音朗读、诊断信息与用户选择。"
+  description="ReadAny 隐私政策，说明本地优先存储、移动端使用情况分析、同步、第三方 AI 服务、诊断信息与用户选择。"
 >
   <Header lang={lang} t={t} />
 
@@ -71,6 +71,20 @@ const lastUpdated = "2026 年 5 月 30 日";
         <h2>6. 购买与应用商店</h2>
         <p>
           如果你通过应用商店安装或购买 ReadAny，购买记录、退款、税务、账单和账号信息由对应平台处理，例如 Apple App Store 或 Google Play。我们仅会收到这些平台向开发者提供的信息。
+        </p>
+      </section>
+
+      <section>
+        <h2>移动端使用情况分析</h2>
+        <p>
+          移动端版本可能向 ReadAny 的分析网关发送有限的使用事件，例如应用启动、功能使用和概括性的错误类别。
+          如果某个移动端版本启用了 AppMetrica，Yandex 还会接收选定的使用事件，以及 SDK 收集的安装、会话、
+          设备和归因信息。AppMetrica 由 YANDEX LLC 提供。发送给 AppMetrica 的自定义分析事件不包含书籍正文、
+          书名、笔记、提示词或回复内容。
+        </p>
+        <p>
+          AppMetrica 仅适用于 iOS 和 Android 应用，不适用于桌面端。有关该服务及其数据处理的详情，
+          请参阅 <a href="https://appmetrica.yandex.com/" target="_blank" rel="noopener noreferrer">AppMetrica</a>。
         </p>
       </section>
 

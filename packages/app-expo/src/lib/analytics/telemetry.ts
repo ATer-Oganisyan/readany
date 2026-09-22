@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import * as Crypto from "expo-crypto";
 import * as FileSystem from "expo-file-system/legacy";
 import { AppState, type AppStateStatus, Platform } from "react-native";
+import { appMetricaBridge } from "./appmetrica";
 import {
   ANALYTICS_SCHEMA_VERSION,
   type AnalyticsEvent,
@@ -100,6 +101,8 @@ export function recordTelemetry(
     properties: sanitizeAnalyticsProperties(name, properties),
     schemaVersion: ANALYTICS_SCHEMA_VERSION,
   };
+  appMetricaBridge.start(tier);
+  appMetricaBridge.report(event);
   void serialize(async () => {
     const current = freshEvents(await loadQueue());
     queue = [...current, event].slice(-QUEUE_LIMIT);
@@ -191,6 +194,7 @@ function handleAppState(next: AppStateStatus): void {
 }
 
 export function startTelemetry(): () => void {
+  appMetricaBridge.start(analyticsTier());
   if (!interval) interval = setInterval(() => void flushTelemetry(), FLUSH_INTERVAL_MS);
   if (!appStateSubscription) {
     appStateSubscription = AppState.addEventListener("change", handleAppState);
