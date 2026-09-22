@@ -63,6 +63,7 @@ vi.mock("react-native-track-player", () => ({
     retry: vi.fn(async () => {}),
     remove: vi.fn(async () => {}),
     seekTo: vi.fn(async () => {}),
+    skip: vi.fn(async () => {}),
     addEventListener: (event: string, callback: (e: Record<string, unknown>) => void) => {
       const set = runtime.listeners.get(event) ?? new Set();
       set.add(callback);
@@ -217,7 +218,7 @@ describe("book TTS playback integration", () => {
     await flush();
     expect(runtime.queue).toHaveLength(2);
   });
-  it("retries a limited number of times, then stops and cleans up", async () => {
+  it("retries a limited number of times, then pauses for an explicit retry", async () => {
     runtime.synth.mockRejectedValue(new NarraServiceError("RATE", "rate limited"));
     const state = vi.fn();
     player.onStateChange = state;
@@ -225,7 +226,7 @@ describe("book TTS playback integration", () => {
     await vi.advanceTimersByTimeAsync(6000);
     await flush();
     expect(runtime.synth).toHaveBeenCalledTimes(5);
-    expect(state).toHaveBeenLastCalledWith("stopped");
+    expect(state).toHaveBeenLastCalledWith("paused");
     expect(vi.getTimerCount()).toBe(0);
   });
   it("honors Retry-After for rate limits and adds no paid request before it expires", async () => {
@@ -246,7 +247,7 @@ describe("book TTS playback integration", () => {
     await flush();
     expect(runtime.synth).toHaveBeenCalledTimes(2);
   });
-  it("stops without retries and explains a daily speech limit", async () => {
+  it("pauses without retries and explains a daily speech limit", async () => {
     const message = "Дневной лимит озвучки исчерпан.";
     runtime.synth.mockRejectedValue(
       new NarraServiceError("RATE", message, undefined, undefined, "DAILY_LIMIT"),
@@ -257,7 +258,7 @@ describe("book TTS playback integration", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(runtime.synth).toHaveBeenCalledTimes(3);
     expect(TrackPlayer.play).not.toHaveBeenCalled();
-    expect(state).toHaveBeenLastCalledWith("stopped");
+    expect(state).toHaveBeenLastCalledWith("paused");
     expect(Alert.alert).toHaveBeenCalledExactlyOnceWith(
       "Read aloud unavailable",
       "The daily read aloud limit has been reached. Try again when the limit resets.",
@@ -462,12 +463,12 @@ describe("replaying structured narration", () => {
       expect(useTTSStore.getState().playState).toBe("stopped");
       useTTSStore.getState().toggle();
       expect(fake.speak).toHaveBeenLastCalledWith(
-        segments.map((s) => s.text),
+        (reason === "end" ? segments : segments.slice(1)).map((s) => s.text),
         expect.anything(),
       );
       expect(useTTSStore.getState()).toMatchObject({
-        currentChunkIndex: 0,
-        currentLocationCfi: segments[0].cfi,
+        currentChunkIndex: reason === "end" ? 0 : 1,
+        currentLocationCfi: segments[reason === "end" ? 0 : 1].cfi,
         segmentCfis: segments.map((s) => s.cfi),
         paragraphIds: ["p0", "p1"],
       });
@@ -524,4 +525,202 @@ describe("seek playback intent", () => {
       setTTSPlayerFactories({});
     }
   });
+});
+
+describe("reported playback stops: recovery", () => {
+  it("pauses after a failed native retry and recovers on one Play", async () => {
+    const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+    setTTSPlayerFactories({ createEdgeTTS: () => player });
+    try {
+      useTTSStore.setState({
+        config: { ...DEFAULT_TTS_CONFIG, engine: "edge" },
+        resumeFromReader: null,
+      });
+      useTTSStore.getState().play(["first", "second", "third"]);
+      await flush();
+      expect(useTTSStore.getState().playState).toBe("playing");
+      vi.mocked(TrackPlayer.retry).mockRejectedValueOnce(new Error("native retry failed"));
+      for (const callback of runtime.listeners.get("state") ?? []) callback({ state: "error" });
+      await flush();
+      expect(TrackPlayer.retry).toHaveBeenCalledTimes(1);
+      expect(useTTSStore.getState().playState).toBe("paused");
+      useTTSStore.getState().toggle();
+      expect(useTTSStore.getState().playState).toBe("loading");
+      await flush();
+      expect(TrackPlayer.retry).toHaveBeenCalledTimes(2);
+      expect(useTTSStore.getState().playState).toBe("playing");
+    } finally {
+      useTTSStore.getState().stop();
+      setTTSPlayerFactories({});
+    }
+  });
+
+  it("ignores a native pause while real audio remains queued", async () => {
+    const states = vi.fn();
+    player.onStateChange = states;
+    await player.speak(["first", "second", "third"], DEFAULT_TTS_CONFIG);
+    await flush();
+    expect(states).toHaveBeenLastCalledWith("playing");
+    states.mockClear();
+    for (const callback of runtime.listeners.get("state") ?? []) callback({ state: "paused" });
+    expect(states).not.toHaveBeenCalled();
+  });
+
+  it("ignores duplicated Resume and resumes stopped playback at the current sentence", async () => {
+    const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+    const fake = {
+      speak: vi.fn(async () => {}),
+      stop: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      onChunkChange: undefined as ((index: number, total: number) => void) | undefined,
+      onStateChange: undefined as ((state: "playing" | "paused" | "stopped") => void) | undefined,
+    };
+    setTTSPlayerFactories({ createEdgeTTS: () => fake });
+    try {
+      useTTSStore.setState({
+        config: { ...DEFAULT_TTS_CONFIG, engine: "edge" },
+        resumeFromReader: null,
+      });
+      useTTSStore.getState().play(["first", "second", "third"]);
+      await flush();
+      fake.onStateChange?.("playing");
+      fake.onChunkChange?.(1, 3);
+      useTTSStore.getState().pause();
+      useTTSStore.getState().resume();
+      expect(fake.resume).toHaveBeenCalledTimes(1);
+      expect(fake.speak).toHaveBeenCalledTimes(1);
+      useTTSStore.getState().resume();
+      await flush();
+      expect(fake.speak).toHaveBeenCalledTimes(1);
+      fake.onChunkChange?.(2, 3);
+      fake.onStateChange?.("stopped");
+      expect(useTTSStore.getState().currentChunkIndex).toBe(2);
+      useTTSStore.getState().toggle();
+      expect(fake.speak).toHaveBeenLastCalledWith(["third"], expect.anything());
+      expect(useTTSStore.getState().currentChunkIndex).toBe(2);
+    } finally {
+      useTTSStore.getState().stop();
+      setTTSPlayerFactories({});
+    }
+  });
+});
+
+describe("retaining audio across synthesis failures", () => {
+  it("drains prepared audio and retries only the failed sentence on Play", async () => {
+    let offline = true;
+    runtime.synth.mockImplementation(async (text: string) => {
+      if (text === "3" && offline) throw new NarraServiceError("REQUEST", "failed");
+      runtime.files.add(`file:///${text}.wav`);
+      return `file:///${text}.wav`;
+    });
+    const states = vi.fn();
+    player.onStateChange = states;
+    await player.speak(["0", "1", "2", "3", "4", "5"], DEFAULT_TTS_CONFIG);
+    await flush();
+    expect(runtime.queue.map((track) => track.id)).toEqual([
+      "tts-chunk-0",
+      "tts-chunk-1",
+      "tts-chunk-2",
+    ]);
+    expect(states).toHaveBeenLastCalledWith("playing");
+    const resets = vi.mocked(TrackPlayer.reset).mock.calls.length;
+    for (const callback of runtime.listeners.get("end") ?? []) callback({ track: 2 });
+    expect(states).toHaveBeenLastCalledWith("paused");
+    expect(runtime.deleted).toEqual([]);
+    offline = false;
+    player.resume();
+    await flush();
+    expect(runtime.queue.map((track) => track.id)).toEqual(
+      [0, 1, 2, 3, 4, 5].map((i) => `tts-chunk-${i}`),
+    );
+    expect(runtime.synth.mock.calls.filter(([text]) => text === "3")).toHaveLength(2);
+    expect(runtime.synth.mock.calls.filter(([text]) => text === "4")).toHaveLength(1);
+    expect(TrackPlayer.reset).toHaveBeenCalledTimes(resets);
+    expect(states).toHaveBeenLastCalledWith("playing");
+  });
+
+  it("does not claim playing when native Play rejects", async () => {
+    const states = vi.fn();
+    player.onStateChange = states;
+    await player.speak(["0", "1", "2"], DEFAULT_TTS_CONFIG);
+    await flush();
+    player.pause();
+    states.mockClear();
+    vi.mocked(TrackPlayer.play).mockRejectedValueOnce(new Error("play failed"));
+    player.resume();
+    await flush();
+    expect(states).toHaveBeenLastCalledWith("paused");
+    expect(states).not.toHaveBeenCalledWith("playing");
+    player.resume();
+    await flush();
+    expect(TrackPlayer.retry).toHaveBeenCalled();
+    expect(states).toHaveBeenLastCalledWith("playing");
+  });
+});
+
+it("recovers an initial native Play failure without downloading the queue again", async () => {
+  const states = vi.fn();
+  player.onStateChange = states;
+  vi.mocked(TrackPlayer.play).mockRejectedValueOnce(new Error("initial play failed"));
+  await player.speak(["0", "1", "2"], DEFAULT_TTS_CONFIG);
+  await flush();
+  expect(states).toHaveBeenLastCalledWith("paused");
+  expect(runtime.queue).toHaveLength(3);
+  player.resume();
+  await flush();
+  expect(states).toHaveBeenLastCalledWith("playing");
+  expect(runtime.synth).toHaveBeenCalledTimes(3);
+});
+
+it.each(["pause", "stop"] as const)(
+  "does not restart after %s cancels a pending retry",
+  async (action) => {
+    await player.speak(["0", "1", "2"], DEFAULT_TTS_CONFIG);
+    await flush();
+    let finish!: () => void;
+    vi.mocked(TrackPlayer.retry).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    for (const callback of runtime.listeners.get("state") ?? []) callback({ state: "error" });
+    await flush();
+    player[action]();
+    const plays = vi.mocked(TrackPlayer.play).mock.calls.length;
+    finish();
+    await flush();
+    expect(TrackPlayer.play).toHaveBeenCalledTimes(plays);
+  },
+);
+
+it("resumes after Pause and Play during an in-flight native recovery", async () => {
+  const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+  setTTSPlayerFactories({ createEdgeTTS: () => player });
+  try {
+    useTTSStore.setState({
+      config: { ...DEFAULT_TTS_CONFIG, engine: "edge" },
+      resumeFromReader: null,
+    });
+    useTTSStore.getState().play(["first", "second", "third"]);
+    await flush();
+    let finish!: () => void;
+    vi.mocked(TrackPlayer.retry).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    for (const callback of runtime.listeners.get("state") ?? []) callback({ state: "error" });
+    await flush();
+    useTTSStore.getState().pause();
+    useTTSStore.getState().resume();
+    finish();
+    await flush();
+    expect(useTTSStore.getState().playState).toBe("playing");
+  } finally {
+    useTTSStore.getState().stop();
+    setTTSPlayerFactories({});
+  }
 });

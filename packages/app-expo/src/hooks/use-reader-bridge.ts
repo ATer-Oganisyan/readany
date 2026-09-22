@@ -53,6 +53,7 @@ export interface SceneSlotEvent {
 export type SceneSlotState = "idle" | "loading" | "error";
 
 export interface VisibleTTSContext {
+  error?: string;
   before: VisibleTTSSegment[];
   after: VisibleTTSSegment[];
 }
@@ -487,7 +488,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
           const pendingResolve = pendingTTSContextResolveRef.current.get(requestId);
           if (pendingResolve === resolve) {
             pendingTTSContextResolveRef.current.delete(requestId);
-            resolve({ before: [], after: [] });
+            resolve({ before: [], after: [], error: "tts-context-timeout" });
           }
         }, 4000);
       });
@@ -1066,6 +1067,7 @@ export function useReaderBridge(callbacks: ReaderBridgeCallbacks) {
                 console.warn("[ReaderBridge] ttsSegmentContext error:", msg.error);
               }
               pendingResolve({
+                ...(msg.error ? { error: String(msg.error) } : {}),
                 before: msg.before || [],
                 after: msg.after || [],
               });

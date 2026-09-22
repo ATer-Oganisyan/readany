@@ -12,7 +12,7 @@ import { useResumeFromReader } from "./use-resume-from-reader";
  *  - Cleanup on unmount (clear continuous callback, clear highlight)
  */
 
-import type { VisibleTTSSegment } from "@/hooks/use-reader-bridge";
+import type { VisibleTTSContext, VisibleTTSSegment } from "@/hooks/use-reader-bridge";
 import type { NarraCharacter } from "@/lib/narra/types";
 import { clearReaderVoicePlan, primeReaderVoicePlan } from "@/lib/narra/voice-markup";
 import { narratorVoiceFor } from "@/lib/narra/voice-rules";
@@ -45,7 +45,7 @@ export type TTSBridgeRef = {
     cfi: string,
     before?: number,
     after?: number,
-  ) => Promise<{ before: TTSSegment[]; after: TTSSegment[] }>;
+  ) => Promise<VisibleTTSContext>;
   getHrefTTSSegments?: (href: string, count?: number) => Promise<TTSSegment[]>;
   getChapterTTSSegments?: (
     startHref: string,
@@ -228,6 +228,7 @@ export function useReaderTTS({
   const [ttsChunkOffset, setTtsChunkOffset] = useState(0);
   const [ttsSourceKind, setTtsSourceKind] = useState<"page" | "selection">("page");
   const [ttsContinuousEnabled, setTtsContinuousEnabled] = useState(true);
+  const [ttsContextRetry, setTtsContextRetry] = useState(0);
 
   // ─── TTS Refs ───────────────────────────────────────────────────────────────
   const ttsSegmentsRef = useRef<TTSSegment[]>([]);
@@ -247,9 +248,7 @@ export function useReaderTTS({
   const ttsContextCacheRef = useRef<Map<string, { before: TTSSegment[]; after: TTSSegment[] }>>(
     new Map(),
   );
-  const ttsContextInflightRef = useRef<
-    Map<string, Promise<{ before: TTSSegment[]; after: TTSSegment[] }>>
-  >(new Map());
+  const ttsContextInflightRef = useRef<Map<string, Promise<VisibleTTSContext>>>(new Map());
   const ttsContinuousRef = useRef(false);
   const pendingTTSContinueCallbackRef = useRef<(() => void) | null>(null);
   const pendingTTSContinueSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -709,9 +708,9 @@ export function useReaderTTS({
       cfi: string | null | undefined,
       before = TTS_CONTEXT_WINDOW,
       after = TTS_CONTEXT_WINDOW,
-    ) => {
+    ): Promise<VisibleTTSContext> => {
       if (!cfi || !bridgeRef.current?.getTTSSegmentContext) {
-        return { before: [], after: [] };
+        return { before: [], after: [], error: "tts-context-unavailable" };
       }
       const key = `${cfi}|${before}|${after}`;
       const cached = ttsContextCacheRef.current.get(key);
@@ -727,6 +726,7 @@ export function useReaderTTS({
       const request = bridgeRef.current
         .getTTSSegmentContext(cfi, before, after)
         .then((context) => {
+          if (context.error) return context;
           const normalized = {
             before: dedupeTTSSegments(
               (context.before || [])
@@ -918,6 +918,13 @@ export function useReaderTTS({
           ? getCachedTTSSegmentContext(lastCfi, 0, TTS_CONTEXT_WINDOW)
           : Promise.resolve({ before: [], after: [] }),
       ]);
+
+      if (
+        [centerContext, leadingContext, trailingContext].some(
+          (context) => "error" in context && context.error,
+        )
+      )
+        return;
 
       const previous = filterDistinctTTSSegments(
         [...(leadingContext.before || []), ...(centerContext.before || [])],
@@ -1169,6 +1176,7 @@ export function useReaderTTS({
             TTS_CONTEXT_WINDOW,
             TTS_CONTEXT_WINDOW * 2,
           );
+          if (context.error) return false;
           const previous = filterDistinctTTSSegments(context.before || [], visibleSeed).slice(
             -(TTS_CONTEXT_WINDOW * 2),
           );
@@ -1240,6 +1248,7 @@ export function useReaderTTS({
         TTS_CONTEXT_WINDOW,
         TTS_CONTEXT_WINDOW * 2,
       );
+      if (context.error) return false;
       const nextSegments =
         seedSegments.length > 0
           ? dedupeTTSSegments([
@@ -1373,6 +1382,19 @@ export function useReaderTTS({
           0,
           TTS_CONTEXT_WINDOW * 2,
         );
+        const state = useTTSStore.getState();
+        if (
+          !ttsContinuousRef.current ||
+          state.currentBookId !== bookId ||
+          state.playState !== "stopped"
+        )
+          return;
+        if (context.error) {
+          // Preserve the current location and let Play retry; never skip a chapter on timeout.
+          useTTSStore.getState().setPlayState("paused");
+          console.warn("[ReaderScreen][TTS] continuation unavailable", context.error);
+          return;
+        }
         const nextSegment =
           (context.after || []).find((segment) => segment.text.trim().length > 0) || null;
         console.log("[ReaderScreen][TTS] continue from context", {
@@ -1405,6 +1427,7 @@ export function useReaderTTS({
       }
     })();
   }, [
+    bookId,
     bridgeRef,
     currentCfi,
     currentTTSSegment,
@@ -1613,7 +1636,7 @@ export function useReaderTTS({
           ttsFutureSegmentsRef.current = [];
           ttsChunkOffsetRef.current = 0;
 
-          if (futureSegments.length < TTS_DYNAMIC_APPEND_THRESHOLD) {
+          if (!context.error && futureSegments.length < TTS_DYNAMIC_APPEND_THRESHOLD) {
             const nextChapterSegments = await prefetchNextChapterTTSSegments();
             if (!isCurrent()) return;
             if (nextChapterSegments.length > 0) {
@@ -1821,7 +1844,9 @@ export function useReaderTTS({
     ttsSourceKind,
   ]);
 
-  useResumeFromReader(bookId, currentCfi, webViewReady, (isCurrent) => startPageTTS(ttsContinuousEnabled, isCurrent));
+  useResumeFromReader(bookId, currentCfi, webViewReady, (isCurrent) =>
+    startPageTTS(ttsContinuousEnabled, isCurrent),
+  );
 
   const handleTTSPlayPause = useCallback(async () => {
     if (ttsPlayState === "loading" || ttsPlayState === "playing") {
@@ -2111,6 +2136,7 @@ export function useReaderTTS({
     ttsLoadMoreAboveRef.current = anchorCfi;
     try {
       const context = await getCachedTTSSegmentContext(anchorCfi, TTS_CONTEXT_WINDOW, 0);
+      if (context.error) return;
       if (context.before?.length) {
         const incoming = filterDistinctTTSSegments(
           context.before,
@@ -2156,6 +2182,7 @@ export function useReaderTTS({
     ttsLoadMoreBelowRef.current = anchorCfi;
     try {
       const context = await getCachedTTSSegmentContext(anchorCfi, 0, TTS_CONTEXT_WINDOW);
+      if (context.error) return;
       if (context.after?.length) {
         const incoming = filterDistinctTTSSegments(
           context.after,
@@ -2277,7 +2304,11 @@ export function useReaderTTS({
   // ─── TTS highlight sync effects ───────────────────────────────────────────
   useEffect(() => {
     if (!webViewReady) return;
-    if (ttsPlayState === "stopped" && !showTTS && (!ttsCurrentBookId || ttsCurrentBookId === bookId)) {
+    if (
+      ttsPlayState === "stopped" &&
+      !showTTS &&
+      (!ttsCurrentBookId || ttsCurrentBookId === bookId)
+    ) {
       bridgeRef.current?.setTTSHighlight(null, undefined, true, undefined, undefined, true);
       return;
     }
@@ -2383,8 +2414,7 @@ export function useReaderTTS({
     }
     if (didForceReapplyTTSHighlightRef.current) return;
     if (ttsSourceKind !== "page") return;
-    if (ttsPlayState !== "playing" && ttsPlayState !== "loading")
-      return;
+    if (ttsPlayState !== "playing" && ttsPlayState !== "loading") return;
     const targetCfi = resolvedTTSSegmentCfi;
     if (!targetCfi) return;
     bridgeRef.current?.setTTSHighlight(targetCfi, ttsHighlightColor, true);
@@ -2405,8 +2435,7 @@ export function useReaderTTS({
     if (!webViewReady || showTTS) return;
     if (ttsCurrentBookId !== bookId) return;
     if (ttsSourceKind !== "page") return;
-    if (ttsPlayState !== "playing" && ttsPlayState !== "loading")
-      return;
+    if (ttsPlayState !== "playing" && ttsPlayState !== "loading") return;
     const targetCfi = resolvedTTSSegmentCfi || currentCfi || null;
     if (!targetCfi) return;
     const timer = setTimeout(() => {
@@ -2610,7 +2639,7 @@ export function useReaderTTS({
     ttsSourceKind,
   ]);
 
-  const ttsDynamicAppendTrigger = `${ttsCurrentChunkIndex}:${ttsSegments.length}`;
+  const ttsDynamicAppendTrigger = `${ttsCurrentChunkIndex}:${ttsSegments.length}:${ttsContextRetry}`;
 
   // ─── Dynamically append next-page context near the end ─────────────────────
   // Keep the native playback queue fed before the visible page runs out. This
@@ -2631,13 +2660,21 @@ export function useReaderTTS({
     if (ttsDynamicAppendRequestRef.current === requestKey) return;
     ttsDynamicAppendRequestRef.current = requestKey;
     const requestId = ttsLyricPrimeRequestIdRef.current;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
     void (async () => {
       try {
         const context = await getCachedTTSSegmentContext(lastCfi, 0, TTS_DYNAMIC_APPEND_SEGMENTS);
-        if (ttsLyricPrimeRequestIdRef.current !== requestId || !ttsContinuousRef.current) {
+        if (
+          cancelled ||
+          ttsLyricPrimeRequestIdRef.current !== requestId ||
+          !ttsContinuousRef.current
+        ) {
           return;
         }
+
+        if (context.error) throw new Error(context.error);
 
         const candidates = [
           ...ttsFutureSegmentsRef.current,
@@ -2675,6 +2712,12 @@ export function useReaderTTS({
           });
         }
 
+        if (
+          cancelled ||
+          ttsLyricPrimeRequestIdRef.current !== requestId ||
+          !ttsContinuousRef.current
+        )
+          return;
         const didAppend = ttsAppend(appendSegments);
         if (__DEV__) {
           console.log("[ReaderScreen][TTS][queue-append] append-result", {
@@ -2713,6 +2756,8 @@ export function useReaderTTS({
           return next;
         });
       } catch (error) {
+        if (!cancelled)
+          retryTimer = setTimeout(() => setTtsContextRetry((value) => value + 1), 2000);
         console.warn("[ReaderScreen][TTS] dynamic append failed", {
           lastCfi,
           error: error instanceof Error ? error.message : String(error),
@@ -2723,6 +2768,12 @@ export function useReaderTTS({
         }
       }
     })();
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+      if (ttsDynamicAppendRequestRef.current === requestKey)
+        ttsDynamicAppendRequestRef.current = null;
+    };
   }, [
     bookId,
     filterDistinctTTSSegments,

@@ -63,6 +63,9 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private _currentTitle = "";
   private _producerRunning = false;
   private _retryCount = 0;
+  private _nativeError = false;
+  private _producerFailed = false;
+  private _recovering = false;
   private _silenceTrackIds = new Set<string>();
 
   setArtworkGetter(getter: () => string | undefined): void {
@@ -84,6 +87,9 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     this._config = config;
     this._downloadComplete = false;
     this._retryCount = 0;
+    this._nativeError = false;
+    this._producerFailed = false;
+    this._recovering = false;
     this._chunks = Array.isArray(text)
       ? text.filter(Boolean)
       : splitIntoChunks(text, CHUNK_MAX_CHARS);
@@ -183,15 +189,12 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
           this._finishPlayback();
         }
       } else if (event.state === State.Error) {
+        this._nativeError = true;
         if (this._retryCount < TrackPlayerEdgeTTSPlayer.MAX_RETRIES) {
           this._retryCount++;
-          console.warn(
-            `[TrackPlayerEdgeTTSPlayer] playback error, retry ${this._retryCount}/${TrackPlayerEdgeTTSPlayer.MAX_RETRIES}`,
-          );
-          TrackPlayer.retry().catch((err) => console.warn("[TTS] TrackPlayer retry failed:", err));
+          void this._resumePlayback(gen);
         } else {
-          console.log("[TTS] Playback stopped after retries");
-          this.stop();
+          this.pause();
         }
       } else if (event.state === State.Ended || event.state === State.Stopped) {
         this._handlePlaybackEnded(gen);
@@ -231,7 +234,8 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   }
 
   private _ensureProducerRunning(gen: number): void {
-    if (gen !== this._speakGen || this._stopped || this._producerRunning) return;
+    if (gen !== this._speakGen || this._stopped || this._producerRunning || this._producerFailed)
+      return;
     if (this._nextChunkToAdd >= this._chunks.length && this._fetchPromises.size === 0) {
       this._downloadComplete = true;
       return;
@@ -296,8 +300,15 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       }
     } catch (err) {
       if (gen === this._speakGen && !this._stopped && (err as Error)?.message !== "aborted") {
-        console.log("[TTS] Speech synthesis stopped after retries");
-        this.stop();
+        console.warn("[TTS] Speech synthesis paused after retries; queue retained");
+        this._producerFailed = true;
+        // Retry the missing sentence on Play, retaining later fetched files.
+        this._fetchPromises.delete(this._nextChunkToAdd);
+        this._nextChunkToFetch = this._nextChunkToAdd;
+        if (!this._nativeError && !this._playStarted && this._nextChunkToAdd > 0) {
+          await this._startPlayback(gen).catch(() => this.pause());
+        }
+        if (!this._playStarted || this._queueStarved) this.pause();
         Alert.alert(
           i18n.t("narra.speechUnavailableTitle"),
           localizeNarraErrorMessage(normalizeNarraError(err).message),
@@ -314,6 +325,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       this._nextChunkToFetch < this._bufferEndIndex()
     ) {
       const index = this._nextChunkToFetch++;
+      if (this._fetchPromises.has(index)) continue;
       const promise = this._fetchChunkFileWithRetry(index, gen);
       promise.catch(() => {});
       this._fetchPromises.set(index, promise);
@@ -334,7 +346,12 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
 
     if (this._paused) return;
 
-    await TrackPlayer.play();
+    try {
+      await TrackPlayer.play();
+    } catch (error) {
+      this._nativeError = true;
+      throw error;
+    }
     await this._applyPlaybackRate();
     if (gen !== this._speakGen || this._stopped) return;
     this._playStarted = true;
@@ -421,9 +438,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       }
 
       this._queueStarved = false;
-      await TrackPlayer.skip(targetQueuePos).catch((err) =>
-        console.warn("[TTS] TrackPlayer skip failed:", err),
-      );
+      await TrackPlayer.skip(targetQueuePos);
       if (gen !== this._speakGen || this._stopped || this._paused) return;
       await TrackPlayer.play();
       const resolvedTrack = await TrackPlayer.getActiveTrack().catch((err) => {
@@ -440,6 +455,9 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
         queueLength: queue.length,
       });
     } catch (error) {
+      if (gen !== this._speakGen || this._stopped) return;
+      this._queueStarved = true;
+      this.pause();
       console.warn("[TrackPlayerEdgeTTSPlayer] failed to resume starved queue", error);
     }
   }
@@ -623,6 +641,12 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       total: this._chunks.length,
       downloadComplete: this._downloadComplete,
     });
+    if (this._producerFailed) {
+      this._queueStarved = true;
+      if (typeof track === "number") this._currentIndex = Math.max(this._currentIndex, track);
+      this.pause();
+      return;
+    }
     this._markQueueStarved(track);
     if (this._hasEnoughQueuedToResume()) {
       void this._resumeStarvedQueue(gen);
@@ -646,6 +670,11 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       nextChunkToAdd: this._nextChunkToAdd,
       total: this._chunks.length,
     });
+
+    if (this._producerFailed) {
+      this.pause();
+      return;
+    }
 
     // On iOS, keep the audio session alive by inserting a silent track.
     // This prevents the OS from suspending JS when audio stops between real tracks.
@@ -743,18 +772,45 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     if (this._stopped || this._paused) return;
     this._paused = true;
     this._stopProgressPolling();
-    TrackPlayer.pause();
+    void TrackPlayer.pause().catch((error) => console.warn("[TTS] pause failed", error));
     this.onStateChange?.("paused");
   }
 
   resume(): void {
     if (this._stopped || !this._paused) return;
     this._paused = false;
-    TrackPlayer.play();
-    void this._applyPlaybackRate();
-    this._playStarted = true;
-    this._startProgressPolling(this._speakGen);
-    this.onStateChange?.("playing");
+    // An in-flight recovery must observe the latest Play intent after a pause.
+    if (this._recovering) return;
+    this._retryCount = 0;
+    this._producerFailed = false;
+    this._ensureProducerRunning(this._speakGen);
+    if (this._queueStarved) {
+      if (this._hasEnoughQueuedToResume()) void this._resumeStarvedQueue(this._speakGen);
+    } else if (this._nextChunkToAdd > 0) {
+      void this._resumePlayback(this._speakGen);
+    }
+  }
+
+  private async _resumePlayback(gen: number): Promise<void> {
+    if (this._recovering || this._paused || this._stopped || gen !== this._speakGen) return;
+    this._recovering = true;
+    try {
+      if (this._nativeError) await TrackPlayer.retry();
+      if (gen !== this._speakGen || this._stopped || this._paused) return;
+      await TrackPlayer.play();
+      if (gen !== this._speakGen || this._stopped || this._paused) return;
+      this._nativeError = false;
+      this._playStarted = true;
+      this._startProgressPolling(gen);
+      this.onStateChange?.("playing");
+    } catch (error) {
+      if (gen !== this._speakGen || this._stopped) return;
+      this._nativeError = true;
+      console.warn("[TTS] Playback recovery failed", error);
+      this.pause();
+    } finally {
+      if (gen === this._speakGen) this._recovering = false;
+    }
   }
 
   stop(): void {

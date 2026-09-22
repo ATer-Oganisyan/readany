@@ -64,6 +64,7 @@ let _activeConfig: TTSConfig | null = null;
 let _sessionSegments: string[] = [];
 let _sessionCurrentIndex = 0;
 let _sessionGeneration = 0;
+let _sessionEnded = false;
 let _sleepTimerHandle: ReturnType<typeof setTimeout> | null = null;
 
 function getSystemTTS(): ITTSPlayer {
@@ -247,6 +248,7 @@ function startPlayback(
 ): void {
   const player = getPlayerForConfig(config);
   const gen = _sessionGeneration;
+  _sessionEnded = false;
   let isStarting = true;
   _activeTTS = player;
   _activeConfig = config;
@@ -313,6 +315,7 @@ function startPlayback(
 
   player.onEnd = () => {
     if (gen !== _sessionGeneration) return;
+    _sessionEnded = true;
     _activeTTS = null;
     const lastIndex = Math.max(0, _sessionSegments.length - 1);
     _sessionCurrentIndex = lastIndex;
@@ -517,6 +520,7 @@ export const useTTSStore = create<TTSState>()(
 
       resume: () => {
         console.log("[TTSStore] resume called");
+        if (get().playState === "playing" || get().playState === "loading") return;
         if (get().playState === "paused" && get().resumeFromReader?.()) return;
         const config = normalizeTTSConfig(get().config);
         // Speed lives in SSML. Resume old WAV only if its synthesis settings still match.
@@ -527,8 +531,8 @@ export const useTTSStore = create<TTSState>()(
           _activeConfig.engine === config.engine &&
           !shouldRespeakForNarraSynthChange(_activeConfig, config)
         ) {
+          set({ playState: "loading" });
           _activeTTS.resume();
-          set({ playState: "playing" });
           return;
         }
 
@@ -588,7 +592,7 @@ export const useTTSStore = create<TTSState>()(
 
       toggle: (text?: string) => {
         console.log("[TTSStore] toggle called, playState:", get().playState);
-        const { playState, currentText, play, segmentCfis, paragraphIds } = get();
+        const { playState, currentText, play } = get();
         if (playState === "playing" || playState === "loading") {
           get().pause();
         } else if (playState === "paused") {
@@ -596,11 +600,15 @@ export const useTTSStore = create<TTSState>()(
         } else if (text) {
           play(text);
         } else if (_sessionSegments.length) {
-          play(_sessionSegments.map((text, index) => ({
-            text,
-            cfi: segmentCfis[index],
-            paragraphId: paragraphIds[index],
-          })));
+          if (_sessionEnded) {
+            play(
+              _sessionSegments.map((text, index) => ({
+                text,
+                cfi: get().segmentCfis[index],
+                paragraphId: get().paragraphIds[index],
+              })),
+            );
+          } else get().resume();
         } else if (currentText) {
           play(currentText);
         }
