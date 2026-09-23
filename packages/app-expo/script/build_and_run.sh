@@ -461,8 +461,9 @@ launch_app() {
     open -a "$SIMULATOR_UI_APP" --args -CurrentDeviceUDID "$SIMULATOR_ID"
   fi
 
-  log "Launching $BUNDLE_ID"
-  xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" "$BUNDLE_ID"
+  # Opening the Metro URL launches the app itself. Launching first can race
+  # dev-client's saved-session restoration and create two Expo app contexts.
+  xcrun simctl terminate "$SIMULATOR_ID" "$BUNDLE_ID" >/dev/null 2>&1 || true
   open_dev_client_url
 }
 
@@ -487,7 +488,8 @@ open_dev_client_url() {
   url="$(dev_client_url 2>/dev/null || true)"
 
   if [[ -z "$url" ]]; then
-    log "Metro open endpoint is unavailable; relying on dev-client most-recent"
+    log "Metro open endpoint is unavailable; launching dev-client most-recent"
+    xcrun simctl launch "$SIMULATOR_ID" "$BUNDLE_ID"
     return
   fi
 
