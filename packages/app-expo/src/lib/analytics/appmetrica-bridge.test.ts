@@ -28,7 +28,7 @@ describe("AppMetrica mobile bridge", () => {
       [undefined, true],
     ] as const) {
       const client = sdk();
-      const bridge = createAppMetricaBridge(client, key, enabled);
+      const bridge = createAppMetricaBridge(() => client, key, enabled);
       bridge.start("extended");
       bridge.report(event("book_opened"));
       expect(client.activate).not.toHaveBeenCalled();
@@ -38,7 +38,7 @@ describe("AppMetrica mobile bridge", () => {
 
   it("activates once, reports product events, and skips SDK lifecycle events", () => {
     const client = sdk();
-    const bridge = createAppMetricaBridge(client, " key ", true);
+    const bridge = createAppMetricaBridge(() => client, " key ", true);
     bridge.start("essential");
     bridge.start("extended");
     bridge.report(event("app_opened"));
@@ -55,7 +55,7 @@ describe("AppMetrica mobile bridge", () => {
 
   it("stops and resumes sending when the analytics tier changes", () => {
     const client = sdk();
-    const bridge = createAppMetricaBridge(client, "key", true);
+    const bridge = createAppMetricaBridge(() => client, "key", true);
     bridge.start("none");
     expect(client.activate).not.toHaveBeenCalled();
     bridge.start("extended");
@@ -73,7 +73,7 @@ describe("AppMetrica mobile bridge", () => {
     vi.mocked(client.activate).mockImplementationOnce(() => {
       throw new Error("native module unavailable");
     });
-    const bridge = createAppMetricaBridge(client, "key", true);
+    const bridge = createAppMetricaBridge(() => client, "key", true);
     expect(() => bridge.start("extended")).not.toThrow();
     bridge.report(event("book_opened"));
     expect(client.reportEvent).not.toHaveBeenCalled();
@@ -83,4 +83,19 @@ describe("AppMetrica mobile bridge", () => {
     });
     expect(() => bridge.report(event("book_opened"))).not.toThrow();
   });
+});
+
+it("does not load a missing native SDK when disabled and contains lookup failures", () => {
+  const load = vi.fn(() => {
+    throw new Error("native module unavailable");
+  });
+  const disabled = createAppMetricaBridge(load, "key", false);
+  disabled.start("essential");
+  expect(load).not.toHaveBeenCalled();
+  const enabled = createAppMetricaBridge(load, "key", true);
+  enabled.start("none");
+  expect(load).not.toHaveBeenCalled();
+  expect(() => enabled.start("essential")).not.toThrow();
+  expect(load).toHaveBeenCalledOnce();
+  expect(() => enabled.report(event("book_opened"))).not.toThrow();
 });

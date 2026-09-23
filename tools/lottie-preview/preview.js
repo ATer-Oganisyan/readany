@@ -12,11 +12,21 @@ for (const [name, value] of Object.entries(tokens)) root.style.setProperty(`--${
 const $ = id => document.getElementById(id);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let svg, motion, raf = 0, graceTimer, readyTimer;
-let playbackScale = 1;
 let state = 'play', target = 'play', phase = 'idle', currentClip = 'enter', progress = 0;
-const label = { play: 'Play', pause: 'Pause', loading: 'Лоадер' };
+const label = { play: 'Play', pause: 'Pause', loading: 'Loading' };
 const clipTarget = { forward: 'pause', reverse: 'play', enter: 'loading', settle: 'loading', spin: 'loading', exit: 'pause', cancel: 'play' };
 const activePhases = new Set(['enter', 'settle', 'exit', 'cancel', 'forward', 'reverse']);
+
+function speedFor(name) {
+  return Number($((name === 'forward' || name === 'reverse') ? 'directSpeed' : 'spinnerSpeed').value);
+}
+function durationFor(name) {
+  const base = name === 'spin' ? motion.turnMs : name === 'settle' ? motion.settleMs : name === 'exit' ? motion.exitMs : 300;
+  return base / speedFor(name);
+}
+function updateSpeedValue(id) {
+  $(`${id}Value`).value = `${Number($(id).value).toFixed(2)}×`;
+}
 
 function show(name, fraction) {
   currentClip = name; progress = Math.max(0, Math.min(1, fraction));
@@ -29,6 +39,7 @@ function show(name, fraction) {
 }
 function controls() {
   const loading = state === 'loading' || target === 'loading' || phase === 'enter';
+  $('startLoad').disabled = !svg || !$('spinnerMorph').checked || loading;
   $('ready').disabled = !loading;
   $('cancel').disabled = !loading;
   $('toggle').setAttribute('aria-pressed', String(target === 'pause'));
@@ -45,7 +56,7 @@ function still(next) {
 }
 function run(name, from, to, done, start = performance.now()) {
   cancelAnimationFrame(raf); phase = name;
-  const duration = (name === 'spin' ? motion.turnMs : name === 'settle' ? motion.settleMs : name === 'exit' ? motion.exitMs : 300) * playbackScale;
+  const duration = durationFor(name);
   const end = start + Math.max(1, duration * Math.abs(to - from));
   show(name, from);
   status($('clip').selectedOptions[0].textContent);
@@ -69,14 +80,14 @@ function beginSettle(start) {
 }
 function spin(initial = motion.entryPhase, startAt = performance.now()) {
   state = 'loading'; phase = 'spinning';
-  status(target === 'loading' ? 'Загрузка…' : 'Доворачиваю до выхода…');
+  status(target === 'loading' ? 'Loading…' : 'Aligning for exit…');
   if (initial === (target === 'play' ? 0 : motion.exitPhase) && target !== 'loading') { leaveLoader(startAt); return; }
   if (reducedMotion.matches) {
     show('spin', 0);
     if (target !== 'loading') leaveLoader();
     return;
   }
-  const turnMs = motion.turnMs * playbackScale;
+  const turnMs = durationFor('spin');
   const start = startAt - initial * turnMs;
   let previous = initial;
   function tick(now) {
@@ -97,7 +108,7 @@ function spin(initial = motion.entryPhase, startAt = performance.now()) {
 function drive() {
   if (!svg || activePhases.has(phase)) return;
   if (phase === 'spinning') {
-    status(target === 'loading' ? 'Загрузка…' : 'Доворачиваю до выхода…');
+    status(target === 'loading' ? 'Loading…' : 'Aligning for exit…');
     if (reducedMotion.matches && target !== 'loading') leaveLoader();
     return;
   }
@@ -115,14 +126,13 @@ function drive() {
   if (target === 'loading') {
     if (state === 'pause') { run('exit', 1, 0, end => spin(motion.exitPhase, end)); return; }
     // Ready before 120ms uses the ordinary morph and never flashes the loader.
-    phase = 'delay'; status('Ожидание загрузки…');
+    phase = 'delay'; status('Waiting for load…');
     graceTimer = setTimeout(() => { phase = 'idle'; run('enter', 0, 1, beginSettle); }, 120);
     return;
   }
   run(target === 'pause' ? 'forward' : 'reverse', 0, 1, () => settled(clipTarget[currentClip]));
 }
 function request(next) {
-  if (phase === 'idle' || phase === 'inspection') playbackScale = Number($('duration').value) / 300;
   clearTimeout(readyTimer);
   target = next;
   if (next === 'loading' && $('loadTime').value !== 'manual') {
@@ -132,32 +142,36 @@ function request(next) {
 }
 function inspect(name, fraction) {
   halt(); phase = 'inspection'; show(name, fraction);
-  target = state = clipTarget[name]; status('Покадровый просмотр');
+  target = state = clipTarget[name]; status('Frame inspection');
 }
 async function load() {
   halt();
   const ids = ['toggle', 'play', 'pause', 'frame', 'reload', 'startLoad', 'ready', 'cancel', 'replay', 'clip'];
   ids.forEach(id => { $(id).disabled = true; });
-  $('status').textContent = 'Загрузка SVG…';
+  $('status').textContent = 'Loading SVG…';
   try {
     const response = await fetch('play-pause-loader.svg', { cache: 'no-store' });
     if (!response.ok) throw Error(`HTTP ${response.status}`);
     const doc = new DOMParser().parseFromString(await response.text(), 'image/svg+xml');
-    if (doc.querySelector('parsererror')) throw Error('Некорректный SVG');
+    if (doc.querySelector('parsererror')) throw Error('Invalid SVG');
     motion = JSON.parse(doc.querySelector('metadata').textContent);
     svg = document.importNode(doc.documentElement, true);
     $('icon').replaceChildren(svg); svg.pauseAnimations();
     ids.forEach(id => { $(id).disabled = false; });
     still('play');
   } catch (error) {
-    svg = undefined; $('status').textContent = `Не удалось загрузить SVG: ${error.message}`;
+    svg = undefined; $('status').textContent = `Could not load SVG: ${error.message}`;
     $('reload').disabled = false;
   }
 }
 $('toggle').onclick = () => {
   if (target === 'loading') request('pause');
-  else if (target === 'pause') request('play');
-  else request($('withLoader').checked ? 'loading' : 'pause');
+  else if (target === 'pause') {
+    if ($('directMorph').checked) request('play');
+    else still('play');
+  } else if ($('spinnerMorph').checked) request('loading');
+  else if ($('directMorph').checked) request('pause');
+  else still('pause');
 };
 $('startLoad').onclick = () => request('loading');
 $('ready').onclick = () => request('pause');
@@ -169,9 +183,11 @@ $('clip').onchange = event => inspect(event.target.value, 0);
 $('frame').oninput = event => inspect(currentClip, Number(event.target.value) / 100);
 $('replay').onclick = () => {
   const name = currentClip; halt();
-  playbackScale = Number($('duration').value) / 300;
-  run(name, 0, 1, () => { state = target = clipTarget[name]; phase = 'inspection'; status('Участок завершён'); });
+  run(name, 0, 1, () => { state = target = clipTarget[name]; phase = 'inspection'; status('Clip complete'); });
 };
+$('directSpeed').oninput = () => updateSpeedValue('directSpeed');
+$('spinnerSpeed').oninput = () => updateSpeedValue('spinnerSpeed');
+$('spinnerMorph').onchange = controls;
 $('zoom').onchange = event => $('toggle').style.setProperty('--zoom', event.target.value);
 $('guides').onchange = event => $('toggle').classList.toggle('guides', event.target.checked);
 load();

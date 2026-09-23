@@ -23,6 +23,7 @@ import {
 } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
+  background,
   buttonStyle,
   buttonBorderShape,
   tint,
@@ -36,10 +37,11 @@ import {
   monospacedDigit,
   multilineTextAlignment,
   padding,
+  shapes,
   truncationMode,
 } from "@expo/ui/swift-ui/modifiers";
 import { useTranslation } from "react-i18next";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PreviousSentenceIcon from "../../../assets/icons/sentence-backward.svg";
 import NextSentenceIcon from "../../../assets/icons/sentence-forward.svg";
@@ -50,6 +52,9 @@ import type { AudiobookPlayerContentProps } from "./audiobook-player-content.typ
 
 const primary = foregroundStyle({ type: "hierarchical", style: "primary" });
 const dim = foregroundStyle({ type: "hierarchical", style: "secondary" });
+// ponytail: iOS 26 glass doubles its press halo; restore it there if the OS rendering is fixed.
+const usesPlayerButtonFallback = Number.parseInt(String(Platform.Version), 10) === 26;
+const playerButtonStyle = usesPlayerButtonFallback ? "plain" : "glass";
 
 function SentenceButton({
   direction,
@@ -57,24 +62,27 @@ function SentenceButton({
   onPress,
   label,
   color,
+  backgroundColor,
 }: {
   direction: "previous" | "next";
   enabled: boolean;
   onPress: () => void;
   label: string;
   color: string;
+  backgroundColor: string;
 }) {
   const Icon = direction === "previous" ? PreviousSentenceIcon : NextSentenceIcon;
   return (
     <Button
       onPress={onPress}
       modifiers={[
-        buttonStyle("glass"),
+        buttonStyle(playerButtonStyle),
         buttonBorderShape("circle"),
         frame({ width: 56, height: 56 }),
         tint(color),
         accessibilityLabel(label),
         disabled(!enabled),
+        ...(usesPlayerButtonFallback ? [background(backgroundColor, shapes.circle())] : []),
       ]}
     >
       <RNHostView matchContents>
@@ -102,6 +110,9 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
   const foreground = props.backgroundColor ? foregroundForBackground(props.backgroundColor) : undefined;
   const color = foreground?.primary ?? colors.foreground;
   const contentIsDark = foreground?.isDark ?? isDark;
+  const buttonBackgroundColor = contentIsDark
+    ? "rgba(255,255,255,0.2)"
+    : "rgba(0,0,0,0.2)";
   const layout = useResponsiveLayout();
   const { width } = layout;
   const { bottom } = useSafeAreaInsets();
@@ -209,6 +220,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
         <HStack spacing={24} modifiers={[padding({ top: 40, bottom: Math.max(0, 40 - bottom) })]}>
           <SentenceButton
             color={color}
+            backgroundColor={buttonBackgroundColor}
             direction="previous"
             enabled={props.canGoToPreviousSentence}
             onPress={() => {
@@ -220,13 +232,16 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
           <Button
             onPress={player.togglePlayback}
             modifiers={[
-              buttonStyle("glass"),
+              buttonStyle(playerButtonStyle),
               buttonBorderShape("circle"),
               frame({ width: 80, height: 80 }),
               tint(color),
               accessibilityLabel(
                 t(player.isPlaying || player.isLoading ? "tts.pause" : "tts.playShort"),
               ),
+              ...(usesPlayerButtonFallback
+                ? [background(buttonBackgroundColor, shapes.circle())]
+                : []),
             ]}
           >
             <RNHostView matchContents>
@@ -240,6 +255,7 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
           </Button>
           <SentenceButton
             color={color}
+            backgroundColor={buttonBackgroundColor}
             direction="next"
             enabled={props.canGoToNextSentence}
             onPress={() => {

@@ -33,10 +33,12 @@ export function AudiobookPlayerScreen({
       bookId: s.currentBookId,
       cfi: s.currentLocationCfi,
       currentChunkIndex: s.currentChunkIndex,
+      totalChunks: s.totalChunks,
       segmentCfis: s.segmentCfis,
       chapters: s.narrationChapters,
       seekChapterSegment: s.seekChapterSegment,
       skipSentence: s.skipSentence,
+      jumpToChunk: s.jumpToChunk,
       toggle: s.toggle,
       stop: s.stop,
     })),
@@ -59,13 +61,18 @@ export function AudiobookPlayerScreen({
       findNarrationChapter(state.chapters, state.segmentCfis[state.currentChunkIndex] ?? state.cfi),
     [state.chapters, state.segmentCfis, state.currentChunkIndex, state.cfi],
   );
+  // Keep seeking within the loaded queue when this EPUB cannot map its sentence CFIs to a chapter.
+  const currentIndex = chapter?.index ?? state.currentChunkIndex;
+  const totalChunks = chapter?.chapter.segments.length ?? state.totalChunks;
+  const skipSentence = (direction: -1 | 1) =>
+    chapter ? state.skipSentence(direction) : state.jumpToChunk(currentIndex + direction);
   const player = useTTSNativePlayer(state.playState, state.toggle, {
     chapterProgressOnly: true,
-    chapterCurrentIndex: chapter?.index,
-    chapterTotalChunks: chapter?.chapter.segments.length,
+    chapterCurrentIndex: currentIndex,
+    chapterTotalChunks: totalChunks,
     onSeekChapterChunk: chapter
       ? (index) => state.seekChapterSegment(chapter.chapter.id, index)
-      : undefined,
+      : state.jumpToChunk,
   });
   useEffect(() => {
     let cancelled = false;
@@ -97,12 +104,10 @@ export function AudiobookPlayerScreen({
             );
           }}
           player={player}
-          onPreviousSentence={() => state.skipSentence(-1)}
-          onNextSentence={() => state.skipSentence(1)}
-          canGoToPreviousSentence={Boolean(chapter && chapter.index > 0)}
-          canGoToNextSentence={Boolean(
-            chapter && chapter.index < chapter.chapter.segments.length - 1,
-          )}
+          onPreviousSentence={() => skipSentence(-1)}
+          onNextSentence={() => skipSentence(1)}
+          canGoToPreviousSentence={currentIndex > 0}
+          canGoToNextSentence={currentIndex < totalChunks - 1}
           onStop={() => {
             state.stop();
             navigation.goBack();
