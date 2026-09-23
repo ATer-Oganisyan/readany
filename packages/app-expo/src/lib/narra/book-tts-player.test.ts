@@ -482,6 +482,34 @@ describe("replaying structured narration", () => {
 });
 
 describe("seek playback intent", () => {
+  it("lets the player seek within a loaded queue without resuming paused audio", async () => {
+    const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+    const fake = { speak: vi.fn(async () => {}), stop: vi.fn(), pause: vi.fn(), resume: vi.fn() };
+    setTTSPlayerFactories({ createEdgeTTS: () => fake });
+    const segments = [
+      { text: "one", cfi: "first" },
+      { text: "two", cfi: "second" },
+    ];
+    try {
+      useTTSStore.getState().stop();
+      useTTSStore.setState({ config: DEFAULT_TTS_CONFIG, resumeFromReader: null });
+      useTTSStore.getState().play(segments);
+      useTTSStore.setState({ playState: "paused" });
+      useTTSStore.getState().jumpToChunk(1);
+      expect(useTTSStore.getState()).toMatchObject({
+        playState: "paused",
+        currentChunkIndex: 1,
+        currentLocationCfi: "second",
+      });
+      expect(fake.speak).toHaveBeenCalledTimes(1);
+      useTTSStore.getState().resume();
+      expect(fake.speak).toHaveBeenLastCalledWith(["two"], expect.anything());
+    } finally {
+      useTTSStore.getState().stop();
+      setTTSPlayerFactories({});
+    }
+  });
+
   it("keeps a paused chapter seek paused and invalidates an async seek on cancellation", async () => {
     const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
     const fake = { speak: vi.fn(), stop: vi.fn(), pause: vi.fn(), resume: vi.fn() };

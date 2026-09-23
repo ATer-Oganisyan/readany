@@ -752,6 +752,7 @@ export const useTTSStore = create<TTSState>()(
         clearRespeakTimer();
         if (index < 0 || index >= _sessionSegments.length) return;
 
+        const wasPaused = get().playState === "paused";
         const config = normalizeTTSConfig(get().config);
         const remainingSegments = _sessionSegments.slice(index);
         if (remainingSegments.length === 0) {
@@ -770,14 +771,14 @@ export const useTTSStore = create<TTSState>()(
         _sessionCurrentIndex = index;
 
         set({
-          playState: "loading",
+          playState: wasPaused ? "paused" : "loading",
           currentSegmentText: _sessionSegments[index] || "",
           currentChunkIndex: index,
           currentLocationCfi: get().segmentCfis[index] ?? get().currentLocationCfi,
           totalChunks: _sessionSegments.length,
         });
 
-        startPlayback(remainingSegments, config, index, set, get);
+        if (!wasPaused) startPlayback(remainingSegments, config, index, set, get);
       },
 
       setSleepTimer: (minutes: number) => {
