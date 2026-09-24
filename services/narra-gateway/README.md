@@ -42,27 +42,29 @@ as portraits and square or landscape images as scenes. Provider credentials
 never enter the mobile contract.
 
 Character portraits can opt into `CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED=true`.
-In this mode a provider 5xx stops the current request so the durable media job
-retries with increasing delay (up to six attempts). HTTP 400 moves immediately
-to the next model in `CHARACTER_PORTRAIT_FALLBACK_MODELS`, in order; after the
-last model returns 400, the job fails without another delayed retry. The list
+Image requests for covers, scenes and portraits use `IMAGE_PROVIDER_MAX_ATTEMPTS`
+total attempts per model. A provider 5xx retries the same model after the delays
+listed in `IMAGE_PROVIDER_RETRY_DELAYS_MS`; the defaults are three total attempts
+with 2- and 4-second delays. Any HTTP 4xx moves immediately to the next configured
+model. Client cancellation stops both retries and fallback. After the per-model
+5xx attempts are exhausted, the error is returned to the caller; durable jobs may
+still apply their existing outer retry policy. The portrait fallback list
 uses the selected `COVER_IMAGE_PROVIDER`, supports up to eight fallback models,
 and defaults to its existing single fallback when unset. An explicitly empty
 list disables fallback. The whole cascade has at most eight minutes, shared
 between the remaining models, with two minutes reserved for storing the
-portrait, generating other bundle assets and returning the response. A timed-out
-model stops the cascade for a delayed job retry. The media worker needs
+portrait, generating other bundle assets and returning the response. The media worker needs
 `GENERATOR_TIMEOUT_MS=600000`; the production compose file already sets it.
-With the toggle off, the current portrait routing and retry behavior is unchanged.
-Cover generation always advances after any provider error through the ordered
+The toggle controls whether automatic portraits use the full ordered portrait
+fallback list; the common retry policy applies either way.
+Cover generation advances after HTTP 4xx through the ordered
 `COVER_IMAGE_FALLBACK_MODELS` list. When that variable is unset, covers reuse
 `CHARACTER_PORTRAIT_FALLBACK_MODELS`, which keeps the existing production model
 order; when both are unset, the legacy single fallback remains in use. The cover
 job's time budget is divided between the remaining models so the last fallback
 still gets an attempt. Manual 3:4 portrait regeneration uses the same full list
-and advances after any provider error within a shared two-minute budget, leaving
+and the same 4xx/5xx rules within a shared two-minute budget, leaving
 room inside the existing 150-second mobile request timeout.
-Other interactive image shapes and scene generation are unchanged.
 
 GPT-5.6 Luna's model and reasoning modes are documented by
 [OpenAI](https://developers.openai.com/api/docs/models/gpt-5.6-luna), while

@@ -520,7 +520,7 @@ test('LiteLLM cover request uses the standard images generations contract', asyn
   })
 })
 
-test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async () => {
+test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2 after 4xx', async () => {
   const models = []
   const bodies = []
   const result = await requestCoverImageWithFallback({
@@ -530,7 +530,7 @@ test('LiteLLM cover route falls back from GPT Image 2 to Nano Banana 2', async (
       const body = JSON.parse(init.body)
       models.push(body.model)
       bodies.push(body)
-      if (models.length === 1) return new Response('upstream unavailable', { status: 502 })
+      if (models.length === 1) return new Response('content rejected', { status: 422 })
       return new Response(JSON.stringify({ data: [{ b64_json: 'bmFuby1iYW5hbmE=' }] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -584,6 +584,38 @@ test('LiteLLM cover route requires an explicit staging plaintext allowlist', () 
   }), /plaintext HTTP is forbidden in production/)
 })
 
+test('image provider retry attempts and delays come from the server environment', () => {
+  const defaults = coverImageConfig({ OPENROUTER_API_KEY: 'or-key' })
+  assert.equal(defaults.retryMaxAttempts, 3)
+  assert.deepEqual(defaults.retryDelaysMs, [2_000, 4_000])
+
+  const configured = coverImageConfig({
+    OPENROUTER_API_KEY: 'or-key',
+    IMAGE_PROVIDER_MAX_ATTEMPTS: '4',
+    IMAGE_PROVIDER_RETRY_DELAYS_MS: '100, 200, 300'
+  })
+  assert.equal(configured.retryMaxAttempts, 4)
+  assert.deepEqual(configured.retryDelaysMs, [100, 200, 300])
+
+  const disabled = coverImageConfig({
+    OPENROUTER_API_KEY: 'or-key',
+    IMAGE_PROVIDER_MAX_ATTEMPTS: '1',
+    IMAGE_PROVIDER_RETRY_DELAYS_MS: ''
+  })
+  assert.equal(disabled.retryMaxAttempts, 1)
+  assert.deepEqual(disabled.retryDelaysMs, [])
+
+  assert.throws(() => coverImageConfig({
+    OPENROUTER_API_KEY: 'or-key',
+    IMAGE_PROVIDER_MAX_ATTEMPTS: '0'
+  }), /IMAGE_PROVIDER_MAX_ATTEMPTS/)
+  assert.throws(() => coverImageConfig({
+    OPENROUTER_API_KEY: 'or-key',
+    IMAGE_PROVIDER_MAX_ATTEMPTS: '3',
+    IMAGE_PROVIDER_RETRY_DELAYS_MS: '2000'
+  }), /IMAGE_PROVIDER_RETRY_DELAYS_MS/)
+})
+
 test('LiteLLM cover route normalizes standard JSON image errors', async () => {
   await assert.rejects(
     requestCoverImage({
@@ -632,7 +664,7 @@ test('Nano Banana fallback can be overridden by the server environment', async (
     fetchImpl: async (_url, init) => {
       const body = JSON.parse(init.body)
       models.push(body.model)
-      if (models.length === 1) return new Response('bad gateway', { status: 502 })
+      if (models.length === 1) return new Response('invalid request', { status: 400 })
       return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -670,9 +702,10 @@ test('moderation rejection falls back to Nano Banana', async () => {
   assert.deepEqual(result.attempts.map(({ error_code }) => error_code), ['CENSOR', undefined])
 })
 
-test('cover cascade advances through every configured fallback after any error', async () => {
+test('cover cascade advances on 4xx and retries 5xx on the same model', async () => {
   const requestId = 'cover-full-cascade'
   const calls = []
+  const delays = []
   const result = await requestCoverImageWithFallback({
     prompt: 'book cover',
     requestId,
@@ -688,6 +721,7 @@ test('cover cascade advances through every configured fallback after any error',
       LITELLM_API_KEY: 'proxy-key',
       LITELLM_IMAGE_MODEL: 'gpt-image-2'
     },
+    retryDelay: async (milliseconds) => { delays.push(milliseconds) },
     fetchImpl: async (_url, init) => {
       calls.push({
         model: JSON.parse(init.body).model,
@@ -695,7 +729,7 @@ test('cover cascade advances through every configured fallback after any error',
       })
       if (calls.length === 1) return new Response('content moderation blocked', { status: 422 })
       if (calls.length === 2) return new Response('invalid request', { status: 400 })
-      if (calls.length === 3) return new Response('upstream unavailable', { status: 502 })
+      if (calls.length < 5) return new Response('upstream unavailable', { status: 502 })
       return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -707,16 +741,19 @@ test('cover cascade advances through every configured fallback after any error',
     { model: 'gpt-image-2', requestId },
     { model: 'qwen/qwen-image-3', requestId },
     { model: 'black-forest-labs/flux.2-pro', requestId },
-    { model: 'bytedance-seed/seedream-5-0-lite', requestId }
+    { model: 'black-forest-labs/flux.2-pro', requestId },
+    { model: 'black-forest-labs/flux.2-pro', requestId }
   ])
-  assert.equal(result.model, 'bytedance-seed/seedream-5-0-lite')
+  assert.equal(result.model, 'black-forest-labs/flux.2-pro')
+  assert.deepEqual(delays, [2_000, 4_000])
   assert.deepEqual(result.attempts.map(({ error_code, retry_index }) => [error_code, retry_index]), [
-    ['CENSOR', 0], ['VALIDATION', 1], ['NETWORK', 2], [undefined, 3]
+    ['CENSOR', 0], ['VALIDATION', 1], ['NETWORK', 2], ['NETWORK', 2], [undefined, 2]
   ])
 })
 
-test('cover cascade preserves every failed attempt when all models fail', async () => {
+test('cover cascade stops after configured 5xx attempts without changing model', async () => {
   const calls = []
+  const delays = []
   await assert.rejects(
     requestCoverImageWithFallback({
       prompt: 'book cover',
@@ -728,61 +765,58 @@ test('cover cascade preserves every failed attempt when all models fail', async 
         LITELLM_API_KEY: 'proxy-key',
         LITELLM_IMAGE_MODEL: 'gpt-image-2'
       },
+      retryDelay: async (milliseconds) => { delays.push(milliseconds) },
       fetchImpl: async (_url, init) => {
         calls.push(JSON.parse(init.body).model)
-        const status = [429, 502, 400][calls.length - 1]
-        return new Response('provider failed', { status })
+        return new Response('provider failed', { status: 503 })
       }
     }),
     (error) => {
-      assert.equal(error.code, 'VALIDATION')
-      assert.equal(error.status, 400)
+      assert.equal(error.code, 'NETWORK')
+      assert.equal(error.status, 503)
       assert.deepEqual(error.attempts.map(({ http_status, retry_index }) => [http_status, retry_index]), [
-        [429, 0], [502, 1], [400, 2]
+        [503, 0], [503, 0], [503, 0]
       ])
       return true
     }
   )
-  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one', 'fallback-two'])
+  assert.deepEqual(calls, ['gpt-image-2', 'gpt-image-2', 'gpt-image-2'])
+  assert.deepEqual(delays, [2_000, 4_000])
 })
 
 test('cover cascade gives every remaining model a share of the total time budget', async () => {
   const calls = []
-  const result = await requestCoverImageWithFallback({
-    prompt: 'book cover',
-    cascadeOnAnyError: true,
-    cascadeBudgetMs: 180,
-    fallbackModels: ['fallback-one', 'fallback-two'],
-    env: {
-      COVER_IMAGE_PROVIDER: 'litellm',
-      LITELLM_BASE_URL: 'https://litellm.test',
-      LITELLM_API_KEY: 'proxy-key',
-      LITELLM_IMAGE_MODEL: 'gpt-image-2'
-    },
-    fetchImpl: async (_url, init) => {
-      calls.push(JSON.parse(init.body).model)
-      if (calls.length === 1) return new Response('invalid request', { status: 400 })
-      if (calls.length === 3) {
-        return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'book cover',
+      cascadeOnAnyError: true,
+      cascadeBudgetMs: 180,
+      fallbackModels: ['fallback-one', 'fallback-two'],
+      env: {
+        COVER_IMAGE_PROVIDER: 'litellm',
+        LITELLM_BASE_URL: 'https://litellm.test',
+        LITELLM_API_KEY: 'proxy-key',
+        LITELLM_IMAGE_MODEL: 'gpt-image-2'
+      },
+      retryDelay: async () => {},
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(init.body).model)
+        if (calls.length === 1) return new Response('invalid request', { status: 400 })
+        return new Promise((_resolve, reject) => {
+          const guard = setTimeout(() => reject(new Error('model exceeded its cascade budget')), 2_000)
+          init.signal.addEventListener('abort', () => {
+            clearTimeout(guard)
+            reject(init.signal.reason)
+          }, { once: true })
         })
       }
-      return new Promise((_resolve, reject) => {
-        const guard = setTimeout(() => reject(new Error('model exceeded its cascade budget')), 2_000)
-        init.signal.addEventListener('abort', () => {
-          clearTimeout(guard)
-          reject(init.signal.reason)
-        }, { once: true })
-      })
-    }
-  })
+    }),
+    (error) => error.status === 504 && error.code === 'TIMEOUT'
+  )
 
-  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one', 'fallback-two'])
-  assert.equal(result.model, 'fallback-two')
-  assert.deepEqual(result.attempts.map(({ error_code, retry_index }) => [error_code, retry_index]), [
-    ['VALIDATION', 0], ['TIMEOUT', 1], [undefined, 2]
-  ])
+  assert.equal(calls[0], 'gpt-image-2')
+  assert.ok(calls.slice(1).every((model) => model === 'fallback-one'))
+  assert.ok(calls.length >= 2 && calls.length <= 4)
 })
 
 test('character portrait can fall back after a moderation rejection', async () => {
@@ -875,7 +909,7 @@ const portraitCascadeEnv = {
   LITELLM_IMAGE_MODEL: 'gpt-image-2'
 }
 
-test('enabled portrait cascade follows every HTTP 400 until a model succeeds', async () => {
+test('enabled portrait cascade follows every HTTP 4xx until a model succeeds', async () => {
   const requestId = 'portrait-cascade'
   const calls = []
   const result = await requestCoverImageWithFallback({
@@ -890,7 +924,7 @@ test('enabled portrait cascade follows every HTTP 400 until a model succeeds', a
         requestId: new Headers(init.headers).get('x-request-id')
       })
       return calls.length < 3
-        ? new Response('invalid for this model', { status: 400 })
+        ? new Response('refused by this model', { status: calls.length === 1 ? 422 : 429 })
         : new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
@@ -905,18 +939,20 @@ test('enabled portrait cascade follows every HTTP 400 until a model succeeds', a
   ])
   assert.equal(result.model, 'fallback-two')
   assert.deepEqual(result.attempts.map(({ http_status, retry_index }) => [http_status, retry_index]), [
-    [400, 0], [400, 1], [200, 2]
+    [422, 0], [429, 1], [200, 2]
   ])
 })
 
-test('enabled portrait cascade sends a 5xx to the delayed job retry without switching models', async () => {
+test('enabled portrait cascade retries 5xx three times on the same model', async () => {
   const calls = []
+  const delays = []
   await assert.rejects(
     requestCoverImageWithFallback({
       prompt: 'fictional character portrait',
       cascadeOnHttp400: true,
       fallbackModels: ['fallback-one', 'fallback-two'],
       env: portraitCascadeEnv,
+      retryDelay: async (milliseconds) => { delays.push(milliseconds) },
       fetchImpl: async (_url, init) => {
         calls.push(JSON.parse(init.body).model)
         return new Response('upstream unavailable', { status: 503 })
@@ -925,11 +961,12 @@ test('enabled portrait cascade sends a 5xx to the delayed job retry without swit
     (error) => {
       assert.equal(error.status, 503)
       assert.equal(error.code, 'NETWORK')
-      assert.deepEqual(error.attempts.map(({ http_status }) => http_status), [503])
+      assert.deepEqual(error.attempts.map(({ http_status }) => http_status), [503, 503, 503])
       return true
     }
   )
-  assert.deepEqual(calls, ['gpt-image-2'])
+  assert.deepEqual(calls, ['gpt-image-2', 'gpt-image-2', 'gpt-image-2'])
+  assert.deepEqual(delays, [2_000, 4_000])
 })
 
 test('enabled portrait cascade limits a slow model to its share of the total budget', async () => {
@@ -941,6 +978,7 @@ test('enabled portrait cascade limits a slow model to its share of the total bud
       cascadeBudgetMs: 180,
       fallbackModels: ['fallback-one', 'fallback-two'],
       env: portraitCascadeEnv,
+      retryDelay: async () => {},
       fetchImpl: async (_url, init) => {
         calls.push(JSON.parse(init.body).model)
         if (calls.length === 1) return new Response('invalid', { status: 400 })
@@ -956,43 +994,50 @@ test('enabled portrait cascade limits a slow model to its share of the total bud
     (error) => {
       assert.equal(error.status, 504)
       assert.equal(error.code, 'TIMEOUT')
-      assert.deepEqual(error.attempts.map(({ error_code, retry_index }) => [error_code, retry_index]), [
-        ['VALIDATION', 0], ['TIMEOUT', 1]
-      ])
+      assert.deepEqual(
+        error.attempts.map(({ error_code, retry_index }) => [error_code, retry_index]),
+        [['VALIDATION', 0], ...error.attempts.slice(1).map(() => ['TIMEOUT', 1])]
+      )
       return true
     }
   )
-  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one'])
+  assert.equal(calls[0], 'gpt-image-2')
+  assert.ok(calls.slice(1).every((model) => model === 'fallback-one'))
+  assert.ok(calls.length >= 2 && calls.length <= 4)
 })
 
-test('enabled portrait cascade switches models only for HTTP 400', async () => {
+test('enabled portrait cascade switches models for any HTTP 4xx', async () => {
   for (const [status, expectedCode] of [[422, 'CENSOR'], [429, 'RATE']]) {
     const calls = []
-    await assert.rejects(
-      requestCoverImageWithFallback({
-        prompt: 'fictional character portrait',
-        cascadeOnHttp400: true,
-        fallbackModels: ['fallback-one'],
-        env: portraitCascadeEnv,
-        fetchImpl: async (_url, init) => {
-          calls.push(JSON.parse(init.body).model)
-          return new Response('upstream refused', { status })
-        }
-      }),
-      (error) => error.status === status && error.code === expectedCode
-    )
-    assert.deepEqual(calls, ['gpt-image-2'])
+    const result = await requestCoverImageWithFallback({
+      prompt: 'fictional character portrait',
+      cascadeOnHttp400: true,
+      fallbackModels: ['fallback-one'],
+      env: portraitCascadeEnv,
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(init.body).model)
+        if (calls.length === 1) return new Response('upstream refused', { status })
+        return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
+    })
+    assert.equal(result.attempts[0].error_code, expectedCode)
+    assert.deepEqual(calls, ['gpt-image-2', 'fallback-one'])
   }
 })
 
-test('enabled portrait cascade stops on a fallback 5xx and retries the whole job later', async () => {
+test('enabled portrait cascade exhausts 5xx retries on the current fallback model', async () => {
   const calls = []
+  const delays = []
   await assert.rejects(
     requestCoverImageWithFallback({
       prompt: 'fictional character portrait',
       cascadeOnHttp400: true,
       fallbackModels: ['fallback-one', 'fallback-two'],
       env: portraitCascadeEnv,
+      retryDelay: async (milliseconds) => { delays.push(milliseconds) },
       fetchImpl: async (_url, init) => {
         calls.push(JSON.parse(init.body).model)
         return new Response(calls.length === 1 ? 'invalid' : 'upstream unavailable', {
@@ -1003,11 +1048,12 @@ test('enabled portrait cascade stops on a fallback 5xx and retries the whole job
     (error) => {
       assert.equal(error.status, 502)
       assert.equal(error.code, 'NETWORK')
-      assert.deepEqual(error.attempts.map(({ http_status }) => http_status), [400, 502])
+      assert.deepEqual(error.attempts.map(({ http_status }) => http_status), [400, 502, 502, 502])
       return true
     }
   )
-  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one'])
+  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one', 'fallback-one', 'fallback-one'])
+  assert.deepEqual(delays, [2_000, 4_000])
 })
 
 test('enabled portrait cascade ends after every model returns HTTP 400', async () => {
@@ -1056,12 +1102,15 @@ test('disabled portrait cascade uses its single fallback for validation errors',
   ])
 })
 
-test('raw AbortSignal timeout is normalized and falls back to Nano Banana', async () => {
+test('scene transport timeout is normalized and retried on the same model', async () => {
   const models = []
+  const delays = []
   const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError')
   assert.equal(typeof timeout.code, 'number')
   const result = await requestCoverImageWithFallback({
-    prompt: 'cover',
+    prompt: 'scene',
+    aspectRatio: '4:3',
+    retryDelay: async (milliseconds) => { delays.push(milliseconds) },
     fetchImpl: async (_url, init) => {
       const model = JSON.parse(init.body).model
       models.push(model)
@@ -1073,8 +1122,31 @@ test('raw AbortSignal timeout is normalized and falls back to Nano Banana', asyn
     },
     env: { OPENROUTER_API_KEY: 'or-key' }
   })
-  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-3.1-flash-image'])
-  assert.equal(result.model, 'google/gemini-3.1-flash-image')
+  assert.deepEqual(models, ['openai/gpt-image-2', 'openai/gpt-image-2'])
+  assert.deepEqual(delays, [2_000])
+  assert.equal(result.model, 'openai/gpt-image-2')
+})
+
+test('client cancellation stops the image chain without retry or fallback', async () => {
+  const models = []
+  const delays = []
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'portrait',
+      aspectRatio: '3:4',
+      cascadeOnAnyError: true,
+      fallbackModels: ['fallback-one', 'fallback-two'],
+      retryDelay: async (milliseconds) => { delays.push(milliseconds) },
+      fetchImpl: async (_url, init) => {
+        models.push(JSON.parse(init.body).model)
+        throw new Error('client disconnected')
+      },
+      env: { OPENROUTER_API_KEY: 'or-key' }
+    }),
+    (error) => error.status === 499 && error.code === 'CANCELLED'
+  )
+  assert.deepEqual(models, ['openai/gpt-image-2'])
+  assert.deepEqual(delays, [])
 })
 
 test('native transport codes are normalized to the closed image error vocabulary', () => {
