@@ -16,7 +16,6 @@ import {
   Trash2Icon,
   XIcon,
 } from "@/components/ui/Icon";
-import { getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { ScrollViewMarker } from "@/components/ui/ScrollViewMarker";
 import { Text, TextInput } from "@/components/ui/Typography";
@@ -651,42 +650,26 @@ function LibraryScreenContent() {
 
   useLayoutEffect(() => {
     if (selectionMode) {
-      nav.setOptions(
-        Platform.OS === "ios"
-          ? { unstable_headerRightItems: () => [] }
-          : { headerRight: () => null },
-      );
+      nav.setOptions({
+        headerRight: () => null,
+        ...(Platform.OS === "ios" ? { unstable_headerRightItems: undefined } : {}),
+      });
       return;
     }
 
     if (Platform.OS === "ios") {
       nav.setOptions({
-        unstable_headerRightItems: () => [
-          {
-            type: "menu" as const,
-            // Заголовок пустой: с ним iOS рисует в баре текст вместо плюса.
-            label: "",
-            accessibilityLabel: t("library.importFirst", "Добавить книгу"),
-            icon: {
-              type: "image" as const,
-              source: getStrokeIconImageSource("plus"),
-            },
-            disabled: isBookImporting,
-            menu: {
-              items: [
-                {
-                  type: "action" as const,
-                  label: t("library.importSourceLocal", "Выбрать файл"),
-                  icon: {
-                    type: "image" as const,
-                    source: getStrokeIconImageSource("folder"),
-                  },
-                  onPress: () => void handleLocalImport(),
-                },
-              ],
-            },
-          },
-        ],
+        unstable_headerRightItems: undefined,
+        headerRight: () => (
+          <ImportSourceHeaderMenuButton
+            accessibilityLabel={t("library.importFirst", "Добавить книгу")}
+            localLabel={t("library.importSourceLocal", "Выбрать файл")}
+            color={colors.foreground}
+            disabled={isBookImporting}
+            onLocalPress={() => void handleLocalImport()}
+            onFallbackPress={() => void handleLocalImport()}
+          />
+        ),
       });
       return;
     }
@@ -706,6 +689,7 @@ function LibraryScreenContent() {
       ),
     });
   }, [
+    colors.foreground,
     colors.primary,
     handleLocalImport,
     handleOpenImportSources,
