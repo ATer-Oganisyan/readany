@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   coverImageConfig,
   coverRouteReadiness,
+  interactivePortraitCascadeOptions,
   llmRouteReadiness,
   maxTokensFor,
   timeoutMsFor,
@@ -17,6 +18,29 @@ import {
 } from '../providers/providers.mjs'
 
 const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+
+test('only manual 3:4 portraits opt into the full ordered fallback cascade', () => {
+  const fallbackModels = ['fallback-one', 'fallback-two', 'fallback-three']
+  assert.deepEqual(interactivePortraitCascadeOptions({
+    aspectRatio: '3:4',
+    fallbackModels,
+    cascadeBudgetMs: 480_000
+  }), {
+    cascadeOnAnyError: true,
+    fallbackModels,
+    cascadeBudgetMs: 480_000
+  })
+  assert.deepEqual(interactivePortraitCascadeOptions({
+    aspectRatio: '1:1',
+    fallbackModels,
+    cascadeBudgetMs: 480_000
+  }), {})
+  assert.deepEqual(interactivePortraitCascadeOptions({
+    aspectRatio: '3:2',
+    fallbackModels,
+    cascadeBudgetMs: 480_000
+  }), {})
+})
 
 test('provider route is selected only from server environment', () => {
   const route = routeForPurpose('summary', {

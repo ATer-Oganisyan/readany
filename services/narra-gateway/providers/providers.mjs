@@ -927,3 +927,16 @@ export async function requestCoverImageWithFallback(options) {
     : [config.fallbackModel]
   return requestImageFallbackChain(options, config, fallbackModels)
 }
+
+export function interactivePortraitCascadeOptions({
+  aspectRatio,
+  fallbackModels,
+  cascadeBudgetMs
+}) {
+  if (aspectRatio !== '3:4') return {}
+  return {
+    cascadeOnAnyError: true,
+    fallbackModels,
+    cascadeBudgetMs
+  }
+}

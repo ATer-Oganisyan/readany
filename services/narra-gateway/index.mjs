@@ -18,6 +18,7 @@ import {
   validationErrors
 } from './platform/contracts.mjs'
 import {
+  interactivePortraitCascadeOptions,
   llmRouteReadiness,
   mediaImageQualityForDimensions,
   requestChat,
@@ -1763,6 +1764,11 @@ app.post('/v2/media/images', imageDailyLimit, express.json({ limit: '1mb' }), as
           height,
           portraitQuality: CHARACTER_PORTRAIT_IMAGE_QUALITY,
           sceneQuality: SCENE_IMAGE_QUALITY
+        }),
+        ...interactivePortraitCascadeOptions({
+          aspectRatio,
+          fallbackModels: COVER_IMAGE_FALLBACK_MODELS,
+          cascadeBudgetMs: portraitCascadeBudgetMs()
         }),
         signal
       })
