@@ -1,9 +1,57 @@
 diff --git a/apple/RNCWebViewImpl.m b/apple/RNCWebViewImpl.m
-index 7f5c24d6e2cfb26eddbc513bf17a81c24a7273e2..8d87fd6fbf37dc7bb21bb8efc8c15bbc46174d38 100644
 --- a/apple/RNCWebViewImpl.m
 +++ b/apple/RNCWebViewImpl.m
-@@ -886,8 +886,10 @@ - (void)visitSource
- 
+@@ -87,19 +87,30 @@
+       }
+   }
+
++  if (@available(iOS 16.0, *)) {
++      return [super canPerformAction:action withSender:sender];
++  }
+   if (!self.menuItems) {
+       return [super canPerformAction:action withSender:sender];
+   }
+
+   return NO;
+ }
+-- (void)buildMenuWithBuilder:(id<UIMenuBuilder>)builder API_AVAILABLE(ios(13.0))  {
+-    if (@available(iOS 16.0, *)) {
+-      if(self.menuItems){
+-        [builder removeMenuForIdentifier:UIMenuLookup];
+-      }
+-    }
+-    [super buildMenuWithBuilder:builder];
++- (void)buildMenuWithBuilder:(id<UIMenuBuilder>)builder API_AVAILABLE(ios(13.0)) {
++  [super buildMenuWithBuilder:builder];
++  if (@available(iOS 16.0, *)) {
++    // Extend WebKit's selection menu so handle drags keep the same actions.
++    if (self.menuItems.count == 0) return;
++    NSMutableArray<UIMenuElement *> *commands = [NSMutableArray new];
++    for (NSDictionary *item in self.menuItems) {
++      NSString *selector = [CUSTOM_SELECTOR stringByAppendingString:item[@"key"]];
++      [commands addObject:[UICommand commandWithTitle:item[@"label"] image:nil
++        action:NSSelectorFromString(selector) propertyList:nil]];
++    }
++    [builder insertChildMenu:[UIMenu menuWithTitle:@"" image:nil
++      identifier:@"com.readany.selection" options:UIMenuOptionsDisplayInline children:commands]
++      atStartOfMenuForIdentifier:UIMenuRoot];
++  }
+ }
+ #else // TARGET_OS_OSX
+ - (void)scrollWheel:(NSEvent *)theEvent {
+@@ -579,7 +590,9 @@
+
+ #if !TARGET_OS_OSX
+   // Allow this object to recognize gestures
+-  if (self.menuItems != nil) {
++  if (@available(iOS 16.0, *)) {
++    // WebKit presents the augmented system menu for every selection gesture.
++  } else if (self.menuItems != nil) {
+     UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(startLongPress:)];
+     longPress.delegate = self;
+
+@@ -886,8 +899,10 @@
+
  #if !TARGET_OS_OSX
  -(void)setMenuItems:(NSArray<NSDictionary *> *)menuItems {
 -    _menuItems = menuItems;
@@ -13,5 +61,5 @@ index 7f5c24d6e2cfb26eddbc513bf17a81c24a7273e2..8d87fd6fbf37dc7bb21bb8efc8c15bbc
 +    _menuItems = menuItems.count > 0 ? menuItems : nil;
 +    _webView.menuItems = _menuItems;
  }
- 
+
  -(void)setSuppressMenuItems:(NSArray<NSString *> *)suppressMenuItems {

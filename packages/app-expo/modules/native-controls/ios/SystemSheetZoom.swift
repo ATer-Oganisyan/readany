@@ -45,6 +45,10 @@ final class SystemSheetZoomSourceRepository: NSObject {
     }
     if views.object(forKey: identifier as NSString) != nil {
       let options = UIViewController.Transition.ZoomOptions()
+      if identifier.hasPrefix("reader:") || identifier.hasPrefix("catalog:") {
+        options.interactiveDismissShouldBegin = { _ in false }
+        options.dimmingColor = .clear
+      }
       options.alignmentRectProvider = { context in
         let destination = context.zoomedViewController.view!
         guard let target = self.targets.object(forKey: identifier as NSString),
@@ -54,8 +58,18 @@ final class SystemSheetZoomSourceRepository: NSObject {
         guard !target.bounds.isEmpty else { return nil }
         return target.convert(target.bounds, to: destination)
       }
-      return .zoom(options: options, sourceViewProvider: { _ in
-        self.views.object(forKey: identifier as NSString)
+      return .zoom(options: options, sourceViewProvider: { context in
+        let source = self.views.object(forKey: identifier as NSString)
+        if context.zoomedViewController.isBeingDismissed,
+          let coordinator = context.zoomedViewController.transitionCoordinator
+        {
+          coordinator.animate(alongsideTransition: nil) { transition in
+            if !transition.isCancelled {
+              (source as? SystemSheetZoomSourceView)?.onZoomReturn()
+            }
+          }
+        }
+        return source
       })
     }
     return .zoom(options: nil, sourceBarButtonItemProvider: { _ in
@@ -247,6 +261,8 @@ final class SystemSheetZoomDestinationView: ExpoView {
 }
 
 final class SystemSheetZoomSourceView: ExpoView {
+  let onZoomReturn = EventDispatcher()
+
   var sourceIdentifier = "" {
     didSet {
       SystemSheetZoomSourceRepository.shared.unregister(identifier: oldValue, matching: self)

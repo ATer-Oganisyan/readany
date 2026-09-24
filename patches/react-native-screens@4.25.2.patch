@@ -2,13 +2,14 @@ diff --git a/ios/RNSScreenStack.mm b/ios/RNSScreenStack.mm
 index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..f6a19cf0d95ed8768972797e6cfd2ff251617644 100644
 --- a/ios/RNSScreenStack.mm
 +++ b/ios/RNSScreenStack.mm
-@@ -494,6 +494,14 @@ - (void)setModalViewControllers:(NSArray<UIViewController *> *)controllers
+@@ -494,6 +494,15 @@ - (void)setModalViewControllers:(NSArray<UIViewController *> *)controllers
          return;
        }
  
 +      if ([next isKindOfClass:[RNSScreen class]] &&
 +          (((RNSScreen *)next).screenView.stackPresentation == RNSScreenStackPresentationFormSheet ||
-+           ((RNSScreen *)next).screenView.stackPresentation == RNSScreenStackPresentationPageSheet)) {
++           ((RNSScreen *)next).screenView.stackPresentation == RNSScreenStackPresentationPageSheet ||
++           ((RNSScreen *)next).screenView.stackPresentation == RNSScreenStackPresentationFullScreenModal)) {
 +        [[NSNotificationCenter defaultCenter]
 +            postNotificationName:@"ReadAnyRNSScreenWillPresentFormSheet"
 +                          object:next];

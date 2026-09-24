@@ -654,6 +654,7 @@ describe("retaining audio across synthesis failures", () => {
     expect(states).toHaveBeenLastCalledWith("playing");
     const resets = vi.mocked(TrackPlayer.reset).mock.calls.length;
     for (const callback of runtime.listeners.get("end") ?? []) callback({ track: 2 });
+    await flush();
     expect(states).toHaveBeenLastCalledWith("paused");
     expect(runtime.deleted).toEqual([]);
     offline = false;
@@ -750,5 +751,61 @@ it("resumes after Pause and Play during an in-flight native recovery", async () 
   } finally {
     useTTSStore.getState().stop();
     setTTSPlayerFactories({});
+  }
+});
+
+it("retains the next sentence through silence and repeated Pause/Play while synthesis waits", async () => {
+  const { useTTSStore, setTTSPlayerFactories } = await import("@/stores/tts-store");
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  runtime.synth.mockImplementation(async (text: string) => {
+    if (Number(text) >= 3) await waiting;
+    return `file:///${text}.wav`;
+  });
+  setTTSPlayerFactories({ createEdgeTTS: () => player });
+  try {
+    useTTSStore.setState({ config: DEFAULT_TTS_CONFIG, resumeFromReader: null });
+    useTTSStore.getState().play(["0", "1", "2", "3", "4", "5"]);
+    await flush();
+    vi.mocked(TrackPlayer.getActiveTrack).mockImplementation(async () => runtime.queue[2]);
+    for (const cb of runtime.listeners.get("track") ?? []) cb({ track: runtime.queue[2] });
+    for (const cb of runtime.listeners.get("end") ?? []) cb({ track: 2 });
+    await flush();
+    expect(useTTSStore.getState().isBuffering).toBe(true);
+    expect(runtime.queue[3].id).toMatch(/^tts-silence-/);
+    for (const cb of runtime.listeners.get("end") ?? []) cb({ track: 3 });
+    await flush();
+    const resets = vi.mocked(TrackPlayer.reset).mock.calls.length;
+    for (let i = 0; i < 2; i++) {
+      useTTSStore.getState().pause();
+      expect(useTTSStore.getState().playState).toBe("paused");
+      useTTSStore.getState().resume();
+      expect(useTTSStore.getState().isBuffering).toBe(true);
+    }
+    expect(TrackPlayer.reset).toHaveBeenCalledTimes(resets);
+    vi.mocked(TrackPlayer.getActiveTrack).mockImplementation(async () =>
+      runtime.queue.find((t) => t.id === "tts-chunk-3"),
+    );
+    useTTSStore.getState().pause();
+    const plays = vi.mocked(TrackPlayer.play).mock.calls.length;
+    release();
+    await flush();
+    expect(useTTSStore.getState().playState).toBe("paused");
+    expect(TrackPlayer.play).toHaveBeenCalledTimes(plays);
+    useTTSStore.getState().resume();
+    await flush();
+    const nextPosition = runtime.queue.findIndex((t) => t.id === "tts-chunk-3");
+    expect(TrackPlayer.skip).toHaveBeenCalledWith(nextPosition);
+    expect(useTTSStore.getState().currentChunkIndex).toBe(3);
+    expect(useTTSStore.getState().isBuffering).toBe(false);
+    expect(useTTSStore.getState().playState).toBe("playing");
+    expect(TrackPlayer.reset).toHaveBeenCalledTimes(resets);
+  } finally {
+    release();
+    useTTSStore.getState().stop();
+    setTTSPlayerFactories({});
+    vi.mocked(TrackPlayer.getActiveTrack).mockImplementation(async () => runtime.queue[0]);
   }
 });

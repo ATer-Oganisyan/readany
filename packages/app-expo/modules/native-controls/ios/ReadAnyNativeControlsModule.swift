@@ -152,6 +152,7 @@ public final class ReadAnyNativeControlsModule: Module {
 
     View(SystemSheetZoomSourceView.self) {
       Prop("sourceId") { (view, value: String) in view.sourceIdentifier = value }
+      Events("onZoomReturn")
     }
 
     View(SystemSheetZoomDestinationView.self) {

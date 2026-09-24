@@ -262,7 +262,7 @@ export function TabNavigator() {
               </TabContent>
             )
       }
-      screenOptions={{
+      screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.primary80,
@@ -271,12 +271,13 @@ export function TabNavigator() {
         tabBarStyle: Platform.OS === "ios" ? undefined : { backgroundColor: colors.background },
         tabBarBlurEffect: "systemDefault",
         tabBarControllerMode: "auto",
-        tabBarMinimizeBehavior: hasPlayer && nativeAccessory ? "onScrollDown" : "none",
+        tabBarMinimizeBehavior:
+          hasPlayer && nativeAccessory && route.name !== "Search" ? "onScrollDown" : "none",
         bottomAccessory:
-          hasPlayer && nativeAccessory
+          hasPlayer && nativeAccessory && route.name !== "Search"
             ? ({ placement }) => <AudiobookPlayerAccessory placement={placement} />
             : undefined,
-      }}
+      })}
     >
       <Tab.Screen
         name="Library"

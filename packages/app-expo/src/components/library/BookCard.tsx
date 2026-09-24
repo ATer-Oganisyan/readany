@@ -1,3 +1,5 @@
+import { SystemSheetZoomSource } from "@/components/navigation/SystemSheetZoomSource";
+import { useSheetZoomReturnShadow } from "@/components/navigation/sheet-zoom-return";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/book/cover-display";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
@@ -13,12 +15,12 @@ import type { Book } from "@readany/core/types";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image, Pressable, View } from "react-native";
-import Animated from "react-native-reanimated";
 import { BookCardActionSheet } from "./BookCardActionSheet";
-import { makeStyles } from "./book-card-styles";
+import { getBookCardMetrics, makeStyles } from "./book-card-styles";
 import { BookCoverTypography } from "./book-cover-typography";
 import { BookSpineOverlay } from "./book-spine-overlay";
 import { useCoverPress } from "./cover-press";
+import { BookSurface } from "./perspective-book";
 import { useResolvedAssetUris } from "./use-resolved-asset-uris";
 
 interface BookCardProps {
@@ -49,6 +51,7 @@ export const BookCard = memo(function BookCard({
   const swipePressGuard = useSwipePressGuard();
   const [failedCoverUrl, setFailedCoverUrl] = useState<string>();
   const { pressStyle, onPressIn, onPressOut } = useCoverPress();
+  const { shadowOpacity, onZoomReturn } = useSheetZoomReturnShadow(`reader:${book.id}`);
   const bundledCatalogBook = findBundledCatalogBookByTitle(book.meta.title);
   const coverItems = useMemo(
     () => [{ bookId: book.id, coverUrl: book.meta.coverUrl ?? null }],
@@ -74,61 +77,75 @@ export const BookCard = memo(function BookCard({
       : (bundledCatalogBook?.coverTextTone ?? "dark");
 
   return (
-    <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
-      <Pressable
-        onPress={(event) => {
-          if (swipePressGuard?.canPress(event) === false) return;
-          onOpen(book);
-        }}
-        onPressIn={onPressIn}
-        onPressOut={onPressOut}
-        // Небольшой сдвиг пальца не должен отменять нажатие.
-        pressRetentionOffset={16}
-        style={s.container}
-        accessibilityRole="button"
-        accessibilityLabel={book.meta.title}
-        accessibilityHint={t("notes.openBook", "Открыть книгу")}
-      >
-        <Animated.View style={pressStyle}>
-          {/* Cover — 28:41 aspect ratio */}
-          <View style={s.coverWrap}>
-            <View
-              style={[
-                s.coverCanvas,
-                {
-                  backgroundColor: loadingCoverColorForTitleAuthor({
-                    title: book.meta.title,
-                    author: book.meta.author,
-                  }),
-                },
-              ]}
-            >
-              {hasUsableSavedCover && resolvedCoverUrl ? (
-                <Image
-                  source={{ uri: resolvedCoverUrl }}
-                  style={s.coverImage}
-                  resizeMode="cover"
-                  onError={() => setFailedCoverUrl(resolvedCoverUrl)}
+    <SystemSheetZoomSource
+      sourceId={`reader:${book.id}`}
+      onZoomReturn={onZoomReturn}
+      collapsable={false}
+    >
+      <BookCardActionSheet book={book} onOpen={onOpen} onDelete={onDelete}>
+        <Pressable
+          onPress={(event) => {
+            if (swipePressGuard?.canPress(event) === false) return;
+            onOpen(book);
+          }}
+          onPressIn={onPressIn}
+          onPressOut={onPressOut}
+          // Небольшой сдвиг пальца не должен отменять нажатие.
+          pressRetentionOffset={16}
+          style={s.container}
+          accessibilityRole="button"
+          accessibilityLabel={book.meta.title}
+          accessibilityHint={t("notes.openBook", "Открыть книгу")}
+        >
+          <BookSurface
+            width={cardWidth}
+            height={getBookCardMetrics(cardWidth).coverHeight}
+            coverEffects={false}
+            shadowOpacity={shadowOpacity}
+            style={pressStyle}
+            cover={
+              <View
+                style={[
+                  s.coverCanvas,
+                  {
+                    backgroundColor: loadingCoverColorForTitleAuthor({
+                      title: book.meta.title,
+                      author: book.meta.author,
+                    }),
+                  },
+                ]}
+              >
+                {hasUsableSavedCover && resolvedCoverUrl ? (
+                  <Image
+                    source={{ uri: resolvedCoverUrl }}
+                    style={s.coverImage}
+                    resizeMode="cover"
+                    onError={() => setFailedCoverUrl(resolvedCoverUrl)}
+                  />
+                ) : bundledCoverUri ? (
+                  <Image
+                    source={{ uri: bundledCoverUri }}
+                    style={s.coverImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
+
+                {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
+                <BookSpineOverlay coverWidth={cardWidth} />
+
+                <BookCoverTypography
+                  title={book.meta.title}
+                  author={book.meta.author}
+                  width={cardWidth}
+                  showText={showCoverTypography}
+                  textTone={coverTextTone}
+                  coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
                 />
-              ) : bundledCoverUri ? (
-                <Image source={{ uri: bundledCoverUri }} style={s.coverImage} resizeMode="cover" />
-              ) : null}
-
-              {/* Корешок остаётся видимым и на собственной обложке, и на заглушке. */}
-              <BookSpineOverlay coverWidth={cardWidth} />
-
-              <BookCoverTypography
-                title={book.meta.title}
-                author={book.meta.author}
-                width={cardWidth}
-                showText={showCoverTypography}
-                textTone={coverTextTone}
-                coverUri={(hasUsableSavedCover ? resolvedCoverUrl : bundledCoverUri) ?? undefined}
-              />
-            </View>
-          </View>
-        </Animated.View>
-      </Pressable>
-    </BookCardActionSheet>
+              </View>
+            }
+          />
+        </Pressable>
+      </BookCardActionSheet>
+    </SystemSheetZoomSource>
   );
 });

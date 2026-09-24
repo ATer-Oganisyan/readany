@@ -1812,10 +1812,6 @@
           // volume-sized section for nothing.
           if (!lastRendererStyles) applySettings(currentSettings);
 
-          // The fixed SB Serif family is warmed once in the outer document
-          // before Foliate creates its section documents. Every section still
-          // receives the @font-face CSS, while WebKit reuses the same font data.
-          markLoaded();
           refreshUserAnnotations(100);
           // Auto-inject ruby annotations if enabled
           if (_rubyMode && (_rubyWordDict || _rubyCharDict)) {
@@ -2012,8 +2008,8 @@
         }
 
         // SB Serif has four faces (regular/italic × normal/bold), but it is one
-        // fixed reader family. Warm those files once per WebView. The bounded
-        // wait keeps the first frame stable without ever deadlocking the book.
+        // fixed reader family. Warm those files once per WebView; the section's
+        // own font readiness is checked after final layout below.
         await waitForBundledReaderFontWarmup();
 
         await el.open(book);
@@ -2087,6 +2083,11 @@
         } else {
           await el.goToFraction(Number.isFinite(msg.fallbackFraction) ? msg.fallbackFraction : 0);
         }
+
+        // A section can load before Foliate finishes setting its final width.
+        // Keep the loading cover until the layout and that section's fonts settle.
+        await Promise.all(getRendererContents().map(({ doc }) => doc.fonts.ready));
+        markLoaded();
 
         // Measuring parses every section of the book on this thread, which
         // starves tap handling for as long as it runs. RN asks for it only

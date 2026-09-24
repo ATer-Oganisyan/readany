@@ -288,22 +288,28 @@ describe("Reader interaction recovery", () => {
     expect(readyIndex).toBeGreaterThan(outerListenerIndex);
   });
 
-  it("подключает ввод и показывает EPUB без ожидания шрифтов документа", () => {
+  it("подключает ввод сразу, но показывает EPUB после разметки и шрифтов", () => {
     const script = readReaderMainScript();
     const loadListenerStart = script.indexOf("el.addEventListener('load'");
     const loadListenerEnd = script.indexOf("var snippetTimer", loadListenerStart);
     const loadListener = script.slice(loadListenerStart, loadListenerEnd);
-    const loadedIndex = loadListener.indexOf("markLoaded();");
+    const openStart = script.indexOf("async function openBook(msg)");
+    const openEnd = script.indexOf("// ─── Settings ───", openStart);
+    const openBlock = script.slice(openStart, openEnd);
+    const layoutIndex = openBlock.indexOf("await el.goToFraction(");
+    const fontsIndex = openBlock.indexOf("doc.fonts.ready");
+    const loadedIndex = openBlock.indexOf("markLoaded();");
     const tapIndex = loadListener.indexOf("attachTapListener(doc);");
     const selectionIndex = loadListener.indexOf("attachSelectionListener(doc);");
 
     expect(loadListener).not.toContain("doc.fonts");
     expect(loadListener).not.toContain("await ");
-    expect(loadedIndex).toBeGreaterThan(-1);
+    expect(loadListener).not.toContain("markLoaded();");
     expect(tapIndex).toBeGreaterThan(-1);
     expect(selectionIndex).toBeGreaterThan(-1);
-    expect(tapIndex).toBeLessThan(loadedIndex);
-    expect(selectionIndex).toBeLessThan(loadedIndex);
+    expect(layoutIndex).toBeGreaterThan(-1);
+    expect(fontsIndex).toBeGreaterThan(layoutIndex);
+    expect(loadedIndex).toBeGreaterThan(fontsIndex);
   });
 
   it("прогревает четыре начертания SB Serif один раз с ограниченным ожиданием", () => {

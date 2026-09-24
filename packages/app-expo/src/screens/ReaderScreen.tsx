@@ -1,4 +1,5 @@
 import { AnimatedNarraFace } from "@/components/chat/animated-narra-face";
+import { prepareSheetZoomReturn } from "@/components/navigation/sheet-zoom-return";
 import { ChapterTranslationSheet } from "@/components/reader/ChapterTranslationSheet";
 import { TranslationPanel } from "@/components/reader/TranslationPanel";
 import { NotebookPenIcon, XIcon } from "@/components/ui/Icon";
@@ -68,7 +69,6 @@ import {
 } from "@/stores";
 import { darkColors, lightColors, useTheme } from "@/styles/ThemeContext";
 import { useColors, withOpacity } from "@/styles/theme";
-import PdfHintToastIcon from "../../assets/icons/file-slash-circle.svg";
 import { useIsFocused } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { readingContextService } from "@readany/core/ai/reading-context-service";
@@ -98,6 +98,7 @@ import {
 import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import PdfHintToastIcon from "../../assets/icons/file-slash-circle.svg";
 import ReadAnyNativeControls from "../../modules/native-controls";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
 
@@ -178,6 +179,12 @@ export function ReaderScreen(props: Props) {
   const requestedBookId = props.route.params.bookId;
   const catalogBookId = props.route.params.catalogBookId;
   const catalogBook = props.route.params.catalogBook;
+  const closeReader = useCallback(() => {
+    if (Platform.OS === "ios" && Number(Platform.Version) >= 26) {
+      prepareSheetZoomReturn(props.route.params.zoomSourceId);
+    }
+    props.navigation.goBack();
+  }, [props.navigation, props.route.params.zoomSourceId]);
   const [resolvedBookId, setResolvedBookId] = useState<string | null>(
     catalogBookId || catalogBook ? null : requestedBookId,
   );
@@ -195,7 +202,7 @@ export function ReaderScreen(props: Props) {
       toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
         description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
       });
-      props.navigation.goBack();
+      closeReader();
       return;
     }
 
@@ -240,13 +247,13 @@ export function ReaderScreen(props: Props) {
         toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
           description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
         });
-        props.navigation.goBack();
+        closeReader();
       });
 
     return () => {
       cancelled = true;
     };
-  }, [catalogBookId, importBooks, props.navigation, t, updateBook]);
+  }, [catalogBookId, closeReader, importBooks, t, updateBook]);
 
   // Каталог открывает книгу сразу: качаем и импортируем уже здесь, под лоудером
   // ридера. Уход назад прерывает загрузку — незачем тянуть файл в пустоту.
@@ -317,22 +324,23 @@ export function ReaderScreen(props: Props) {
         toast.error(t("library.catalogImportErrorTitle", "Не получилось добавить книгу"), {
           description: t("library.catalogImportErrorDescription", "Попробуйте ещё раз."),
         });
-        props.navigation.goBack();
+        closeReader();
       });
 
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, [catalogBook, importBooks, props.navigation, t, updateBook]);
+  }, [catalogBook, closeReader, importBooks, t, updateBook]);
 
   if (!resolvedBookId) {
-    return <ReaderLoadingChrome navigation={props.navigation} />;
+    return <ReaderLoadingChrome navigation={props.navigation} onClose={closeReader} />;
   }
 
   return (
     <ReaderContent
       {...props}
+      onClose={closeReader}
       route={{
         ...props.route,
         params: { ...props.route.params, bookId: resolvedBookId, catalogBookId: undefined },
@@ -387,7 +395,10 @@ function useReaderPaperColors() {
   }, [readerTheme]);
 }
 
-function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }) {
+function ReaderLoadingChrome({
+  navigation,
+  onClose,
+}: { navigation: Props["navigation"]; onClose: () => void }) {
   const colors = useColors();
   const paperColors = useReaderPaperColors();
   const { isDark } = useTheme();
@@ -405,10 +416,20 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
       headerShown: true,
       headerTransparent: false,
       headerShadowVisible: false,
+      headerBackVisible: false,
       headerBackButtonDisplayMode: "minimal",
       headerTintColor: colors.foreground,
       headerTitleAlign: "center",
       title: "",
+      unstable_headerLeftItems: () => [
+        {
+          type: "button" as const,
+          label: t("common.close", "Закрыть"),
+          accessibilityLabel: t("common.close", "Закрыть"),
+          icon: { type: "sfSymbol" as const, name: "xmark" },
+          onPress: onClose,
+        },
+      ],
       unstable_headerRightItems: undefined,
       headerRight: () => (
         <View pointerEvents="none">
@@ -420,7 +441,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
         </View>
       ),
     });
-  }, [colors.foreground, navigation, t]);
+  }, [colors.foreground, navigation, onClose, t]);
 
   return (
     <View
@@ -444,7 +465,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
             tintColor={paperColors.foreground}
             isDark={isDark}
             actions={[]}
-            onClosePress={() => navigation.goBack()}
+            onClosePress={onClose}
             onAppearancePress={ignorePress}
             showTrailingActions={false}
           />
@@ -476,7 +497,7 @@ function ReaderLoadingChrome({ navigation }: { navigation: Props["navigation"] }
   );
 }
 
-function ReaderContent({ route, navigation }: Props) {
+function ReaderContent({ route, navigation, onClose }: Props & { onClose: () => void }) {
   const colors = useColors();
   const { mode: themeMode, isDark } = useTheme();
   const s = makeStyles(colors);
@@ -2159,7 +2180,7 @@ function ReaderContent({ route, navigation }: Props) {
         tintColor={paintedThemeColors.foreground}
         isDark={isReaderThemeDark}
         actions={readerActions}
-        onClosePress={() => navigation.goBack()}
+        onClosePress={onClose}
         onAppearancePress={openReaderAppearance}
         onActionsOpenChange={setActionsMenuOpen}
       />
@@ -2292,10 +2313,14 @@ function ReaderContent({ route, navigation }: Props) {
               }
               onOpenWindow={() => undefined}
               javaScriptCanOpenWindowsAutomatically={false}
-              menuItems={[
-                { key: "copy", label: t("reader.copySelection", "Скопировать") },
-                { key: "note", label: t("notes.addNote", "Добавить заметку") },
-              ]}
+              menuItems={
+                Platform.OS === "ios"
+                  ? [{ key: "note", label: t("notes.addNote", "Добавить заметку") }]
+                  : [
+                      { key: "copy", label: t("reader.copySelection", "Скопировать") },
+                      { key: "note", label: t("notes.addNote", "Добавить заметку") },
+                    ]
+              }
               onCustomMenuSelection={handleSelectionMenuAction}
               onError={(e) => {
                 console.error("[ReaderScreen] WebView error:", e.nativeEvent);

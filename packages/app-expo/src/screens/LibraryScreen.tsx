@@ -5,6 +5,7 @@ import { GroupCard } from "@/components/library/GroupCard";
 import { GroupPickerSheet } from "@/components/library/GroupPickerSheet";
 import { ImportSourceHeaderMenuButton } from "@/components/library/ImportSourceHeaderMenuButton";
 import { ImportSourceMenuButton } from "@/components/library/ImportSourceMenuButton";
+import { prepareSheetZoom } from "@/components/navigation/SystemSheetZoomSource";
 import { type ExtractorRef, ExtractorWebView } from "@/components/rag/ExtractorWebView";
 import {
   CheckCheckIcon,
@@ -475,8 +476,8 @@ function LibraryScreenContent() {
   const isMyBooksEmptyState = showCatalog && librarySection === "my-books" && isLoaded && !hasBooks;
 
   const handleOpen = useCallback(
-    async (book: Book) => {
-      await openMobileBook({ bookId: book.id, navigation: nav, t });
+    async (book: Book, zoomSourceId = `reader:${book.id}`) => {
+      await openMobileBook({ bookId: book.id, navigation: nav, t, zoomSourceId });
     },
     [nav, t],
   );
@@ -629,16 +630,21 @@ function LibraryScreenContent() {
   // ридер вместе с описанием из каталога — качает и импортирует уже он, показывая
   // свой лоудер вместо заглушки поверх обложки.
   const handleCatalogOpen = useCallback(
-    async (catalogBook: CachedBackendCatalogBook) => {
+    async (catalogBook: CachedBackendCatalogBook, zoomSourceId: string) => {
       const existingBook = findReadableLibraryBookForCatalogBook(
         catalogBook,
         useLibraryStore.getState().books,
       );
       if (existingBook) {
-        await handleOpen(existingBook);
+        await handleOpen(existingBook, zoomSourceId);
         return;
       }
-      nav.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(catalogBook) });
+      await prepareSheetZoom(zoomSourceId);
+      nav.navigate("Reader", {
+        bookId: "",
+        catalogBook: getCatalogBookWithCover(catalogBook),
+        zoomSourceId,
+      });
     },
     [handleOpen, nav],
   );

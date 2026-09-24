@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "reader-storybook-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@readany/reader-storybook-web", "dev"],
+      "port": 3210,
+      "url": "http://127.0.0.1:3210"
+    }
+  ]
+}

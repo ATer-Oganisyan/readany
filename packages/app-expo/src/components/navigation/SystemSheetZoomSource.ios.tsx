@@ -5,7 +5,7 @@ import type { ViewProps } from "react-native";
 export const SystemSheetZoomSource = requireNativeView(
   "ReadAnyNativeControls",
   "SystemSheetZoomSourceView",
-) as ComponentType<ViewProps & { sourceId: string }>;
+) as ComponentType<ViewProps & { sourceId: string; onZoomReturn?: () => void }>;
 
 export async function prepareSheetZoom(sourceId: string): Promise<void> {
   // Older development clients can open the sheet without preparing the zoom.

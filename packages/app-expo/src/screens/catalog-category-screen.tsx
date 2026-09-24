@@ -1,5 +1,6 @@
 import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
 import { ConnectedCatalogBookCard } from "@/components/library/ConnectedCatalogBookCard";
+import { prepareSheetZoom } from "@/components/navigation/SystemSheetZoomSource";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
@@ -153,7 +154,7 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
     [snapshot.refresh],
   );
   const openBook = useCallback(
-    async (book: CachedBackendCatalogBook) => {
+    async (book: CachedBackendCatalogBook, zoomSourceId: string) => {
       if (navigating.current || !navigation.isFocused()) return;
       navigating.current = true;
       opening.current = true;
@@ -163,10 +164,16 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
           useLibraryStore.getState().books,
         );
         if (existing) {
-          if (!(await openMobileBook({ bookId: existing.id, navigation, t })))
+          if (!(await openMobileBook({ bookId: existing.id, navigation, t, zoomSourceId })))
             navigating.current = false;
-        } else
-          navigation.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(book) });
+        } else {
+          await prepareSheetZoom(zoomSourceId);
+          navigation.navigate("Reader", {
+            bookId: "",
+            catalogBook: getCatalogBookWithCover(book),
+            zoomSourceId,
+          });
+        }
       } catch (error) {
         navigating.current = false;
         throw error;

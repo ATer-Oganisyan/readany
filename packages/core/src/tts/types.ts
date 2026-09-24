@@ -405,6 +405,8 @@ export interface ITTSPlayer {
   readonly paused?: boolean;
 
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;
+  /** Waiting for the next synthesized audio while retaining the playback queue. */
+  onBufferingChange?: (buffering: boolean) => void;
   onChunkChange?: (index: number, total: number) => void;
   /** Called when all chunks finish playing naturally (not by stop()) */
   onEnd?: () => void;

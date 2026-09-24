@@ -6,7 +6,14 @@ import { catalogCoverDisplayState } from "@/lib/narra/catalog-cover-state";
 import { useColors } from "@/styles/theme";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type GestureResponderEvent, Image, Pressable, StyleSheet, View } from "react-native";
+import {
+  type Animated,
+  type GestureResponderEvent,
+  Image,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
 import { BookCoverTypography } from "./book-cover-typography";
 import { PerspectiveBook } from "./perspective-book";
@@ -17,6 +24,7 @@ interface CatalogBookCardProps {
   coverUri?: string;
   hasCover: boolean;
   coverLoadFailed?: boolean;
+  shadowOpacity?: Animated.Value;
   cardWidth: number;
   isInLibrary: boolean;
   onPress: () => void;
@@ -29,6 +37,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
   coverUri,
   hasCover,
   coverLoadFailed,
+  shadowOpacity,
   cardWidth,
   onPress,
   onRetryCover,
@@ -100,6 +109,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
             height={cardHeight}
             coverEffects={isCoverReady}
             showShadow={isCoverReady}
+            shadowOpacity={shadowOpacity}
             disabled={!isCoverReady}
             accessibilityLabel={title}
             accessibilityHint={t("notes.openBook", "Открыть книгу")}
@@ -115,7 +125,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
                     transform: [{ scale: coverScale }],
                   },
                 ]}
-                >
+              >
                 {showImage ? (
                   <Image
                     key={coverUri}

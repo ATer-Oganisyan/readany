@@ -37,6 +37,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
   private static readonly MAX_CHUNK_FETCH_RETRIES = 4;
 
   onStateChange?: (state: "playing" | "paused" | "stopped") => void;
+  onBufferingChange?: (buffering: boolean) => void;
   onChunkChange?: (index: number, total: number) => void;
   onEnd?: () => void;
 
@@ -203,7 +204,13 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
 
     const unsubQueueEnded = TrackPlayer.addEventListener(Event.PlaybackQueueEnded, (event) => {
       if (gen !== this._speakGen || this._stopped) return;
-      this._handlePlaybackEnded(gen, event.track);
+      void TrackPlayer.getQueue()
+        .then((queue) => {
+          if (gen !== this._speakGen || this._stopped) return;
+          const chunkIndex = chunkIndexFromTrackId(queue[event.track]?.id);
+          this._handlePlaybackEnded(gen, chunkIndex ?? undefined);
+        })
+        .catch((error) => console.warn("[TTS] Could not resolve ended track", error));
     });
 
     const unsubSeek = TrackPlayer.addEventListener(Event.RemoteSeek, (event) => {
@@ -448,6 +455,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
       const resolvedChunkIndex = chunkIndexFromTrackId(resolvedTrack?.id) ?? targetChunkIndex;
       this._notifyChunkChange(resolvedChunkIndex);
       this._startProgressPolling(gen);
+      this.onBufferingChange?.(false);
       this.onStateChange?.("playing");
       console.log("[TrackPlayerEdgeTTSPlayer] resumed after queue starvation", {
         targetQueuePos,
@@ -655,6 +663,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
 
   private _markQueueStarved(track?: number): void {
     this._queueStarved = true;
+    if (!this._paused) this.onBufferingChange?.(true);
     // Trust `track` from PlaybackQueueEnded — it's the chunk index of the
     // track that was last playing. Without it (e.g. PlaybackState=Paused
     // before any real chunk played), keep `_currentIndex` at whatever
@@ -785,6 +794,7 @@ export class TrackPlayerEdgeTTSPlayer implements ITTSPlayer {
     this._producerFailed = false;
     this._ensureProducerRunning(this._speakGen);
     if (this._queueStarved) {
+      this.onBufferingChange?.(true);
       if (this._hasEnoughQueuedToResume()) void this._resumeStarvedQueue(this._speakGen);
     } else if (this._nextChunkToAdd > 0) {
       void this._resumePlayback(this._speakGen);

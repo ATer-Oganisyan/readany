@@ -1,5 +1,6 @@
 import { seekActiveTTS, seekActiveTTSBy } from "@/lib/platform/tts-track-controls";
 import type { MotionDirection } from "@/lib/tts-motion/playback-motion";
+import { useTTSStore } from "@/stores/tts-store";
 import type { TTSPlayState } from "@readany/core/tts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { State, usePlaybackState, useProgress } from "react-native-track-player";
@@ -38,6 +39,7 @@ export function resolveChapterSeekTarget(position: number, totalChunks: number) 
 
 export function useTTSBuffering(playState: TTSPlayState) {
   const nativePlayback = usePlaybackState();
+  const synthesisBuffering = useTTSStore((state) => state.isBuffering);
   const buffering =
     nativePlayback.state === State.Buffering || nativePlayback.state === State.Loading;
   const [confirmedBuffering, setConfirmedBuffering] = useState(false);
@@ -47,7 +49,10 @@ export function useTTSBuffering(playState: TTSPlayState) {
     const timer = setTimeout(() => setConfirmedBuffering(true), 500);
     return () => clearTimeout(timer);
   }, [playState, buffering]);
-  return { buffering, confirmedBuffering };
+  return {
+    buffering: buffering || synthesisBuffering,
+    confirmedBuffering: confirmedBuffering || synthesisBuffering,
+  };
 }
 
 export function useTTSNativePlayer(

@@ -3,6 +3,7 @@ import { CatalogBookSkeleton } from "@/components/library/CatalogBookSkeleton";
 import { BookCoverTypography } from "@/components/library/book-cover-typography";
 import { CatalogShelfRow } from "@/components/library/catalog-shelf";
 import { BookSurface } from "@/components/library/perspective-book";
+import { prepareSheetZoom } from "@/components/navigation/SystemSheetZoomSource";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { Text } from "@/components/ui/Typography";
 import { CenteredEmptyState } from "@/components/ui/centered-empty-state";
@@ -159,7 +160,7 @@ const SearchContent = memo(function SearchContent() {
     [navigation],
   );
   const openCatalogBook = useCallback(
-    async (book: CachedBackendCatalogBook) => {
+    async (book: CachedBackendCatalogBook, zoomSourceId?: string) => {
       if (navigating.current || !navigation.isFocused()) return;
       navigating.current = true;
       opening.current = true;
@@ -170,10 +171,16 @@ const SearchContent = memo(function SearchContent() {
           useLibraryStore.getState().books,
         );
         if (existing) {
-          if (!(await openMobileBook({ bookId: existing.id, navigation, t })))
+          if (!(await openMobileBook({ bookId: existing.id, navigation, t, zoomSourceId })))
             navigating.current = false;
-        } else
-          navigation.navigate("Reader", { bookId: "", catalogBook: getCatalogBookWithCover(book) });
+        } else {
+          if (zoomSourceId) await prepareSheetZoom(zoomSourceId);
+          navigation.navigate("Reader", {
+            bookId: "",
+            catalogBook: getCatalogBookWithCover(book),
+            zoomSourceId,
+          });
+        }
       } catch (error) {
         navigating.current = false;
         throw error;

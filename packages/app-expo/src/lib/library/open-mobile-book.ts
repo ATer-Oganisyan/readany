@@ -1,3 +1,4 @@
+import { prepareSheetZoom } from "@/components/navigation/SystemSheetZoomSource";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import { useLibraryStore } from "@/stores/library-store";
 import { useMissingBookPromptStore } from "@/stores/missing-book-prompt-store";
@@ -114,12 +115,14 @@ export async function openMobileBook({
   t,
   cfi,
   highlight,
+  zoomSourceId,
 }: {
   bookId: string;
   navigation: MobileNavigation;
   t: TFunction;
   cfi?: string;
   highlight?: boolean;
+  zoomSourceId?: string;
 }): Promise<boolean> {
   const book = await resolveBookForOpen(bookId);
   if (!book) {
@@ -129,7 +132,8 @@ export async function openMobileBook({
   // A soft-deleted book is no longer in the live store — even if the file
   // still exists on disk we must re-import so it rejoins the store.
   if (!book.deletedAt && (await hasAccessibleLocalFile(book))) {
-    navigation.navigate("Reader", { bookId, cfi, highlight });
+    if (zoomSourceId) await prepareSheetZoom(zoomSourceId);
+    navigation.navigate("Reader", { bookId, cfi, highlight, zoomSourceId });
     return true;
   }
 

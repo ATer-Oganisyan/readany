@@ -24,7 +24,7 @@ describe("Android reader chrome contract", () => {
 
     expect(loadingChrome).toContain("<ReaderTopBar");
     expect(loadingChrome).toContain("showTrailingActions={false}");
-    expect(loadingChrome).toContain("onClosePress={() => navigation.goBack()}");
+    expect(loadingChrome).toContain("onClosePress={onClose}");
   });
 
   it("removes the unused animated SVG only in Android WebView", () => {

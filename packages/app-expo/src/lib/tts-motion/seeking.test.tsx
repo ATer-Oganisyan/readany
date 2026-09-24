@@ -1,6 +1,14 @@
 import { act, create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vitest";
-const runtime = vi.hoisted(() => ({ state: "playing", seek: vi.fn(async () => {}) }));
+const runtime = vi.hoisted(() => ({
+  state: "playing",
+  buffering: false,
+  seek: vi.fn(async () => {}),
+}));
+vi.mock("@/stores/tts-store", () => ({
+  useTTSStore: (select: (state: { isBuffering: boolean }) => unknown) =>
+    select({ isBuffering: runtime.buffering }),
+}));
 vi.mock("react-native-track-player", () => ({
   State: { Buffering: "buffering", Loading: "loading" },
   usePlaybackState: () => ({ state: runtime.state }),
@@ -22,6 +30,7 @@ function Harness({ state = "playing" }: { state?: "playing" | "paused" }) {
 afterEach(async () => {
   await act(async () => renderer?.unmount());
   runtime.state = "playing";
+  runtime.buffering = false;
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -104,4 +113,17 @@ describe("loader during scrubbing", () => {
     await act(async () => renderer.update(<Harness />));
     expect(player.isLoading).toBe(false);
   });
+});
+
+it("shows synthesis buffering even while native plays silence, and clears on pause/recovery", async () => {
+  runtime.buffering = true;
+  await act(async () => {
+    renderer = create(<Harness />);
+  });
+  expect(player.isLoading).toBe(true);
+  await act(async () => renderer.update(<Harness state="paused" />));
+  expect(player.isLoading).toBe(false);
+  runtime.buffering = false;
+  await act(async () => renderer.update(<Harness />));
+  expect(player.isLoading).toBe(false);
 });

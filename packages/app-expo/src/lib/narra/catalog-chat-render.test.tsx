@@ -1,4 +1,5 @@
 vi.mock("./backend-character-media", () => ({ loadBackendCharacterMedia: vi.fn(async () => {}) }));
+import { prepareSheetZoomReturn } from "@/components/navigation/sheet-zoom-return";
 import type { Book } from "@readany/core/types";
 import type * as React from "react";
 import { View } from "react-native";
@@ -42,6 +43,21 @@ const runtime = vi.hoisted(() => ({
 
 vi.mock("react-native", () => ({
   Platform: { OS: "ios" },
+  Animated: {
+    View: "AnimatedView",
+    Value: class {
+      value: number;
+      constructor(value: number) {
+        this.value = value;
+      }
+      setValue(value: number) {
+        this.value = value;
+      }
+    },
+    timing: (value: { setValue: (next: number) => void }, options: { toValue: number }) => ({
+      start: () => value.setValue(options.toValue),
+    }),
+  },
   View: "View",
   Image: "Image",
   Pressable: "Pressable",
@@ -550,11 +566,96 @@ describe("Catalog card render and decode", () => {
         .find((item) => item.props.accessibilityLabel === "a")
         ?.props.onPress(),
     );
-    expect(onPress).toHaveBeenCalledWith(expect.objectContaining({ coverUri: "file:///a" }));
+    expect(onPress).toHaveBeenCalledWith(
+      expect.objectContaining({ coverUri: "file:///a" }),
+      expect.stringMatching(/^catalog:/),
+    );
     await act(() => view.unmount());
     renderer = undefined;
     expect(catalogCoverStore.getDiagnostics().listeners).toBe(0);
     expect(catalogCoverStore.getDiagnostics().subscribedIdentities).toBe(0);
+  });
+
+  it("keeps separate zoom sources for two cards showing the same book", async () => {
+    const book = { ...catalogFixtures()[0], coverUri: "file:///a" };
+    const onPress = vi.fn();
+    const view = await render(
+      <View>
+        {[0, 1].map((index) => (
+          <ConnectedCatalogBookCard
+            key={index}
+            book={book}
+            cardWidth={170}
+            isInLibrary={false}
+            onPress={onPress}
+            onRetryCover={vi.fn()}
+          />
+        ))}
+      </View>,
+    );
+    await act(() => {
+      for (const image of hosts(view.root, "Image")) image.props.onLoad();
+    });
+    for (const pressable of hosts(view.root, "Pressable")) {
+      await act(() => pressable.props.onPress());
+    }
+    expect(onPress).toHaveBeenCalledTimes(2);
+    expect(onPress.mock.calls[0][1]).not.toBe(onPress.mock.calls[1][1]);
+  });
+
+  it("fades the opened card shadow back in when the reader closes", async () => {
+    const onPress = vi.fn();
+    const view = await render(
+      <ConnectedCatalogBookCard
+        book={{ ...catalogFixtures()[0], coverUri: "file:///a" }}
+        cardWidth={170}
+        isInLibrary={false}
+        onPress={onPress}
+        onRetryCover={vi.fn()}
+      />,
+    );
+    await act(() => hosts(view.root, "Image")[0].props.onLoad());
+    const shadowOpacity = hosts(view.root, "AnimatedView")
+      .flatMap((node) => node.props.style ?? [])
+      .find((style) => style?.opacity?.setValue)?.opacity;
+    await act(() => hosts(view.root, "Pressable")[0].props.onPress());
+    const sourceId = onPress.mock.calls[0][1];
+    expect(sourceId).toMatch(/^catalog:/);
+    await act(() => prepareSheetZoomReturn(sourceId));
+    expect(shadowOpacity.value).toBe(0);
+    await act(() =>
+      view.root.find((node) => typeof node.props.onZoomReturn === "function").props.onZoomReturn(),
+    );
+    expect(shadowOpacity.value).toBe(1);
+  });
+
+  it("restores the shadow if UIKit has no zoom return callback", async () => {
+    vi.useFakeTimers();
+    try {
+      const onPress = vi.fn();
+      const view = await render(
+        <ConnectedCatalogBookCard
+          book={{ ...catalogFixtures()[0], coverUri: "file:///a" }}
+          cardWidth={170}
+          isInLibrary={false}
+          onPress={onPress}
+          onRetryCover={vi.fn()}
+        />,
+      );
+      await act(() => hosts(view.root, "Image")[0].props.onLoad());
+      const shadowOpacity = hosts(view.root, "AnimatedView")
+        .flatMap((node) => node.props.style ?? [])
+        .find((style) => style?.opacity?.setValue)?.opacity;
+      await act(() => hosts(view.root, "Pressable")[0].props.onPress());
+      await act(() => prepareSheetZoomReturn(onPress.mock.calls[0][1]));
+      expect(shadowOpacity.value).toBe(0);
+      await act(() => {
+        vi.advanceTimersByTime(1200);
+      });
+      expect(shadowOpacity.value).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not rerender an unchanged card when the parent rerenders", async () => {

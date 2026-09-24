@@ -2,7 +2,13 @@ import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { radius, useColors } from "@/styles/theme";
 import { LinearGradient } from "expo-linear-gradient";
 import { type ComponentProps, type ReactNode, memo, useMemo } from "react";
-import { type GestureResponderEvent, Pressable, StyleSheet, View } from "react-native";
+import {
+  Animated as NativeAnimated,
+  type GestureResponderEvent,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
 import Animated from "react-native-reanimated";
 import { useCoverPress } from "./cover-press";
@@ -13,12 +19,17 @@ interface PerspectiveBookProps {
   cover: ReactNode;
   coverEffects?: boolean;
   showShadow?: boolean;
+  shadowOpacity?: NativeAnimated.Value;
   footer?: ReactNode;
   onPress: (event: GestureResponderEvent) => void;
   disabled?: boolean;
   accessibilityLabel: string;
   accessibilityHint?: string;
 }
+
+export const BOOK_SHADOW = {
+  boxShadow: "0 2px 4px rgba(0,0,0,0.20), 0 11px 22px rgba(0,0,0,0.22)",
+} as const;
 
 function AndroidPressTarget({
   height,
@@ -51,6 +62,7 @@ export const PerspectiveBook = memo(function PerspectiveBook({
   cover,
   coverEffects = true,
   showShadow = true,
+  shadowOpacity,
   footer,
   onPress,
   disabled = false,
@@ -70,6 +82,7 @@ export const PerspectiveBook = memo(function PerspectiveBook({
           cover={cover}
           coverEffects={coverEffects}
           showShadow={showShadow}
+          shadowOpacity={shadowOpacity}
         />
         <AndroidPressTarget
           height={height}
@@ -101,6 +114,7 @@ export const PerspectiveBook = memo(function PerspectiveBook({
           cover={cover}
           coverEffects={coverEffects}
           showShadow={showShadow}
+          shadowOpacity={shadowOpacity}
           style={pressStyle}
         />
         {footer}
@@ -115,6 +129,7 @@ export const BookSurface = memo(function BookSurface({
   cover,
   coverEffects = true,
   showShadow = true,
+  shadowOpacity,
   borderRadius = radius.sm,
   style,
 }: {
@@ -123,6 +138,7 @@ export const BookSurface = memo(function BookSurface({
   cover: ReactNode;
   coverEffects?: boolean;
   showShadow?: boolean;
+  shadowOpacity?: NativeAnimated.Value;
   borderRadius?: number;
   style?: ComponentProps<typeof Animated.View>["style"];
 }) {
@@ -130,7 +146,15 @@ export const BookSurface = memo(function BookSurface({
   const rounding = useMemo(() => ({ borderRadius }), [borderRadius]);
 
   return (
-    <Animated.View style={[style, styles.book, showShadow && styles.bookShadow, size, rounding]}>
+    <Animated.View
+      style={[style, styles.book, showShadow && !shadowOpacity && styles.bookShadow, size, rounding]}
+    >
+      {showShadow && shadowOpacity ? (
+        <NativeAnimated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.animatedShadow, { opacity: shadowOpacity }]}
+        />
+      ) : null}
       <View style={[styles.cover, !coverEffects && styles.coverWithoutEffects, size, rounding]}>
         {cover}
         {coverEffects ? <BookSurfaceEffects borderRadius={borderRadius} /> : null}
@@ -209,7 +233,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderCurve: "continuous",
   },
-  bookShadow: { boxShadow: "0 2px 4px rgba(0,0,0,0.20), 0 11px 22px rgba(0,0,0,0.22)" },
+  bookShadow: BOOK_SHADOW,
+  animatedShadow: {
+    ...BOOK_SHADOW,
+    borderRadius: radius.sm,
+    backgroundColor: "#1f1f1f",
+  },
   cover: {
     overflow: "hidden",
     position: "relative",

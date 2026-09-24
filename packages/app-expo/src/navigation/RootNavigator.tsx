@@ -54,6 +54,7 @@ export type RootStackParamList = {
     cfi?: string;
     highlight?: boolean;
     openTTS?: boolean;
+    zoomSourceId?: string;
   };
   ReaderTOC: undefined;
   AudiobookPlayer: { sourceId?: string } | undefined;
@@ -190,17 +191,18 @@ export function RootNavigator() {
         <Stack.Screen
           name="Reader"
           component={ReaderScreen}
-          options={{
+          options={({ route }) => ({
             presentation: "fullScreenModal",
             animation: "slide_from_bottom",
-            // Horizontal drags belong to page turning, so the reader carries no
-            // back-swipe of its own: it is dismissed by the close button.
-            gestureEnabled: false,
+            // UIKit zoom needs an interactive-capable modal; its swipe dismissal
+            // is disabled in SystemSheetZoom so horizontal drags turn pages.
+            gestureEnabled:
+              Platform.OS === "ios" && Number(Platform.Version) >= 26 && !!route.params.zoomSourceId,
             // No native header: the Foliate reader owns its complete chrome.
             headerShown: false,
             statusBarAnimation: "fade",
             statusBarHidden: true,
-          }}
+          })}
         />
         <Stack.Screen
           name="ReaderTOC"

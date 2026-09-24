@@ -128,6 +128,7 @@ function detachAndStopPlayer(player: ITTSPlayer | null): void {
   if (!player) return;
   player.onStateChange = undefined;
   player.onChunkChange = undefined;
+  player.onBufferingChange = undefined;
   player.onEnd = undefined;
   try {
     player.stop();
@@ -252,6 +253,7 @@ function startPlayback(
   let isStarting = true;
   _activeTTS = player;
   _activeConfig = config;
+  set({ isBuffering: false });
 
   // Set artwork getter for RNTP players
   if (
@@ -290,7 +292,12 @@ function startPlayback(
     if (playState === "stopped") {
       _activeTTS = null;
     }
-    set({ playState });
+    set({ playState, ...(playState !== "playing" ? { isBuffering: false } : {}) });
+  };
+
+  player.onBufferingChange = (isBuffering) => {
+    if (gen !== _sessionGeneration) return;
+    set({ isBuffering });
   };
 
   player.onChunkChange = (chunkIndex) => {
@@ -329,6 +336,7 @@ function startPlayback(
     });
     set({
       playState: "stopped",
+      isBuffering: false,
       currentChunkIndex: lastIndex,
       totalChunks: _sessionSegments.length,
       currentSegmentText: _sessionSegments[lastIndex] || "",
@@ -358,6 +366,7 @@ function startPlayback(
 
 export interface TTSState {
   playState: TTSPlayState;
+  isBuffering: boolean;
   currentText: string;
   currentSegmentText: string;
   config: TTSConfig;
@@ -403,6 +412,7 @@ export const useTTSStore = create<TTSState>()(
     "tts",
     (set, get) => ({
       playState: "stopped",
+      isBuffering: false,
       currentText: "",
       currentSegmentText: "",
       config: DEFAULT_TTS_CONFIG,
@@ -508,14 +518,14 @@ export const useTTSStore = create<TTSState>()(
         clearRespeakTimer();
         const { playState } = get();
         if (playState !== "playing" && playState !== "loading") return;
-        if (playState === "loading") {
+        if (playState === "loading" && !get().isBuffering) {
           // Invalidate pending synthesis/reader seeks; a late result must not restart audio.
           _sessionGeneration += 1;
           detachAndStopAllPlayers();
         } else {
           _activeTTS?.pause();
         }
-        set({ playState: "paused" });
+        set({ playState: "paused", isBuffering: false });
       },
 
       resume: () => {
@@ -572,6 +582,7 @@ export const useTTSStore = create<TTSState>()(
         _sessionCurrentIndex = 0;
         set({
           playState: "stopped",
+          isBuffering: false,
           currentText: "",
           currentSegmentText: "",
           onEnd: null,
@@ -810,6 +821,7 @@ export const useTTSStore = create<TTSState>()(
     }),
     {
       playState: "stopped" as const,
+      isBuffering: false,
       currentText: "",
       currentSegmentText: "",
       currentChunkIndex: 0,

@@ -136,6 +136,21 @@ vi.mock("react-native", async () => {
 
   return {
     FlatList,
+    Animated: {
+      View: "AnimatedView",
+      Value: class {
+        value: number;
+        constructor(value: number) {
+          this.value = value;
+        }
+        setValue(value: number) {
+          this.value = value;
+        }
+      },
+      timing: (value: { setValue: (next: number) => void }, options: { toValue: number }) => ({
+        start: () => value.setValue(options.toValue),
+      }),
+    },
     View: "View",
     Image: "Image",
     Pressable: "Pressable",
@@ -247,7 +262,11 @@ vi.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 vi.mock("react-native-gesture-handler", () => ({ GestureDetector: "GestureDetector" }));
 vi.mock("react-native-reanimated", () => ({ default: { View: "AnimatedView" } }));
 vi.mock("../../components/library/cover-press", () => ({
-  useCoverPress: () => ({ pressStyle: {}, gesture: {}, runAfterRelease: (action: () => void) => action() }),
+  useCoverPress: () => ({
+    pressStyle: {},
+    gesture: {},
+    runAfterRelease: (action: () => void) => action(),
+  }),
 }));
 vi.mock("../../components/library/use-cover-foreground", () => ({
   useCoverForeground: () => ({ primary: "#fff", secondary: "#ddd" }),
@@ -1056,7 +1075,10 @@ describe("Category screen behavior with native boundaries replaced", () => {
       imported.props.onPress(activation());
     });
     expect(runtime.openMobileBook).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ bookId: "imported-hobbit" }),
+      expect.objectContaining({
+        bookId: "imported-hobbit",
+        zoomSourceId: expect.stringMatching(/^catalog:/),
+      }),
     );
     expect(runtime.navigation.navigate).not.toHaveBeenCalled();
     await focus(false);
@@ -1068,6 +1090,7 @@ describe("Category screen behavior with native boundaries replaced", () => {
     expect(runtime.navigation.navigate).toHaveBeenCalledExactlyOnceWith("Reader", {
       bookId: "",
       catalogBook: expect.objectContaining({ bookEditionId: "dune" }),
+      zoomSourceId: expect.stringMatching(/^catalog:/),
     });
   });
 });
