@@ -53,8 +53,13 @@ between the remaining models, with two minutes reserved for storing the
 portrait, generating other bundle assets and returning the response. A timed-out
 model stops the cascade for a delayed job retry. The media worker needs
 `GENERATOR_TIMEOUT_MS=600000`; the production compose file already sets it.
-With the toggle off, the current routing and retry behavior is unchanged. This
-setting does not change cover or scene generation.
+With the toggle off, the current portrait routing and retry behavior is unchanged.
+Cover generation always advances after any provider error through the ordered
+`COVER_IMAGE_FALLBACK_MODELS` list. When that variable is unset, covers reuse
+`CHARACTER_PORTRAIT_FALLBACK_MODELS`, which keeps the existing production model
+order; when both are unset, the legacy single fallback remains in use. The cover
+job's time budget is divided between the remaining models so the last fallback
+still gets an attempt. Scene generation is unchanged.
 
 GPT-5.6 Luna's model and reasoning modes are documented by
 [OpenAI](https://developers.openai.com/api/docs/models/gpt-5.6-luna), while

@@ -123,7 +123,7 @@ const {
   COVER_JOB_MAX, COVER_JOB_TTL_HOURS, COVER_JOB_MAX_RESULT_MIB, COVER_JOB_MAX_ATTEMPTS,
   COVER_JOB_ATTEMPT_TIMEOUT_SECONDS, COVER_JOB_WORKER_ENABLED, SCENE_JOB_MAX, SCENE_JOB_TTL_HOURS,
   SCENE_JOB_MAX_ATTEMPTS, SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS, SCENE_JOB_WORKER_ENABLED, coverProviderConfig,
-  COVER_IMAGE_QUALITY, CHARACTER_PORTRAIT_IMAGE_QUALITY,
+  COVER_IMAGE_FALLBACK_MODELS, COVER_IMAGE_QUALITY, CHARACTER_PORTRAIT_IMAGE_QUALITY,
   CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED, CHARACTER_PORTRAIT_FALLBACK_MODELS,
   SCENE_IMAGE_QUALITY, coverProviderCallsPerAttempt,
   minimumCoverAttemptTimeoutMs, llmGate, speechGate, imageGate,
@@ -394,6 +394,7 @@ async function measuredInternalImageRequest({
   referenceImages = [],
   signal,
   costContext,
+  cascadeOnAnyError = false,
   cascadeOnHttp400 = false,
   fallbackModels,
   cascadeBudgetMs
@@ -405,6 +406,7 @@ async function measuredInternalImageRequest({
       quality,
       referenceImages,
       requestId: randomUUID(),
+      cascadeOnAnyError,
       cascadeOnHttp400,
       fallbackModels,
       cascadeBudgetMs,
@@ -441,6 +443,9 @@ async function generateInternalCover(prompt, signal, costContext) {
       aspectRatio: '2:3',
       quality: COVER_IMAGE_QUALITY,
       costContext,
+      cascadeOnAnyError: true,
+      fallbackModels: COVER_IMAGE_FALLBACK_MODELS,
+      cascadeBudgetMs: COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1000 - 15_000,
       signal
     })
     const bytes = Buffer.from(generated.image, 'base64')

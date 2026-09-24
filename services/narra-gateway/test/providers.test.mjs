@@ -641,6 +641,121 @@ test('moderation rejection falls back to Nano Banana', async () => {
   assert.deepEqual(result.attempts.map(({ error_code }) => error_code), ['CENSOR', undefined])
 })
 
+test('cover cascade advances through every configured fallback after any error', async () => {
+  const requestId = 'cover-full-cascade'
+  const calls = []
+  const result = await requestCoverImageWithFallback({
+    prompt: 'book cover',
+    requestId,
+    cascadeOnAnyError: true,
+    fallbackModels: [
+      'qwen/qwen-image-3',
+      'black-forest-labs/flux.2-pro',
+      'bytedance-seed/seedream-5-0-lite'
+    ],
+    env: {
+      COVER_IMAGE_PROVIDER: 'litellm',
+      LITELLM_BASE_URL: 'https://litellm.test',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_IMAGE_MODEL: 'gpt-image-2'
+    },
+    fetchImpl: async (_url, init) => {
+      calls.push({
+        model: JSON.parse(init.body).model,
+        requestId: new Headers(init.headers).get('x-request-id')
+      })
+      if (calls.length === 1) return new Response('content moderation blocked', { status: 422 })
+      if (calls.length === 2) return new Response('invalid request', { status: 400 })
+      if (calls.length === 3) return new Response('upstream unavailable', { status: 502 })
+      return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+  })
+
+  assert.deepEqual(calls, [
+    { model: 'gpt-image-2', requestId },
+    { model: 'qwen/qwen-image-3', requestId },
+    { model: 'black-forest-labs/flux.2-pro', requestId },
+    { model: 'bytedance-seed/seedream-5-0-lite', requestId }
+  ])
+  assert.equal(result.model, 'bytedance-seed/seedream-5-0-lite')
+  assert.deepEqual(result.attempts.map(({ error_code, retry_index }) => [error_code, retry_index]), [
+    ['CENSOR', 0], ['VALIDATION', 1], ['NETWORK', 2], [undefined, 3]
+  ])
+})
+
+test('cover cascade preserves every failed attempt when all models fail', async () => {
+  const calls = []
+  await assert.rejects(
+    requestCoverImageWithFallback({
+      prompt: 'book cover',
+      cascadeOnAnyError: true,
+      fallbackModels: ['fallback-one', 'fallback-two'],
+      env: {
+        COVER_IMAGE_PROVIDER: 'litellm',
+        LITELLM_BASE_URL: 'https://litellm.test',
+        LITELLM_API_KEY: 'proxy-key',
+        LITELLM_IMAGE_MODEL: 'gpt-image-2'
+      },
+      fetchImpl: async (_url, init) => {
+        calls.push(JSON.parse(init.body).model)
+        const status = [429, 502, 400][calls.length - 1]
+        return new Response('provider failed', { status })
+      }
+    }),
+    (error) => {
+      assert.equal(error.code, 'VALIDATION')
+      assert.equal(error.status, 400)
+      assert.deepEqual(error.attempts.map(({ http_status, retry_index }) => [http_status, retry_index]), [
+        [429, 0], [502, 1], [400, 2]
+      ])
+      return true
+    }
+  )
+  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one', 'fallback-two'])
+})
+
+test('cover cascade gives every remaining model a share of the total time budget', async () => {
+  const calls = []
+  const result = await requestCoverImageWithFallback({
+    prompt: 'book cover',
+    cascadeOnAnyError: true,
+    cascadeBudgetMs: 180,
+    fallbackModels: ['fallback-one', 'fallback-two'],
+    env: {
+      COVER_IMAGE_PROVIDER: 'litellm',
+      LITELLM_BASE_URL: 'https://litellm.test',
+      LITELLM_API_KEY: 'proxy-key',
+      LITELLM_IMAGE_MODEL: 'gpt-image-2'
+    },
+    fetchImpl: async (_url, init) => {
+      calls.push(JSON.parse(init.body).model)
+      if (calls.length === 1) return new Response('invalid request', { status: 400 })
+      if (calls.length === 3) {
+        return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
+      return new Promise((_resolve, reject) => {
+        const guard = setTimeout(() => reject(new Error('model exceeded its cascade budget')), 2_000)
+        init.signal.addEventListener('abort', () => {
+          clearTimeout(guard)
+          reject(init.signal.reason)
+        }, { once: true })
+      })
+    }
+  })
+
+  assert.deepEqual(calls, ['gpt-image-2', 'fallback-one', 'fallback-two'])
+  assert.equal(result.model, 'fallback-two')
+  assert.deepEqual(result.attempts.map(({ error_code, retry_index }) => [error_code, retry_index]), [
+    ['VALIDATION', 0], ['TIMEOUT', 1], [undefined, 2]
+  ])
+})
+
 test('character portrait can fall back after a moderation rejection', async () => {
   const models = []
   const result = await requestCoverImageWithFallback({

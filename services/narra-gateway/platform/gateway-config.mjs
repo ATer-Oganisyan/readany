@@ -165,12 +165,23 @@ export function loadGatewayConfig(env = process.env) {
   const configuredPortraitFallbacks = Object.hasOwn(env, 'CHARACTER_PORTRAIT_FALLBACK_MODELS')
     ? String(env.CHARACTER_PORTRAIT_FALLBACK_MODELS ?? '').split(',')
     : [coverProviderConfig.fallbackModel]
+  const configuredCoverFallbacks = Object.hasOwn(env, 'COVER_IMAGE_FALLBACK_MODELS')
+    ? String(env.COVER_IMAGE_FALLBACK_MODELS ?? '').split(',')
+    : configuredPortraitFallbacks
+  const normalizeImageFallbacks = (models) => [...new Set(
+    models.map((model) => model?.trim()).filter(Boolean)
+  )].filter((model) => model !== coverProviderConfig.model)
+  const COVER_IMAGE_FALLBACK_MODELS = Object.freeze(
+    normalizeImageFallbacks(configuredCoverFallbacks)
+  )
   const CHARACTER_PORTRAIT_FALLBACK_MODELS = Object.freeze(
     CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED
-      ? [...new Set(configuredPortraitFallbacks.map((model) => model?.trim()).filter(Boolean))]
-        .filter((model) => model !== coverProviderConfig.model)
+      ? normalizeImageFallbacks(configuredPortraitFallbacks)
       : []
   )
+  if (COVER_IMAGE_FALLBACK_MODELS.length > 8) {
+    throw new Error('COVER_IMAGE_FALLBACK_MODELS supports at most 8 models')
+  }
   if (CHARACTER_PORTRAIT_FALLBACK_MODELS.length > 8) {
     throw new Error('CHARACTER_PORTRAIT_FALLBACK_MODELS supports at most 8 models')
   }
@@ -179,13 +190,12 @@ export function loadGatewayConfig(env = process.env) {
     env.CHARACTER_PORTRAIT_IMAGE_QUALITY
   )
   const SCENE_IMAGE_QUALITY = normalizeImageQuality(env.SCENE_IMAGE_QUALITY)
-  const coverProviderCallsPerAttempt =
-    coverProviderConfig.fallbackModel && coverProviderConfig.fallbackModel !== coverProviderConfig.model ? 2 : 1
+  const coverProviderCallsPerAttempt = 1 + COVER_IMAGE_FALLBACK_MODELS.length
   const minimumCoverAttemptTimeoutMs =
-    coverProviderConfig.timeoutMs * coverProviderCallsPerAttempt + 15_000
+    30_000 * coverProviderCallsPerAttempt + 15_000
   if (COVER_JOB_ATTEMPT_TIMEOUT_SECONDS * 1_000 < minimumCoverAttemptTimeoutMs) {
     throw new Error(
-      'COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must cover every configured cover image model timeout plus 15 seconds'
+      'COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must reserve at least 30 seconds per cover image model plus 15 seconds'
     )
   }
   const llmGate = createConcurrencyGate({ limit: LLM_CONCURRENCY, queueLimit: LLM_QUEUE_LIMIT, name: 'LLM' })
@@ -361,6 +371,7 @@ export function loadGatewayConfig(env = process.env) {
     SCENE_JOB_ATTEMPT_TIMEOUT_SECONDS,
     SCENE_JOB_WORKER_ENABLED,
     coverProviderConfig,
+    COVER_IMAGE_FALLBACK_MODELS,
     CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED,
     CHARACTER_PORTRAIT_FALLBACK_MODELS,
     COVER_IMAGE_QUALITY,

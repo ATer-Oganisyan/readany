@@ -873,40 +873,57 @@ async function requestPortraitImageCascade(options, config) {
   }
 }
 
+async function requestImageFallbackChain(options, config, fallbackModels) {
+  const requestId = options.requestId || randomUUID()
+  const models = [...new Set([
+    config.model,
+    ...fallbackModels
+  ].map((model) => String(model || '').trim()).filter(Boolean))]
+  const attempts = []
+  const deadlineAt = Number.isFinite(options.cascadeBudgetMs)
+    ? performance.now() + Math.max(1, options.cascadeBudgetMs)
+    : null
+
+  for (const [retryIndex, model] of models.entries()) {
+    let signal = options.signal
+    if (deadlineAt !== null) {
+      const remainingMs = deadlineAt - performance.now()
+      if (remainingMs <= 0) {
+        throw imageAttemptError(
+          normalizeImageTransportError(new DOMException('Image cascade timed out', 'TimeoutError'), config.label),
+          { requestId, attempts }
+        )
+      }
+      const attemptBudgetMs = Math.max(1, Math.floor(remainingMs / (models.length - retryIndex)))
+      signal = withTimeout(options.signal, attemptBudgetMs)
+    }
+    try {
+      const result = await requestCoverImage({
+        ...options,
+        requestId,
+        retryIndex,
+        model,
+        signal
+      })
+      return { ...result, attempts: [...attempts, ...result.attempts] }
+    } catch (error) {
+      attempts.push(...(Array.isArray(error?.attempts) ? error.attempts : []))
+      error.requestId = requestId
+      error.attempts = [...attempts]
+      const nextModel = models[retryIndex + 1]
+      if (!nextModel) throw error
+      console.error(`[image] ${config.provider}/${model} не удалось, фоллбэк на ${nextModel}:`, error.message)
+    }
+  }
+}
+
 export async function requestCoverImageWithFallback(options) {
   const config = coverImageConfig(options.env)
   if (options.cascadeOnHttp400 === true) {
     return requestPortraitImageCascade(options, config)
   }
-  const requestId = options.requestId || randomUUID()
-  let previousAttempts = []
-  try {
-    return await requestCoverImage({ ...options, requestId, retryIndex: 0 })
-  } catch (error) {
-    previousAttempts = Array.isArray(error?.attempts) ? error.attempts : []
-    if (
-      !config.fallbackModel ||
-      config.fallbackModel === config.model
-    ) {
-      throw error
-    }
-    console.error(
-      `[image] ${config.provider}/${config.model} не удалось, фоллбэк на ${config.fallbackModel}:`,
-      error.message
-    )
-  }
-
-  try {
-    const result = await requestCoverImage({
-      ...options,
-      requestId,
-      retryIndex: 1,
-      model: config.fallbackModel
-    })
-    return { ...result, attempts: [...previousAttempts, ...result.attempts] }
-  } catch (error) {
-    error.requestId = requestId
-    error.attempts = [...previousAttempts, ...(Array.isArray(error?.attempts) ? error.attempts : [])]
-    throw error
-  }
+  const fallbackModels = options.cascadeOnAnyError === true
+    ? (options.fallbackModels ?? [config.fallbackModel])
+    : [config.fallbackModel]
+  return requestImageFallbackChain(options, config, fallbackModels)
 }
