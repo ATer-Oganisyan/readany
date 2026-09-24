@@ -618,27 +618,33 @@ test('Nano Banana fallback can be overridden by the server environment', async (
   assert.deepEqual(models, ['openai/gpt-image-2', 'google/custom-nano-banana'])
 })
 
-test('moderation rejection does not fall back to Nano Banana', async () => {
-  let calls = 0
-  await assert.rejects(
-    requestCoverImageWithFallback({
-      prompt: 'cover',
-      fetchImpl: async () => {
-        calls += 1
+test('moderation rejection falls back to Nano Banana', async () => {
+  const models = []
+  const result = await requestCoverImageWithFallback({
+    prompt: 'cover',
+    fetchImpl: async (_url, init) => {
+      const model = JSON.parse(init.body).model
+      models.push(model)
+      if (models.length === 1) {
         return new Response('content moderation blocked', { status: 422 })
-      },
-      env: { OPENROUTER_API_KEY: 'or-key' }
-    }),
-    (error) => error?.code === 'CENSOR'
-  )
-  assert.equal(calls, 1)
+      }
+      return new Response(JSON.stringify({ data: [{ b64_json: 'aW1hZ2U=' }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    },
+    env: { OPENROUTER_API_KEY: 'or-key' }
+  })
+
+  assert.deepEqual(models, ['openai/gpt-image-2', 'google/gemini-3.1-flash-image'])
+  assert.equal(result.model, 'google/gemini-3.1-flash-image')
+  assert.deepEqual(result.attempts.map(({ error_code }) => error_code), ['CENSOR', undefined])
 })
 
 test('character portrait can fall back after a moderation rejection', async () => {
   const models = []
   const result = await requestCoverImageWithFallback({
     prompt: 'fictional character portrait',
-    allowCensorFallback: true,
     fetchImpl: async (_url, init) => {
       const model = JSON.parse(init.body).model
       models.push(model)
@@ -670,7 +676,6 @@ test('character portrait preserves both moderation refusals and stops after the 
     requestCoverImageWithFallback({
       prompt: 'fictional character portrait',
       requestId,
-      allowCensorFallback: true,
       fetchImpl: async (_url, init) => {
         calls.push({
           model: JSON.parse(init.body).model,
@@ -886,7 +891,7 @@ test('enabled portrait cascade ends after every model returns HTTP 400', async (
   assert.deepEqual(calls, ['gpt-image-2', 'fallback-one', 'fallback-two'])
 })
 
-test('disabled portrait cascade keeps the original single-fallback rule', async () => {
+test('disabled portrait cascade uses its single fallback for validation errors', async () => {
   const calls = []
   await assert.rejects(
     requestCoverImageWithFallback({
@@ -901,7 +906,10 @@ test('disabled portrait cascade keeps the original single-fallback rule', async 
     }),
     (error) => error.code === 'VALIDATION'
   )
-  assert.deepEqual(calls, ['gpt-image-2'])
+  assert.deepEqual(calls, [
+    'gpt-image-2',
+    'openrouter/google/gemini-3.1-flash-image'
+  ])
 })
 
 test('raw AbortSignal timeout is normalized and falls back to Nano Banana', async () => {

@@ -3,8 +3,7 @@ import { withTimeout } from '../platform/concurrency.mjs'
 import { PORTRAIT_CASCADE_MAX_BUDGET_MS } from '../platform/generation-timeouts.mjs'
 import {
   PORTRAIT_CASCADE_EXHAUSTED,
-  imageUpstreamError,
-  shouldFallbackAfterImageError
+  imageUpstreamError
 } from './image-policy.mjs'
 import { purposeChain } from './purpose-inheritance.mjs'
 import { requestOptionsForModel } from './model-request-config.mjs'
@@ -885,10 +884,7 @@ export async function requestCoverImageWithFallback(options) {
     return await requestCoverImage({ ...options, requestId, retryIndex: 0 })
   } catch (error) {
     previousAttempts = Array.isArray(error?.attempts) ? error.attempts : []
-    const canFallback = shouldFallbackAfterImageError(error) ||
-      (options.allowCensorFallback === true && error?.code === 'CENSOR')
     if (
-      !canFallback ||
       !config.fallbackModel ||
       config.fallbackModel === config.model
     ) {
