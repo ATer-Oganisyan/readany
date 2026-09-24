@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { withTimeout } from '../platform/concurrency.mjs'
+import { abortableDelay, withTimeout } from '../platform/concurrency.mjs'
 import { PORTRAIT_CASCADE_MAX_BUDGET_MS } from '../platform/generation-timeouts.mjs'
 import {
   PORTRAIT_CASCADE_EXHAUSTED,
-  imageUpstreamError,
-  shouldFallbackAfterImageError
+  imageUpstreamError
 } from './image-policy.mjs'
 import { purposeChain } from './purpose-inheritance.mjs'
 import { requestOptionsForModel } from './model-request-config.mjs'
@@ -394,6 +393,28 @@ function coverImageTimeoutMs(env, provider) {
     : 15 * 60_000
 }
 
+function imageProviderRetryConfig(env) {
+  const retryMaxAttempts = Number(env.IMAGE_PROVIDER_MAX_ATTEMPTS || 3)
+  if (!Number.isSafeInteger(retryMaxAttempts) || retryMaxAttempts < 1 || retryMaxAttempts > 10) {
+    throw new Error('IMAGE_PROVIDER_MAX_ATTEMPTS must be an integer from 1 to 10')
+  }
+  const retryDelaySetting = Object.hasOwn(env, 'IMAGE_PROVIDER_RETRY_DELAYS_MS')
+    ? String(env.IMAGE_PROVIDER_RETRY_DELAYS_MS ?? '').trim()
+    : '2000,4000'
+  const retryDelaysMs = retryDelaySetting
+    ? retryDelaySetting.split(',').map((value) => Number(value.trim()))
+    : []
+  if (
+    retryDelaysMs.length !== retryMaxAttempts - 1 ||
+    retryDelaysMs.some((value) => !Number.isSafeInteger(value) || value < 0 || value > 120_000)
+  ) {
+    throw new Error(
+      'IMAGE_PROVIDER_RETRY_DELAYS_MS must contain one 0..120000 ms delay for every retry'
+    )
+  }
+  return { retryMaxAttempts, retryDelaysMs: Object.freeze(retryDelaysMs) }
+}
+
 function coverProviderBaseUrl(name, raw, env, { openAiCompatible = false } = {}) {
   const value = String(raw || '').trim()
   if (!value) return ''
@@ -425,8 +446,10 @@ export function coverImageConfig(env = process.env) {
   if (!COVER_IMAGE_PROVIDERS.has(provider)) {
     throw new Error(`Unsupported cover image provider: ${provider}`)
   }
+  const retryConfig = imageProviderRetryConfig(env)
   if (provider === 'litellm') {
     return {
+      ...retryConfig,
       provider,
       label: 'LiteLLM',
       baseUrl: coverProviderBaseUrl('LITELLM_BASE_URL', env.LITELLM_BASE_URL, env, {
@@ -442,6 +465,7 @@ export function coverImageConfig(env = process.env) {
     }
   }
   return {
+    ...retryConfig,
     provider,
     label: 'OpenRouter',
     baseUrl: coverProviderBaseUrl(
@@ -838,7 +862,9 @@ async function requestPortraitImageCascade(options, config) {
     ? Math.min(options.cascadeBudgetMs, PORTRAIT_CASCADE_MAX_BUDGET_MS)
     : PORTRAIT_CASCADE_MAX_BUDGET_MS
   const deadlineAt = performance.now() + cascadeBudgetMs
+  const retryDelay = options.retryDelay ?? abortableDelay
 
+  modelLoop:
   for (const [retryIndex, model] of models.entries()) {
     const remainingMs = deadlineAt - performance.now()
     if (remainingMs <= 0) {
@@ -847,29 +873,151 @@ async function requestPortraitImageCascade(options, config) {
         { requestId, attempts }
       )
     }
-    const attemptBudgetMs = Math.max(1, Math.floor(remainingMs / (models.length - retryIndex)))
-    try {
-      const result = await requestCoverImage({
-        ...options,
-        requestId,
-        retryIndex,
-        model,
-        signal: withTimeout(options.signal, attemptBudgetMs)
-      })
-      return { ...result, attempts: [...attempts, ...result.attempts] }
-    } catch (error) {
-      attempts.push(...(Array.isArray(error?.attempts) ? error.attempts : []))
-      error.requestId = requestId
-      error.attempts = [...attempts]
-      const status = Number(error?.status)
-      const nextModel = models[retryIndex + 1]
-      if (status === 400 && !nextModel) {
-        error.code = PORTRAIT_CASCADE_EXHAUSTED
+    const modelDeadlineAt = performance.now() + Math.max(
+      1,
+      Math.floor(remainingMs / (models.length - retryIndex))
+    )
+    for (let attemptIndex = 0; attemptIndex < config.retryMaxAttempts; attemptIndex += 1) {
+      let modelRemainingMs = modelDeadlineAt - performance.now()
+      if (modelRemainingMs <= 0) {
+        throw imageAttemptError(
+          normalizeImageTransportError(new DOMException('Portrait cascade timed out', 'TimeoutError'), config.label),
+          { requestId, attempts }
+        )
+      }
+      if (attemptIndex > 0) {
+        const retrySignal = withTimeout(options.signal, Math.max(1, Math.floor(modelRemainingMs)))
+        try {
+          if (retrySignal.aborted) throw retrySignal.reason
+          await retryDelay(config.retryDelaysMs[attemptIndex - 1], retrySignal)
+        } catch (error) {
+          throw imageAttemptError(normalizeImageTransportError(
+            retrySignal.aborted ? retrySignal.reason : error,
+            config.label
+          ), { requestId, attempts })
+        }
+        modelRemainingMs = modelDeadlineAt - performance.now()
+        if (modelRemainingMs <= 0) {
+          throw imageAttemptError(
+            normalizeImageTransportError(new DOMException('Portrait cascade timed out', 'TimeoutError'), config.label),
+            { requestId, attempts }
+          )
+        }
+      }
+      try {
+        const result = await requestCoverImage({
+          ...options,
+          requestId,
+          retryIndex,
+          model,
+          signal: withTimeout(options.signal, Math.max(1, Math.floor(modelRemainingMs)))
+        })
+        return { ...result, attempts: [...attempts, ...result.attempts] }
+      } catch (error) {
+        attempts.push(...(Array.isArray(error?.attempts) ? error.attempts : []))
+        error.requestId = requestId
+        error.attempts = [...attempts]
+        const status = Number(error?.status)
+        const nextModel = models[retryIndex + 1]
+        if (error?.code === 'CANCELLED') throw error
+        if (status >= 500 && status < 600 && attemptIndex + 1 < config.retryMaxAttempts) continue
+        if (status >= 400 && status < 500 && nextModel) {
+          console.error(`[image] ${config.provider}/${model} не удалось, фоллбэк на ${nextModel}:`, error.message)
+          continue modelLoop
+        }
+        if (status >= 400 && status < 500 && !nextModel) {
+          error.code = PORTRAIT_CASCADE_EXHAUSTED
+        }
         throw error
       }
-      // Only HTTP 400 advances the cascade; 5xx stays with the delayed job retry.
-      if (status !== 400 || !nextModel) throw error
-      console.error(`[image] ${config.provider}/${model} не удалось, фоллбэк на ${nextModel}:`, error.message)
+    }
+  }
+}
+
+async function requestImageFallbackChain(options, config, fallbackModels) {
+  const requestId = options.requestId || randomUUID()
+  const models = [...new Set([
+    config.model,
+    ...fallbackModels
+  ].map((model) => String(model || '').trim()).filter(Boolean))]
+  const attempts = []
+  const deadlineAt = Number.isFinite(options.cascadeBudgetMs)
+    ? performance.now() + Math.max(1, options.cascadeBudgetMs)
+    : null
+  const retryDelay = options.retryDelay ?? abortableDelay
+
+  modelLoop:
+  for (const [retryIndex, model] of models.entries()) {
+    let modelDeadlineAt = null
+    if (deadlineAt !== null) {
+      const remainingMs = deadlineAt - performance.now()
+      if (remainingMs <= 0) {
+        throw imageAttemptError(
+          normalizeImageTransportError(new DOMException('Image cascade timed out', 'TimeoutError'), config.label),
+          { requestId, attempts }
+        )
+      }
+      modelDeadlineAt = performance.now() + Math.max(
+        1,
+        Math.floor(remainingMs / (models.length - retryIndex))
+      )
+    }
+    for (let attemptIndex = 0; attemptIndex < config.retryMaxAttempts; attemptIndex += 1) {
+      let signal = options.signal
+      if (modelDeadlineAt !== null) {
+        const modelRemainingMs = modelDeadlineAt - performance.now()
+        if (modelRemainingMs <= 0) {
+          throw imageAttemptError(
+            normalizeImageTransportError(new DOMException('Image cascade timed out', 'TimeoutError'), config.label),
+            { requestId, attempts }
+          )
+        }
+        signal = withTimeout(options.signal, Math.max(1, Math.floor(modelRemainingMs)))
+      }
+      if (attemptIndex > 0) {
+        try {
+          if (signal?.aborted) throw signal.reason
+          await retryDelay(config.retryDelaysMs[attemptIndex - 1], signal)
+        } catch (error) {
+          throw imageAttemptError(normalizeImageTransportError(
+            signal?.aborted ? signal.reason : error,
+            config.label
+          ), { requestId, attempts })
+        }
+        if (modelDeadlineAt !== null) {
+          const modelRemainingMs = modelDeadlineAt - performance.now()
+          if (modelRemainingMs <= 0) {
+            throw imageAttemptError(
+              normalizeImageTransportError(new DOMException('Image cascade timed out', 'TimeoutError'), config.label),
+              { requestId, attempts }
+            )
+          }
+          signal = withTimeout(options.signal, Math.max(1, Math.floor(modelRemainingMs)))
+        }
+      }
+      try {
+        const result = await requestCoverImage({
+          ...options,
+          requestId,
+          retryIndex,
+          model,
+          signal
+        })
+        return { ...result, attempts: [...attempts, ...result.attempts] }
+      } catch (error) {
+        attempts.push(...(Array.isArray(error?.attempts) ? error.attempts : []))
+        error.requestId = requestId
+        error.attempts = [...attempts]
+        const status = Number(error?.status)
+        const nextModel = models[retryIndex + 1]
+        if (error?.code === 'CANCELLED') throw error
+        if (status >= 500 && status < 600 && attemptIndex + 1 < config.retryMaxAttempts) continue
+        if (status >= 400 && status < 500 && nextModel) {
+          console.error(`[image] ${config.provider}/${model} не удалось, фоллбэк на ${nextModel}:`, error.message)
+          continue modelLoop
+        }
+        throw error
+      }
     }
   }
 }
@@ -879,38 +1027,28 @@ export async function requestCoverImageWithFallback(options) {
   if (options.cascadeOnHttp400 === true) {
     return requestPortraitImageCascade(options, config)
   }
-  const requestId = options.requestId || randomUUID()
-  let previousAttempts = []
-  try {
-    return await requestCoverImage({ ...options, requestId, retryIndex: 0 })
-  } catch (error) {
-    previousAttempts = Array.isArray(error?.attempts) ? error.attempts : []
-    const canFallback = shouldFallbackAfterImageError(error) ||
-      (options.allowCensorFallback === true && error?.code === 'CENSOR')
-    if (
-      !canFallback ||
-      !config.fallbackModel ||
-      config.fallbackModel === config.model
-    ) {
-      throw error
-    }
-    console.error(
-      `[image] ${config.provider}/${config.model} не удалось, фоллбэк на ${config.fallbackModel}:`,
-      error.message
-    )
-  }
+  const fallbackModels = options.cascadeOnAnyError === true
+    ? (options.fallbackModels ?? [config.fallbackModel])
+    : [config.fallbackModel]
+  return requestImageFallbackChain(options, config, fallbackModels)
+}
 
-  try {
-    const result = await requestCoverImage({
-      ...options,
-      requestId,
-      retryIndex: 1,
-      model: config.fallbackModel
-    })
-    return { ...result, attempts: [...previousAttempts, ...result.attempts] }
-  } catch (error) {
-    error.requestId = requestId
-    error.attempts = [...previousAttempts, ...(Array.isArray(error?.attempts) ? error.attempts : [])]
-    throw error
+const INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS = 120_000
+
+export function interactivePortraitCascadeOptions({
+  aspectRatio,
+  fallbackModels,
+  cascadeBudgetMs
+}) {
+  if (aspectRatio !== '3:4') return {}
+  const requestedBudgetMs = Number.isFinite(cascadeBudgetMs) && cascadeBudgetMs > 0
+    ? cascadeBudgetMs
+    : INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS
+  return {
+    cascadeOnAnyError: true,
+    fallbackModels,
+    // The existing mobile request expires after 150 seconds. Keep the whole
+    // backend cascade inside that window and leave time for queueing/response.
+    cascadeBudgetMs: Math.min(requestedBudgetMs, INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS)
   }
 }

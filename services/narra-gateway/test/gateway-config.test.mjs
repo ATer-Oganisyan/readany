@@ -24,7 +24,10 @@ test('the whole environment is parsed once and handed back frozen', () => {
 })
 
 test('portrait cascade is opt-in and reads an ordered, bounded model list', () => {
-  const disabled = load({ CHARACTER_PORTRAIT_FALLBACK_MODELS: 'model-one,model-two' })
+  const disabled = load({
+    CHARACTER_PORTRAIT_FALLBACK_MODELS: 'model-one,model-two',
+    COVER_IMAGE_TIMEOUT_MS: '60000'
+  })
   assert.equal(disabled.CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED, false)
   assert.deepEqual(disabled.CHARACTER_PORTRAIT_FALLBACK_MODELS, [])
 
@@ -35,7 +38,8 @@ test('portrait cascade is opt-in and reads an ordered, bounded model list', () =
 
   const configured = load({
     CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED: 'true',
-    CHARACTER_PORTRAIT_FALLBACK_MODELS: 'model-one, openai/gpt-image-2, model-one, model-two'
+    CHARACTER_PORTRAIT_FALLBACK_MODELS: 'model-one, openai/gpt-image-2, model-one, model-two',
+    COVER_IMAGE_TIMEOUT_MS: '60000'
   })
   assert.deepEqual(configured.CHARACTER_PORTRAIT_FALLBACK_MODELS, ['model-one', 'model-two'])
   assert.ok(Object.isFrozen(configured.CHARACTER_PORTRAIT_FALLBACK_MODELS))
@@ -47,6 +51,35 @@ test('portrait cascade is opt-in and reads an ordered, bounded model list', () =
     CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED: 'true',
     CHARACTER_PORTRAIT_FALLBACK_MODELS: Array.from({ length: 9 }, (_, index) => `m${index}`).join(',')
   }), /at most 8 models/)
+})
+
+test('cover cascade reuses the configured ordered image fallback list', () => {
+  const inherited = load({
+    CHARACTER_PORTRAIT_FALLBACK_MODELS: [
+      'qwen/qwen-image-3',
+      'black-forest-labs/flux.2-pro',
+      'bytedance-seed/seedream-5-0-lite'
+    ].join(','),
+    COVER_IMAGE_TIMEOUT_MS: '60000'
+  })
+  assert.deepEqual(inherited.COVER_IMAGE_FALLBACK_MODELS, [
+    'qwen/qwen-image-3',
+    'black-forest-labs/flux.2-pro',
+    'bytedance-seed/seedream-5-0-lite'
+  ])
+  assert.equal(inherited.coverProviderCallsPerAttempt, 4)
+  assert.ok(Object.isFrozen(inherited.COVER_IMAGE_FALLBACK_MODELS))
+
+  const overridden = load({
+    CHARACTER_PORTRAIT_FALLBACK_MODELS: 'portrait-only',
+    COVER_IMAGE_FALLBACK_MODELS: 'cover-one, cover-one, cover-two',
+    COVER_IMAGE_TIMEOUT_MS: '60000'
+  })
+  assert.deepEqual(overridden.COVER_IMAGE_FALLBACK_MODELS, ['cover-one', 'cover-two'])
+
+  assert.throws(() => load({
+    COVER_IMAGE_FALLBACK_MODELS: Array.from({ length: 9 }, (_, index) => `m${index}`).join(',')
+  }), /COVER_IMAGE_FALLBACK_MODELS supports at most 8 models/)
 })
 
 test('production refuses the insecure transport escape hatches', () => {
@@ -99,10 +132,10 @@ test('traction ingest needs its URL and token together or not at all', () => {
   }))
 })
 
-test('a cover attempt timeout shorter than the provider timeouts is rejected', () => {
+test('a cover attempt timeout too short for the configured model chain is rejected', () => {
   assert.throws(
     () => load({ COVER_JOB_ATTEMPT_TIMEOUT_SECONDS: '1' }),
-    /COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must cover every configured cover image model timeout/
+    /COVER_JOB_ATTEMPT_TIMEOUT_SECONDS must reserve at least 30 seconds per cover image model/
   )
 })
 
@@ -142,9 +175,10 @@ test('the image provider is read from the given environment, not from process.en
   assert.equal(config.coverProviderConfig.model, 'своя-модель')
   assert.equal(config.coverProviderConfig.timeoutMs, 60_000)
   // Производные величины считаются от той же конфигурации: запасная модель
-  // совпадает с основной, значит вызов на попытку один, а не два.
+  // совпадает с основной, значит вызов на попытку один, а не два. На каждую
+  // модель остаётся хотя бы 30 секунд плюс 15 секунд на сохранение результата.
   assert.equal(config.coverProviderCallsPerAttempt, 1)
-  assert.equal(config.minimumCoverAttemptTimeoutMs, 75_000)
+  assert.equal(config.minimumCoverAttemptTimeoutMs, 45_000)
 })
 
 test('without an image provider in the environment the default is still openrouter', () => {
