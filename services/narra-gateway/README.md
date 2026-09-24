@@ -60,7 +60,8 @@ Cover generation always advances after any provider error through the ordered
 order; when both are unset, the legacy single fallback remains in use. The cover
 job's time budget is divided between the remaining models so the last fallback
 still gets an attempt. Manual 3:4 portrait regeneration uses the same full list
-and advances after any provider error within the shared eight-minute budget.
+and advances after any provider error within a shared two-minute budget, leaving
+room inside the existing 150-second mobile request timeout.
 Other interactive image shapes and scene generation are unchanged.
 
 GPT-5.6 Luna's model and reasoning modes are documented by

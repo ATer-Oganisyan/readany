@@ -928,15 +928,22 @@ export async function requestCoverImageWithFallback(options) {
   return requestImageFallbackChain(options, config, fallbackModels)
 }
 
+const INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS = 120_000
+
 export function interactivePortraitCascadeOptions({
   aspectRatio,
   fallbackModels,
   cascadeBudgetMs
 }) {
   if (aspectRatio !== '3:4') return {}
+  const requestedBudgetMs = Number.isFinite(cascadeBudgetMs) && cascadeBudgetMs > 0
+    ? cascadeBudgetMs
+    : INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS
   return {
     cascadeOnAnyError: true,
     fallbackModels,
-    cascadeBudgetMs
+    // The existing mobile request expires after 150 seconds. Keep the whole
+    // backend cascade inside that window and leave time for queueing/response.
+    cascadeBudgetMs: Math.min(requestedBudgetMs, INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS)
   }
 }
