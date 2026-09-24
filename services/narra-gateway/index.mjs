@@ -394,7 +394,6 @@ async function measuredInternalImageRequest({
   referenceImages = [],
   signal,
   costContext,
-  allowCensorFallback = false,
   cascadeOnHttp400 = false,
   fallbackModels,
   cascadeBudgetMs
@@ -406,7 +405,6 @@ async function measuredInternalImageRequest({
       quality,
       referenceImages,
       requestId: randomUUID(),
-      allowCensorFallback,
       cascadeOnHttp400,
       fallbackModels,
       cascadeBudgetMs,
@@ -469,7 +467,6 @@ async function generateInternalCharacterPortrait(prompt, signal, costContext, de
       aspectRatio: '3:4',
       quality: CHARACTER_PORTRAIT_IMAGE_QUALITY,
       costContext,
-      allowCensorFallback: true,
       cascadeOnHttp400: CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED,
       fallbackModels: CHARACTER_PORTRAIT_FALLBACK_MODELS,
       cascadeBudgetMs: CHARACTER_PORTRAIT_RETRY_FALLBACK_ENABLED
