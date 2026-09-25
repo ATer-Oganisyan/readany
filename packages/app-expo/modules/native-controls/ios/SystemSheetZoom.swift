@@ -63,11 +63,29 @@ final class SystemSheetZoomSourceRepository: NSObject {
         if context.zoomedViewController.isBeingDismissed,
           let coordinator = context.zoomedViewController.transitionCoordinator
         {
-          coordinator.animate(alongsideTransition: nil) { transition in
+          // UIKit animates the real cover back inside its pager. Let the return
+          // spring cross the pager's bounds, then restore normal scroll clipping.
+          var clippedAncestors: [UIView] = []
+          if identifier.hasPrefix("reader:") || identifier.hasPrefix("catalog:") {
+            var ancestor = source?.superview
+            while let view = ancestor, !(view is UIWindow) {
+              if view.clipsToBounds {
+                clippedAncestors.append(view)
+                view.clipsToBounds = false
+              }
+              ancestor = view.superview
+            }
+          }
+          let restoreClipping = {
+            clippedAncestors.forEach { $0.clipsToBounds = true }
+          }
+          let registered = coordinator.animate(alongsideTransition: nil) { transition in
+            restoreClipping()
             if !transition.isCancelled {
               (source as? SystemSheetZoomSourceView)?.onZoomReturn()
             }
           }
+          if !registered { restoreClipping() }
         }
         return source
       })

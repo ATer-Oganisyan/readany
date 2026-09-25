@@ -4,16 +4,18 @@ import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { countRender } from "@/lib/diagnostics/interaction-performance";
 import { catalogCoverDisplayState } from "@/lib/narra/catalog-cover-state";
 import { useColors } from "@/styles/theme";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  type Animated,
+  Animated,
+  Easing,
   type GestureResponderEvent,
   Image,
   Pressable,
   StyleSheet,
   View,
 } from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
 import { CatalogBookSkeleton } from "./CatalogBookSkeleton";
 import { BookCoverTypography } from "./book-cover-typography";
 import { PerspectiveBook } from "./perspective-book";
@@ -66,6 +68,33 @@ export const CatalogBookCard = memo(function CatalogBookCard({
     downloadFailed: coverLoadFailed,
   });
   const isCoverReady = display === "image";
+  const reducedMotion = useReducedMotion();
+  const revealProgress = useRef(new Animated.Value(0)).current;
+  const [revealed, setRevealed] = useState(false);
+  useEffect(() => {
+    if (isCoverReady && revealed) return;
+    if (revealed) setRevealed(false);
+    revealProgress.setValue(0);
+    if (!isCoverReady) return;
+    if (reducedMotion) {
+      revealProgress.setValue(2);
+      setRevealed(true);
+      return;
+    }
+    const easeOut = Easing.bezier(0, 0, 0.58, 1);
+    // One native clock: the second 100 ms phase never waits for the JS thread.
+    const animation = Animated.timing(revealProgress, {
+      toValue: 2,
+      duration: 200,
+      easing: (time) => (time < 0.5 ? easeOut(time * 2) / 2 : (1 + easeOut(time * 2 - 1)) / 2),
+      useNativeDriver: true,
+    });
+    animation.start(({ finished }) => {
+      if (finished) setRevealed(true);
+    });
+    return () => animation.stop();
+  }, [isCoverReady, reducedMotion, revealProgress, revealed]);
+  const interactive = isCoverReady && revealed;
   const showImage = !!coverUri && failedCoverUri !== coverUri;
   const handlePress = useCallback(
     (event: GestureResponderEvent) => {
@@ -92,16 +121,49 @@ export const CatalogBookCard = memo(function CatalogBookCard({
 
   return (
     <View style={cardSize}>
-      {isCoverReady ? null : (
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {interactive ? null : (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.revealLayer,
+            {
+              opacity: revealProgress.interpolate({
+                inputRange: [0, 1, 2],
+                outputRange: [1, 0, 0],
+              }),
+              transform: [
+                {
+                  scale: revealProgress.interpolate({
+                    inputRange: [0, 1, 2],
+                    outputRange: [1, 0.96, 0.96],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
           <CatalogBookSkeleton cardWidth={cardWidth} />
-        </View>
+        </Animated.View>
       )}
-      <View
-        pointerEvents={isCoverReady ? "auto" : "none"}
-        accessibilityElementsHidden={!isCoverReady}
-        importantForAccessibility={isCoverReady ? "auto" : "no-hide-descendants"}
-        style={[StyleSheet.absoluteFill, !isCoverReady && styles.hidden]}
+      <Animated.View
+        pointerEvents={interactive ? "auto" : "none"}
+        accessibilityElementsHidden={!interactive}
+        importantForAccessibility={interactive ? "auto" : "no-hide-descendants"}
+        style={[
+          styles.revealLayer,
+          {
+            opacity: revealProgress.interpolate({ inputRange: [0, 1, 2], outputRange: [0, 0, 1] }),
+            transform: [
+              {
+                scale: revealProgress.interpolate({
+                  inputRange: [0, 1, 2],
+                  outputRange: [0.96, 0.96, 1],
+                }),
+              },
+            ],
+          },
+          !isCoverReady && styles.hidden,
+        ]}
       >
         <View style={cardSize}>
           <PerspectiveBook
@@ -110,7 +172,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
             coverEffects={isCoverReady}
             showShadow={isCoverReady}
             shadowOpacity={shadowOpacity}
-            disabled={!isCoverReady}
+            disabled={!interactive}
             accessibilityLabel={title}
             accessibilityHint={t("notes.openBook", "Открыть книгу")}
             onPress={handlePress}
@@ -132,6 +194,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
                     source={coverSource}
                     style={styles.coverImage}
                     resizeMode="cover"
+                    fadeDuration={0}
                     onLoad={handleLoad}
                     onError={handleError}
                   />
@@ -150,7 +213,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
             }
           />
         </View>
-      </View>
+      </Animated.View>
       {display === "error" ? (
         <View style={styles.retry}>
           <Pressable
@@ -168,6 +231,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
 });
 
 const styles = StyleSheet.create({
+  revealLayer: { ...StyleSheet.absoluteFill, transformOrigin: "center" },
   hidden: { opacity: 0 },
   coverCanvas: {
     width: "100%",

@@ -136,6 +136,7 @@ vi.mock("react-native", async () => {
 
   return {
     FlatList,
+    Easing: { bezier: vi.fn(() => (time: number) => Math.sqrt(time)) },
     Animated: {
       View: "AnimatedView",
       Value: class {
@@ -143,12 +144,19 @@ vi.mock("react-native", async () => {
         constructor(value: number) {
           this.value = value;
         }
+        interpolate() {
+          return this;
+        }
         setValue(value: number) {
           this.value = value;
         }
       },
       timing: (value: { setValue: (next: number) => void }, options: { toValue: number }) => ({
-        start: () => value.setValue(options.toValue),
+        start: (done?: (result: { finished: boolean }) => void) => {
+          value.setValue(options.toValue);
+          done?.({ finished: true });
+        },
+        stop: () => {},
       }),
     },
     View: "View",
@@ -260,7 +268,10 @@ vi.mock("@/components/ui/centered-empty-state", () => ({
 vi.mock("@/lib/book/cover-text-contrast", () => ({ generatedCoverTextTone: () => "dark" }));
 vi.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 vi.mock("react-native-gesture-handler", () => ({ GestureDetector: "GestureDetector" }));
-vi.mock("react-native-reanimated", () => ({ default: { View: "AnimatedView" } }));
+vi.mock("react-native-reanimated", () => ({
+  default: { View: "AnimatedView" },
+  useReducedMotion: () => false,
+}));
 vi.mock("../../components/library/cover-press", () => ({
   useCoverPress: () => ({
     pressStyle: {},

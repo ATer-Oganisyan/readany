@@ -83,7 +83,7 @@ describe("target catalog cover", () => {
     expect(applyCatalogCoverResult([ready], book)[0]).toBe(ready);
   });
 
-  it("wires readiness and retry through both catalog surfaces without a fade cycle", () => {
+  it("wires readiness and retry through both catalog surfaces", () => {
     const card = readFileSync(
       new URL("../../components/library/CatalogBookCard.tsx", import.meta.url),
       "utf8",

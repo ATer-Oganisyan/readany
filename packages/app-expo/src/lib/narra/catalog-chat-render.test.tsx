@@ -2,7 +2,7 @@ vi.mock("./backend-character-media", () => ({ loadBackendCharacterMedia: vi.fn(a
 import { prepareSheetZoomReturn } from "@/components/navigation/sheet-zoom-return";
 import type { Book } from "@readany/core/types";
 import type * as React from "react";
-import { View } from "react-native";
+import { Easing, View } from "react-native";
 import { type ReactTestInstance, type ReactTestRenderer, act, create } from "react-test-renderer";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateCreator } from "zustand";
@@ -12,6 +12,13 @@ import type { NarraBookState, NarraCharacter } from "./types";
 const runtime = vi.hoisted(() => ({
   counters: new Map<string, number>(),
   focused: true,
+  manualFades: false,
+  reducedMotion: false,
+  fades: [] as Array<{
+    options: Record<string, unknown>;
+    finish: () => void;
+    at: (time: number) => void;
+  }>,
   focusListeners: new Set<() => void>(),
   libraryListeners: new Set<() => void>(),
   narraListeners: new Set<() => void>(),
@@ -43,6 +50,7 @@ const runtime = vi.hoisted(() => ({
 
 vi.mock("react-native", () => ({
   Platform: { OS: "ios" },
+  Easing: { bezier: vi.fn(() => (time: number) => Math.sqrt(time)) },
   Animated: {
     View: "AnimatedView",
     Value: class {
@@ -50,13 +58,45 @@ vi.mock("react-native", () => ({
       constructor(value: number) {
         this.value = value;
       }
+      interpolate({ inputRange, outputRange }: { inputRange: number[]; outputRange: number[] }) {
+        const source = this;
+        return {
+          get value() {
+            const i = source.value <= inputRange[1] ? 0 : 1;
+            const fraction = (source.value - inputRange[i]) / (inputRange[i + 1] - inputRange[i]);
+            return outputRange[i] + fraction * (outputRange[i + 1] - outputRange[i]);
+          },
+        };
+      }
       setValue(value: number) {
         this.value = value;
       }
     },
-    timing: (value: { setValue: (next: number) => void }, options: { toValue: number }) => ({
-      start: () => value.setValue(options.toValue),
-    }),
+    timing: (
+      value: { setValue: (next: number) => void },
+      options: { toValue: number; duration?: number; easing?: (time: number) => number },
+    ) => {
+      let stopped = false;
+      return {
+        start: (done?: (result: { finished: boolean }) => void) => {
+          const finish = () => {
+            if (stopped) return;
+            value.setValue(options.toValue);
+            done?.({ finished: true });
+          };
+          if (runtime.manualFades && options.duration === 200)
+            runtime.fades.push({
+              options,
+              finish,
+              at: (time) => value.setValue(options.toValue * (options.easing?.(time) ?? time)),
+            });
+          else finish();
+        },
+        stop: () => {
+          stopped = true;
+        },
+      };
+    },
   },
   View: "View",
   Image: "Image",
@@ -182,7 +222,10 @@ vi.mock("@/lib/narra/errors", () => ({ reportNarraError: vi.fn() }));
 vi.mock("@/lib/narra/media", () => ({ ensureCharacterPortrait: runtime.ensurePortrait }));
 vi.mock("expo-linear-gradient", () => ({ LinearGradient: "LinearGradient" }));
 vi.mock("react-native-gesture-handler", () => ({ GestureDetector: "GestureDetector" }));
-vi.mock("react-native-reanimated", () => ({ default: { View: "AnimatedView" } }));
+vi.mock("react-native-reanimated", () => ({
+  default: { View: "AnimatedView" },
+  useReducedMotion: () => runtime.reducedMotion,
+}));
 vi.mock("../../components/library/cover-press", () => ({
   useCoverPress: () => ({
     pressStyle: {},
@@ -216,6 +259,9 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  runtime.manualFades = false;
+  runtime.reducedMotion = false;
+  runtime.fades = [];
   runtime.counters.clear();
   runtime.focused = true;
   runtime.library = { books: [] };
@@ -504,14 +550,70 @@ describe("Catalog card render and decode", () => {
     }));
   }
 
+  it("shrinks the skeleton before growing the cover from centre and cancels a replaced cover", async () => {
+    runtime.manualFades = true;
+    const card = props();
+    const view = await render(<CatalogBookCard {...card} />);
+    const layers = () => hosts(view.root, "AnimatedView");
+    const opacity = (index: number) =>
+      layers()[index].props.style.find((s: { opacity?: unknown }) => s?.opacity)?.opacity.value;
+    const scale = (index: number) =>
+      layers()[index].props.style.find((s: { transform?: unknown }) => s?.transform)?.transform[0]
+        .scale.value;
+    expect(layers()[0].props.style[0].transformOrigin).toBe("center");
+    expect(layers()[1].props.style[0].transformOrigin).toBe("center");
+    expect([scale(0), scale(1)]).toEqual([1, 0.96]);
+    expect(runtime.fades).toHaveLength(0);
+    await act(() => hosts(view.root, "Image")[0].props.onLoad());
+    expect(runtime.fades).toHaveLength(1);
+    expect(runtime.fades[0].options).toMatchObject({
+      duration: 200,
+      toValue: 2,
+      useNativeDriver: true,
+    });
+    expect([opacity(0), opacity(1)]).toEqual([1, 0]);
+    expect(Easing.bezier).toHaveBeenCalledWith(0, 0, 0.58, 1);
+    await act(() => runtime.fades[0].at(0.25));
+    expect(opacity(0)).toBeCloseTo(1 - Math.sqrt(0.5));
+    expect(opacity(1)).toBe(0);
+    await act(() => runtime.fades[0].at(0.5));
+    expect([opacity(0), opacity(1)]).toEqual([0, 0]);
+    expect([scale(0), scale(1)]).toEqual([0.96, 0.96]);
+    expect(hosts(view.root, "Pressable")[0].props.disabled).toBe(true);
+    await act(() => runtime.fades[0].at(0.75));
+    expect(opacity(0)).toBe(0);
+    expect(opacity(1)).toBeCloseTo(Math.sqrt(0.5));
+    expect(scale(1)).toBeCloseTo(0.96 + 0.04 * Math.sqrt(0.5));
+    await act(() => view.update(<CatalogBookCard {...card} coverUri="file:///replacement" />));
+    await act(() => runtime.fades[0].finish());
+    expect([opacity(0), opacity(1)]).toEqual([1, 0]);
+    expect(hosts(view.root, "Pressable")[0].props.disabled).toBe(true);
+    await act(() => hosts(view.root, "Image")[0].props.onLoad());
+    await act(() => runtime.fades[1].finish());
+    expect(opacity(0)).toBe(1);
+    expect(scale(0)).toBe(1);
+    expect(hosts(view.root, "Pressable")[0].props.disabled).toBe(false);
+  });
+
+  it("reveals a decoded cover immediately with reduced motion", async () => {
+    runtime.manualFades = true;
+    runtime.reducedMotion = true;
+    const view = await render(<CatalogBookCard {...props()} />);
+    await act(() => hosts(view.root, "Image")[0].props.onLoad());
+    expect(runtime.fades).toHaveLength(0);
+    expect(hosts(view.root, "Pressable")[0].props.disabled).toBe(false);
+  });
+
   it("keeps the decoder Image mounted while adding text, gradients and the ready action", async () => {
     const card = props();
     const view = await render(<CatalogBookCard {...card} />);
     const image = hosts(view.root, "Image")[0];
     const source = image.props.source;
     const hasShadow = () =>
-      hosts(view.root, "AnimatedView")[0].props.style.some(
-        (style: { boxShadow?: string } | undefined) => Boolean(style?.boxShadow),
+      hosts(view.root, "AnimatedView").some((node) =>
+        node.props.style.some((style: { boxShadow?: string } | undefined) =>
+          Boolean(style?.boxShadow),
+        ),
       );
     expect(hosts(view.root, "LinearGradient")).toHaveLength(0);
     expect(hosts(view.root, "Text")).toHaveLength(0);
@@ -616,6 +718,9 @@ describe("Catalog card render and decode", () => {
     );
     await act(() => hosts(view.root, "Image")[0].props.onLoad());
     const shadowOpacity = hosts(view.root, "AnimatedView")
+      .filter((node) =>
+        node.props.style?.some?.((style: { boxShadow?: string }) => style?.boxShadow),
+      )
       .flatMap((node) => node.props.style ?? [])
       .find((style) => style?.opacity?.setValue)?.opacity;
     await act(() => hosts(view.root, "Pressable")[0].props.onPress());
@@ -644,6 +749,9 @@ describe("Catalog card render and decode", () => {
       );
       await act(() => hosts(view.root, "Image")[0].props.onLoad());
       const shadowOpacity = hosts(view.root, "AnimatedView")
+        .filter((node) =>
+          node.props.style?.some?.((style: { boxShadow?: string }) => style?.boxShadow),
+        )
         .flatMap((node) => node.props.style ?? [])
         .find((style) => style?.opacity?.setValue)?.opacity;
       await act(() => hosts(view.root, "Pressable")[0].props.onPress());

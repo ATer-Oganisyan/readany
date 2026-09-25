@@ -2370,6 +2370,14 @@ export class Paginator extends HTMLElement {
             ? anchor(primaryView.document) : anchor) ?? 0
         await this.scrollToAnchor(resolvedAnchor, select)
         if (hasFocus) this.focusView()
+        // The size cap would leave a short title without any prepared text.
+        // Only in that case, keep the initial cover while preparing two pages.
+        // ponytail: whole sections still need layout; split
+        // oversized source documents if the initial wait becomes too long.
+        if (!this.#rendered && !this.scrolled
+            && primaryView?.contentPages <= this.columnCount
+            && this.#isOversized(this.#adjacentIndex(1)))
+            await this.#fillVisibleArea({ minPages: 2, allowOversized: true })
         // Reveal content now that primary section is positioned
         this.#container.style.opacity = '1'
         this.#rendered = true
@@ -2459,13 +2467,12 @@ export class Paginator extends HTMLElement {
     // backward only when the primary section is short).
     // When reanchor is false (background pre-loading), skip re-scrolling
     // to avoid fighting with the user's current scroll position.
-    async #fillVisibleArea({ reanchor = true } = {}) {
+    async #fillVisibleArea({ reanchor = true, minPages = 5, allowOversized = false } = {}) {
         if (this.noPreload || this.noContinuousScroll || this.#filling) return
         this.#filling = true
         try {
             const { size } = this
             if (!size) return
-            const minPages = 5
             const maxSections = 8
 
             // If the primary section is shorter than one spread and
@@ -2496,8 +2503,10 @@ export class Paginator extends HTMLElement {
                 if (lastIndex == null) break
                 const nextIdx = this.#adjacentIndex(1, lastIndex)
                 if (nextIdx == null) break
-                // Stop at writing-mode boundaries and before volume-sized neighbours
-                if (!this.#canPreload(nextIdx)) break
+                // Opening-page preparation may include a large section, but
+                // must still stop at a writing-mode boundary.
+                if (!(this.#canPreload(nextIdx)
+                    || (allowOversized && this.#isSameDirection(nextIdx)))) break
                 await this.#loadAdjacentSection(nextIdx)
                 if (!this.#views.has(nextIdx)) break
             }
