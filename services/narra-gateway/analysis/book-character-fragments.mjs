@@ -191,6 +191,20 @@ export function collectBookCharacterFragments({
     if (!names.length) throw fragmentsError(`character ${characterKey} has no names`)
     return { characterKey, names, ...splitHonorificNames(names) }
   })
+  // Прозвища из нарицательных слов («малец», «судья») ищутся без учёта
+  // регистра и только теми формами, которые инвентарь видел в тексте. Общий
+  // матчер имён признаёт лишь слова с заглавной — и правильно: иначе он нашёл
+  // бы «надежду» у каждой Надежды, — поэтому для прозвищ отдельный проход.
+  const epithetOwners = new Map()
+  for (const character of characters) {
+    for (const form of Array.isArray(character?.epithetForms) ? character.epithetForms : []) {
+      const lower = String(form || '').toLocaleLowerCase('ru-RU').trim()
+      if (!lower) continue
+      const owners = epithetOwners.get(lower) ?? []
+      if (!owners.includes(character.characterKey)) owners.push(character.characterKey)
+      epithetOwners.set(lower, owners)
+    }
+  }
   // Персонажи с одинаковым базовым именем — одна семья с общей фамилией
   // («Mr Bennet», «Mrs Bennet», «Miss Bennet», «Bennet»). Внутри такой группы
   // одиночная фамилия достаётся ровно тому, у кого обращения нет: именно он и
@@ -267,6 +281,14 @@ export function collectBookCharacterFragments({
       const mention = firstPersonMentionAt(paragraphText)
       if (mention >= 0) {
         matches.push({ start: mention, end: mention, characterId: narratorKey, voice: true })
+      }
+    }
+    if (epithetOwners.size) {
+      for (const word of paragraphText.matchAll(/\p{L}+(?:-\p{L}+)*/gu)) {
+        const owners = epithetOwners.get(word[0].toLocaleLowerCase('ru-RU'))
+        // Форма, которую делят два прозвища, не решает ни за одно из них.
+        if (owners?.length !== 1) continue
+        matches.push({ start: word.index, end: word.index + word[0].length, characterId: owners[0] })
       }
     }
     if (!matches.length) continue

@@ -27,6 +27,7 @@ import {
   inventorySignificant
 } from '../analysis/book-name-inventory.mjs'
 import { collectBookCharacterFragments } from '../analysis/book-character-fragments.mjs'
+import { bookCharacterAnalysisText } from '../analysis/book-paratext.mjs'
 import {
   bookChapters,
   bookParagraphs
@@ -48,6 +49,16 @@ import {
   finalizeCharacterCard
 } from '../analysis/book-character-card.mjs'
 import { characterCardProjection } from '../analysis/book-character-card-contract.mjs'
+import { deferredCardFragmentTarget } from '../analysis/book-character-card-runner.mjs'
+import { reconcileCardsByBioLead } from '../analysis/book-card-markup-projection.mjs'
+import { MAX_PUBLISHED_BOOK_CHARACTERS } from '../books/book-character-selection.mjs'
+
+/** Те же ошибки, после которых прод переносит карточку дальше по книге. */
+const DEFERRABLE_CARD_ERRORS = new Set([
+  'CARD_BIO_MISSING', 'CARD_TRAITS_MISSING', 'CARD_BIO_UNGROUNDED_NAME',
+  'CARD_FRAGMENTS_MISSING', 'CARD_FRAGMENTS_THIN'
+])
+const PRE_MODEL_CARD_ERRORS = new Set(['CARD_FRAGMENTS_MISSING', 'CARD_FRAGMENTS_THIN'])
 import {
   normalizeCharacterCardRequest,
   normalizeCharacterCardResult,
@@ -226,10 +237,10 @@ export function contentFromEventStream(text) {
  * повторить» принимается здесь, и проверять его надо здесь же, а не по разбору
  * потока в отрыве от цикла повторов.
  */
-export function createModelClient(env = process.env, { postJsonImpl = postJson } = {}) {
+export function createModelClient(env = process.env, { postJsonImpl = postJson, model: modelOverride } = {}) {
   const baseUrl = String(env.JUDGE_BASE_URL || env.LITELLM_BASE_URL || '').replace(/\/$/, '')
   const apiKey = env.JUDGE_API_KEY || env.LITELLM_API_KEY
-  const model = env.JUDGE_MODEL || env.LITELLM_MODEL
+  const model = modelOverride || env.JUDGE_MODEL || env.LITELLM_MODEL
   // Бюджет простоя, а не всей операции: `call.setTimeout` — таймаут молчания
   // сокета, он сбрасывается на каждом байте. При потоке провайдер начинает
   // присылать байты за секунды (измерено на настоящем запросе подтверждения
@@ -246,6 +257,12 @@ export function createModelClient(env = process.env, { postJsonImpl = postJson }
   // Поток по умолчанию: без него длинный запрос рвут по простою. `MODEL_STREAM=0`
   // оставлен для провайдера, который потока не умеет.
   const stream = String(env.MODEL_STREAM ?? '1') !== '0'
+  // Прод температуру не передаёт (LLM_OMIT_TEMPERATURE): часть моделей её не
+  // принимает, и стенд обязан спрашивать так же, как прод.
+  const omitTemperature = String(env.MODEL_OMIT_TEMPERATURE ?? '0') === '1'
+  // Лимит ответа, как LLM_MAX_TOKENS_STRUCTURED_TASK у прода: без него ответ
+  // подтверждения состава на сотню кандидатов обрезается умолчанием провайдера.
+  const maxTokens = Number(env.MODEL_MAX_TOKENS || 0)
   return async (messages) => {
     let lastError = null
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -253,7 +270,13 @@ export function createModelClient(env = process.env, { postJsonImpl = postJson }
         const response = await postJsonImpl({
           url: `${baseUrl}/chat/completions`,
           apiKey,
-          body: { model, messages, temperature: 0, ...(stream ? { stream: true } : {}) },
+          body: {
+            model,
+            messages,
+            ...(omitTemperature ? {} : { temperature: 0 }),
+            ...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
+            ...(stream ? { stream: true } : {})
+          },
           timeoutMs
         })
         if (response.status >= 200 && response.status < 300) {
@@ -382,8 +405,12 @@ export async function runCardPipeline({
   runId = randomUUID(),
   bookEditionId = randomUUID(),
   maxCards = 0,
+  cardConcurrency = 1,
   navigation = null,
   complete,
+  // У подтверждения состава в проде своя модель (purpose roster_confirm), и
+  // стенд на лёгкой модели карточек мерил бы не тот состав.
+  completeRoster = complete,
   onProgress = () => {},
   now = () => Date.now()
 }) {
@@ -404,21 +431,26 @@ export async function runCardPipeline({
   })
 
   onProgress({ stage: 'inventory' })
+  // Та же маска служебного текста, что в Prepare: без неё стенд мерил бы
+  // инвентарь, которого в продакшене нет.
+  const characterText = bookCharacterAnalysisText(text, { navigation }).text
   const { inventory, candidates } = await stopwatch.measure('inventory', async () => {
-    const built = buildBookNameInventory({ text, normalizedTextHash })
+    const built = buildBookNameInventory({ text: characterText, navigation, normalizedTextHash })
     return { inventory: built, candidates: inventoryRoster(built) }
   })
 
   onProgress({ stage: 'fragments', count: candidates.length })
   const fragments = await stopwatch.measure('fragments', async () => collectBookCharacterFragments({
-    text,
+    text: characterText,
+    navigation,
     characters: candidates.map((candidate) => ({
       characterKey: candidate.candidateKey,
       names: [
         candidate.displayName,
         ...candidate.aliases,
         ...(candidate.fullName ? [candidate.fullName] : [])
-      ]
+      ],
+      ...(candidate.epithet ? { epithetForms: candidate.epithetForms } : {})
     })),
     // Собираем щедро: окно карточки вырезается ниже, и при скупом лимите в
     // окно первых глав попадал один абзац на персонажа — карточка строилась
@@ -451,12 +483,12 @@ export async function runCardPipeline({
   const { confirmation, roster } = await stopwatch.measure(
     'roster_confirm',
     async () => {
-      const rosterRaw = await complete(rosterConfirmationMessages(normalizedRequest))
+      const rosterRaw = await completeRoster(rosterConfirmationMessages(normalizedRequest))
       const rosterShape = normalizeRosterConfirmationResult(parseJson(rosterRaw), normalizedRequest)
       const validated = validateRosterConfirmation({ request, response: rosterShape })
       return {
         confirmation: validated,
-        roster: applyRosterConfirmation({ request, candidates, confirmation: validated })
+        roster: applyRosterConfirmation({ request, candidates, confirmation: validated, fragments })
       }
     },
     { candidateCount: request.roster.length, pairCount: request.candidatePairs.length }
@@ -469,77 +501,128 @@ export async function runCardPipeline({
   const selected = maxCards > 0 ? ordered.slice(0, maxCards) : ordered
   const cards = []
   const cardFailures = []
-  for (const [index, character] of selected.entries()) {
+  // Карточки независимы, и прод собирает их параллельно; последовательный
+  // стенд на книге в сотню героев с переносами шёл бы часами.
+  const buildCard = async (index, character) => {
     onProgress({ stage: 'card', index: index + 1, total: selected.length, name: character.canonicalName })
-    const window = cardWindowForOffset(chapters, character.firstMentionTextOffset)
-    const windowFragments = character.candidateKeys
+    const allFragments = character.candidateKeys
       .flatMap((key) => byKey.get(key)?.fragments ?? [])
-      .filter((fragment) =>
-        fragment.startOffset >= window.startOffset && fragment.endOffset <= window.endOffset)
       // Фрагменты слитых кандидатов теперь принадлежат одному персонажу.
       .map((fragment) => ({ ...fragment, characterKey: character.characterKey }))
       .sort((left, right) => left.startOffset - right.startOffset)
-    if (!windowFragments.length) {
-      cardFailures.push({ characterKey: character.characterKey, reason: 'no_fragments_in_window' })
-      continue
-    }
+    const fragmentsUpTo = (window) => allFragments.filter((fragment) =>
+      fragment.startOffset >= window.startOffset && fragment.endOffset <= window.endOffset)
+    let window = cardWindowForOffset(chapters, character.firstMentionTextOffset)
+    let windowIndex = cardWindowIndexForOffset(cardWindows.windows, chapters, character.firstMentionTextOffset)
     const cardStartedAt = now()
-    try {
-      const cardRequest = buildCharacterCardRequest({
-        runId,
-        bookEditionId,
-        characterKey: character.characterKey,
-        character: {
-          canonicalName: character.canonicalName,
-          names: [character.canonicalName, ...character.names],
-          mentionCount: character.mentionCount,
-          firstMentionTextOffset: character.firstMentionTextOffset
-        },
-        window,
-        fragments: windowFragments,
-        title,
-        author,
-        normalizedTextHash,
-        inventoryVersion: inventory.inventoryVersion
-      })
-      const normalizedCard = normalizeCharacterCardRequest({
-        idempotencyKey: characterCardIdempotencyKey(cardRequest),
-        ...cardRequest
-      })
-      const raw = await complete(characterCardMessages(normalizedCard))
-      const shaped = normalizeCharacterCardResult(parseJson(raw), normalizedCard)
-      const finalized = finalizeCharacterCard({
-        input: cardRequest,
-        result: shaped,
-        fragments: windowFragments
-      })
-      cards.push({
-        card: finalized.card,
-        audit: finalized.audit,
-        // Длительность и окно на каждую карточку: из них считается и время до
-        // первых героев, и время всей книги.
-        durationMs: now() - cardStartedAt,
-        windowIndex: cardWindowIndexForOffset(
-          cardWindows.windows,
-          chapters,
-          character.firstMentionTextOffset
-        ),
-        projection: characterCardProjection(finalized.card),
-        // Координаты фрагментов нужны канарейке: она собирает из карточек
-        // v3 и прогоняет настоящий Validate, а тот сверяет каждую цитату с
-        // текстом по смещениям. Сами цитаты не дублируются — они и есть текст.
-        fragments: windowFragments.map(({ fragmentId, startOffset, endOffset, chapterIndex }) =>
-          ({ fragmentId, characterKey: character.characterKey, startOffset, endOffset, chapterIndex }))
-      })
-    } catch (error) {
+    const attempts = []
+    let built = null
+    // Тот же перенос, что в проде: карточку, которой здесь нечем обосноваться,
+    // собирают в окне дальше по книге, где цитат больше.
+    for (;;) {
+      const windowFragments = fragmentsUpTo(window)
+      try {
+        if (!windowFragments.length) {
+          throw Object.assign(new Error('no fragments in window'), { code: 'CARD_FRAGMENTS_MISSING' })
+        }
+        const cardRequest = buildCharacterCardRequest({
+          runId,
+          bookEditionId,
+          characterKey: character.characterKey,
+          character: {
+            canonicalName: character.canonicalName,
+            names: [character.canonicalName, ...character.names],
+            mentionCount: character.mentionCount,
+            firstMentionTextOffset: character.firstMentionTextOffset
+          },
+          window,
+          fragments: windowFragments,
+          title,
+          author,
+          normalizedTextHash,
+          inventoryVersion: inventory.inventoryVersion
+        })
+        const normalizedCard = normalizeCharacterCardRequest({
+          idempotencyKey: characterCardIdempotencyKey(cardRequest),
+          ...cardRequest
+        })
+        const raw = await complete(characterCardMessages(normalizedCard))
+        const shaped = normalizeCharacterCardResult(parseJson(raw), normalizedCard)
+        const finalized = finalizeCharacterCard({
+          input: cardRequest,
+          result: shaped,
+          fragments: windowFragments
+        })
+        built = { finalized, windowFragments }
+        break
+      } catch (error) {
+        const code = typeof error?.code === 'string' ? error.code : 'UNKNOWN'
+        attempts.push({ windowIndex, code, fragmentCount: windowFragments.length })
+        if (!DEFERRABLE_CARD_ERRORS.has(code)) break
+        const target = deferredCardFragmentTarget(code, windowFragments.length)
+        const later = cardWindows.windows
+          .filter((item) => item.windowIndex > windowIndex)
+          .map((item) => ({ item, count: fragmentsUpTo(item).length }))
+          .filter(({ count }) => count > windowFragments.length)
+        const next = later.find(({ count }) => count >= target) ??
+          (PRE_MODEL_CARD_ERRORS.has(code) ? null : later[later.length - 1])
+        if (!next) break
+        window = { startOffset: next.item.startOffset, endOffset: next.item.endOffset, chapterIndexes: next.item.chapterIndexes }
+        windowIndex = next.item.windowIndex
+      }
+    }
+    if (!built) {
+      const last = attempts[attempts.length - 1]
       cardFailures.push({
         characterKey: character.characterKey,
-        reason: typeof error?.code === 'string' ? error.code : 'UNKNOWN',
-        message: String(error?.message ?? '').slice(0, 300),
+        name: character.canonicalName,
+        reason: last?.code ?? 'UNKNOWN',
+        attempts,
         durationMs: now() - cardStartedAt
       })
+      return
     }
+    const { finalized, windowFragments } = built
+    cards.push({
+      card: finalized.card,
+      audit: finalized.audit,
+      // Длительность и окно на каждую карточку: из них считается и время до
+      // первых героев, и время всей книги.
+      durationMs: now() - cardStartedAt,
+      windowIndex,
+      deferrals: attempts.length,
+      projection: characterCardProjection(finalized.card),
+      // Координаты фрагментов нужны канарейке: она собирает из карточек
+      // v3 и прогоняет настоящий Validate, а тот сверяет каждую цитату с
+      // текстом по смещениям. Сами цитаты не дублируются — они и есть текст.
+      fragments: windowFragments.map(({ fragmentId, startOffset, endOffset, chapterIndex }) =>
+        ({ fragmentId, characterKey: character.characterKey, startOffset, endOffset, chapterIndex }))
+    })
   }
+  let cursor = 0
+  await Promise.all(Array.from({ length: Math.max(1, cardConcurrency) }, async () => {
+    while (cursor < selected.length) {
+      const index = cursor++
+      await buildCard(index, selected[index])
+    }
+  }))
+
+  // То, что увидит читатель: сверка карточек по биографиям и двадцать самых
+  // упоминаемых, как при публикации.
+  const reconciled = reconcileCardsByBioLead({
+    cards: cards.map(({ card }) => ({ ...card, aliases: [...(card.aliases ?? [])] })),
+    fragmentsByCharacter: new Map(cards.map(({ card, fragments: cited }) => [card.characterKey, cited]))
+  })
+  const published = [...reconciled.cards]
+    .sort((left, right) => (right.mentionCount ?? 0) - (left.mentionCount ?? 0))
+    .slice(0, MAX_PUBLISHED_BOOK_CHARACTERS)
+    .map((card) => ({
+      characterKey: card.characterKey,
+      name: card.name,
+      mentionCount: card.mentionCount,
+      traits: card.traits.map(({ value }) => value),
+      bio: card.bio?.value ?? ''
+    }))
 
   return {
     runId,
@@ -581,7 +664,10 @@ export async function runCardPipeline({
       stages: stopwatch.stages
     },
     cards,
-    cardFailures
+    cardFailures,
+    merges: reconciled.merges,
+    renames: reconciled.renames,
+    published
   }
 }
 
@@ -596,6 +682,8 @@ function parseArguments(argv) {
     else if (value === '--out') result.outPath = argv[++index]
     else if (value === '--run-id') result.runId = argv[++index]
     else if (value === '--cards') result.maxCards = Number(argv[++index])
+    else if (value === '--navigation') result.navigationPath = argv[++index]
+    else if (value === '--concurrency') result.cardConcurrency = Number(argv[++index])
     else throw inputError(`unknown argument: ${value}`)
   }
   if (!result.textPath) throw inputError('--text is required')
@@ -608,10 +696,15 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const options = parseArguments(process.argv.slice(2))
   const complete = createModelClient()
   if (!complete) throw inputError('JUDGE_BASE_URL, JUDGE_API_KEY and JUDGE_MODEL are required')
+  const completeRoster = process.env.JUDGE_ROSTER_MODEL
+    ? createModelClient(process.env, { model: process.env.JUDGE_ROSTER_MODEL })
+    : complete
   const text = await readFile(options.textPath, 'utf8')
-  const navigation = options.tocPath
-    ? navigationFromToc(JSON.parse(await readFile(options.tocPath, 'utf8')), text)
-    : null
+  const navigation = options.navigationPath
+    ? JSON.parse(await readFile(options.navigationPath, 'utf8'))
+    : options.tocPath
+      ? navigationFromToc(JSON.parse(await readFile(options.tocPath, 'utf8')), text)
+      : null
   const started = Date.now()
   const report = await runCardPipeline({
     text,
@@ -619,8 +712,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     author: options.author ?? '',
     runId: options.runId,
     maxCards: options.maxCards,
+    cardConcurrency: options.cardConcurrency ?? 1,
     navigation,
     complete,
+    completeRoster,
     onProgress: (event) => process.stderr.write(`  ${JSON.stringify(event)}\n`)
   })
   await writeFile(options.outPath, `${JSON.stringify(report, null, 2)}\n`)

@@ -2164,3 +2164,53 @@ test('internal character bundle route passes its request deadline to generation'
   assert.ok(receivedDeadlineAt >= before + 590_000)
   assert.ok(receivedDeadlineAt <= performance.now() + 600_000)
 })
+
+test('a roster confirmation that classifies too few candidates is refused and not cached', async () => {
+  // Оборванный ответ молча превращал состав в other: кандидат без
+  // классификации получает подсказку инвентаря. Отказ внутри кэша значит, что
+  // повтор задания спросит модель заново.
+  const { buildRosterConfirmationRequest, rosterConfirmationIdempotencyKey } =
+    await import('../analysis/book-roster-confirmation.mjs')
+  const candidates = Array.from({ length: 10 }, (_, index) => ({
+    candidateKey: `name:c${index}`, displayName: `Имя${index}`, aliases: [], fullName: '',
+    honorific: null, honorificGender: null, count: 20 - index, chapterCount: 3,
+    firstMentionTextOffset: index * 100, kindHint: 'unknown', tier: 'significant',
+    speechAdjacencyRate: 0.2, dialogueDashRate: 0, honorificRate: 0, prepositionalRate: 0
+  }))
+  const request = buildRosterConfirmationRequest({
+    runId: '11111111-1111-4111-8111-111111111111',
+    bookEditionId: '22222222-2222-4222-8222-222222222222',
+    title: 'Книга', author: '', language: 'ru', inventoryVersion: 'name-inventory-v1',
+    normalizedTextHash: 'a'.repeat(64), windowIndex: null, candidates,
+    fragments: { characters: candidates.map(({ candidateKey }) => ({
+      characterKey: candidateKey,
+      fragments: [{ fragmentId: `frag:${candidateKey}:0`, paragraphIndex: 0, quote: 'Абзац.', startOffset: 0 }]
+    })) }
+  })
+  const input = {
+    idempotencyKey: rosterConfirmationIdempotencyKey({
+      runId: request.runId, windowIndex: request.windowIndex,
+      inventoryVersion: request.inventoryVersion, promptVersion: request.promptVersion
+    }),
+    ...request
+  }
+  const answers = [
+    // Классифицированы двое из десяти.
+    { classifications: candidates.slice(0, 2).map(({ candidateKey }) => ({ candidateKey, kind: 'person', canonicalName: 'Имя' })), merges: [] },
+    { classifications: candidates.map(({ candidateKey }) => ({ candidateKey, kind: 'person', canonicalName: 'Имя' })), merges: [] }
+  ]
+  let calls = 0
+  const storage = memoryStorage()
+  const service = createInternalGenerationService({
+    storage,
+    logger: { info() {}, error() {} },
+    async completeChat() { return JSON.stringify(answers[calls++]) },
+    async generatePortrait() { throw new Error('unused') },
+    async synthesizeSpeech() { throw new Error('unused') },
+    async generateIdleAnimation() { throw new Error('unused') }
+  })
+  await assert.rejects(() => service.confirmBookRoster(input), { code: 'ROSTER_CONFIRMATION_INCOMPLETE' })
+  const retried = await service.confirmBookRoster(input)
+  assert.equal(calls, 2, 'повтор обязан спросить модель заново')
+  assert.equal(retried.classifications.length, 10)
+})

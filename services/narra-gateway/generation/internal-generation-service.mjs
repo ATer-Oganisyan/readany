@@ -72,6 +72,9 @@ import {
 // Часть контрактов исторически импортируют отсюда — сохраняем точку входа.
 export { fallbackProfileDescription, filterStableTraits } from './internal-generation-contracts.mjs'
 
+/** Доля кандидатов, которую ответ подтверждения обязан классифицировать. */
+const ROSTER_MIN_CLASSIFIED_SHARE = 0.9
+
 export function createInternalGenerationService({
   storage,
   completeChat,
@@ -558,6 +561,20 @@ export function createInternalGenerationService({
           }
         })
         const normalized = normalizeRosterConfirmationResult(parseJsonObject(response), input)
+        // Неполный ответ не кэшируется. Кандидат без классификации получает
+        // подсказку инвентаря, а она у большинства «unknown» — и оборванный
+        // ответ молча превращал состав книги в other: на «Кровавом меридиане»
+        // так ушли 92 кандидата из 122, и с ними Глэнтон. Ошибка внутри кэша
+        // значит, что повтор задания спросит модель заново, а не повторит обрывок.
+        if (normalized.classifications.length < ROSTER_MIN_CLASSIFIED_SHARE * input.roster.length) {
+          log.error('roster.confirm_incomplete', 'Модель классифицировала не весь состав', {
+            ...common,
+            accepted_classification_count: normalized.classifications.length
+          })
+          throw Object.assign(new Error('roster confirmation classified too few candidates'), {
+            code: 'ROSTER_CONFIRMATION_INCOMPLETE', status: 502
+          })
+        }
         log.info('roster.confirm_completed', 'Roster подтверждён', {
           ...common,
           provider_classification_count: normalized.providerClassificationCount,

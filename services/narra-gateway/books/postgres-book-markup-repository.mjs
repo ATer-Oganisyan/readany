@@ -2878,7 +2878,8 @@ export function createPostgresBookMarkupRepository(pool, {
      * дней, и окно, в котором они висели, не закрывалось никогда.
      */
     async deferCharacterCard({
-      runId, bookEditionId, characterKey, windowIndex, priority = 50, jobId = null
+      runId, bookEditionId, characterKey, windowIndex, priority = 50, jobId = null,
+      minFragments = null, fallbackToLast = true
     }) {
       if (!runId || !bookEditionId || !characterKey) {
         throw new TypeError('runId, bookEditionId and characterKey are required')
@@ -2887,23 +2888,15 @@ export function createPostgresBookMarkupRepository(pool, {
         throw new TypeError('windowIndex must be a non-negative integer')
       }
       return transaction(pool, async (client) => {
-        const target = await client.query(
+        // Накопленное число цитат персонажа к концу каждого следующего окна.
+        // Выбор окна — в коде, а не в SQL: правило «сначала до цели, иначе всё,
+        // что есть» в одном HAVING не выражается.
+        const counts = await client.query(
           `WITH roster AS (
              SELECT candidate_keys, canonical_name, names, mention_count,
                     first_mention_text_offset
                FROM book_character_roster
               WHERE run_id = $1 AND character_key = $2
-           ),
-           current AS (
-             SELECT count(fragment.fragment_id)::int AS fragment_count
-               FROM roster
-               LEFT JOIN book_character_fragments AS fragment
-                 ON fragment.run_id = $1
-                AND fragment.character_key = ANY(roster.candidate_keys)
-                AND fragment.start_offset < (
-                  SELECT end_offset FROM book_card_windows
-                   WHERE run_id = $1 AND window_index = $3
-                )
            )
            -- window — зарезервированное слово SQL, и алиас с таким именем
            -- делает запрос синтаксически неверным. Ошибка ловилась и уходила в
@@ -2914,23 +2907,31 @@ export function createPostgresBookMarkupRepository(pool, {
                   count(fragment.fragment_id)::int AS fragment_count
              FROM book_card_windows AS card_window
              CROSS JOIN roster
-             CROSS JOIN current
              LEFT JOIN book_character_fragments AS fragment
                ON fragment.run_id = $1
               AND fragment.character_key = ANY(roster.candidate_keys)
               AND fragment.start_offset < card_window.end_offset
             WHERE card_window.run_id = $1
-              AND card_window.window_index > $3
+              AND card_window.window_index >= $3
               AND card_window.status <> 'cancelled'
             GROUP BY card_window.window_index, roster.canonical_name, roster.names,
-                     roster.mention_count, roster.first_mention_text_offset,
-                     current.fragment_count
-           HAVING count(fragment.fragment_id) > max(current.fragment_count)
-            ORDER BY card_window.window_index
-            LIMIT 1`,
+                     roster.mention_count, roster.first_mention_text_offset
+            ORDER BY card_window.window_index`,
           [runId, characterKey, windowIndex]
         )
-        const row = target.rows[0]
+        const current = counts.rows.find((item) => Number(item.window_index) === windowIndex)
+        const currentCount = Number(current?.fragment_count ?? 0)
+        const later = counts.rows.filter((item) =>
+          Number(item.window_index) > windowIndex && Number(item.fragment_count) > currentCount)
+        // Сначала ближайшее окно, где цитат хватит, чтобы попытка имела смысл.
+        // Если до цели книга не дотягивает — последнее окно с приростом: одна
+        // попытка по всему, что о персонаже сказано. Прироста нет — отказ
+        // честный, и персонаж без карточки не выводится.
+        const target = Number.isSafeInteger(minFragments) && minFragments > currentCount
+          ? minFragments
+          : currentCount + 1
+        const row = later.find((item) => Number(item.fragment_count) >= target) ??
+          (fallbackToLast ? later[later.length - 1] : null)
         if (!row) return { deferred: false, windowIndex: null }
         const nextWindow = Number(row.window_index)
         const inserted = await client.query(

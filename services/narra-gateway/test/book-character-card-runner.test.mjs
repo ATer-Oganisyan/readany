@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import test from 'node:test'
-import { createCharacterCardRunner } from '../analysis/book-character-card-runner.mjs'
+import {
+  createCharacterCardRunner,
+  deferredCardFragmentTarget
+} from '../analysis/book-character-card-runner.mjs'
 import { CARD_MEDIA_PRIORITY } from '../analysis/book-character-card.mjs'
 
 const silentLogger = { info() {}, warn() {}, error() {} }
@@ -164,13 +167,39 @@ test('a normalized text that does not match its hash stops the job', async () =>
   assert.equal(calls.published.length, 0)
 })
 
-test('the runner reports the extractive fallback when the model gives no bio', async () => {
+test('a card the model left without a bio is moved on, not published with a quote', async () => {
+  // Прежде раннер записывал карточку с предложением из цитаты вместо био. Теперь
+  // карточка без био — повод поискать окно, где материала больше.
   const { runner, calls } = harness({
-    generatorResult: { card: { gender: 'female', traits: [] } }
+    generatorResult: { card: { gender: 'female', traits: [] } },
+    deferral: { deferred: true, windowIndex: 3, jobId: 'job-next', fragmentCount: 12 }
   })
   const result = await runner.run(JOB)
-  assert.equal(result.bioSource, 'extractive')
-  assert.match(calls.published[0].card.bio.value, /^Элизабет Беннет жила в Лонгборне/)
+  assert.equal(result.status, 'deferred')
+  assert.deepEqual(calls.published, [])
+  // Модель уже звали: следующее окно обязано дать заметно больше цитат.
+  assert.equal(calls.deferred[0].minFragments, deferredCardFragmentTarget('CARD_BIO_MISSING', 3))
+  assert.equal(calls.deferred[0].fallbackToLast, true)
+})
+
+test('a thin window is moved on before the model is called', async () => {
+  const { runner, calls } = harness({
+    input: { fragments: FRAGMENTS.slice(0, 2) },
+    deferral: { deferred: true, windowIndex: 2, jobId: 'job-next', fragmentCount: 5 }
+  })
+  const result = await runner.run(JOB)
+  assert.equal(result.status, 'deferred')
+  assert.equal(calls.requests.length, 0, 'из двух цитат карточку не собирают')
+  assert.equal(calls.deferred[0].minFragments, 3)
+  // До минимума книга не дотянет — переносить в последнее окно незачем.
+  assert.equal(calls.deferred[0].fallbackToLast, false)
+})
+
+test('after a model call the next window must bring real growth, not one more quote', () => {
+  assert.equal(deferredCardFragmentTarget('CARD_FRAGMENTS_THIN', 1), 3)
+  assert.equal(deferredCardFragmentTarget('CARD_FRAGMENTS_THIN', 2), 3)
+  assert.equal(deferredCardFragmentTarget('CARD_TRAITS_MISSING', 3), 6)
+  assert.equal(deferredCardFragmentTarget('CARD_BIO_MISSING', 10), 20)
 })
 
 test('a card that fails the contract is never published', async () => {
@@ -271,7 +300,9 @@ test('a character with nothing to cite here is moved to a window where there is'
     characterKey: 'char:elizabeth',
     windowIndex: 0,
     priority: 50,
-    jobId: 'job-1'
+    jobId: 'job-1',
+    minFragments: 6,
+    fallbackToLast: true
   }])
   // Цепочка окон двигается и здесь: перенос — это завершение задания, а не
   // его исчезновение.

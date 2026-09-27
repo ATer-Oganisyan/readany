@@ -34,6 +34,26 @@ function book() {
   return paragraphs.join('\n\n')
 }
 
+/**
+ * Полноценный ответ карточки: био и черта со ссылками на цитаты из запроса.
+ * Карточку без био и без черт конвейер не выводит, поэтому пустой ответ здесь
+ * мерил бы уже не длительности, а отказ.
+ */
+function fullCard(messages) {
+  const user = messages.find(({ role }) => role === 'user')?.content ?? ''
+  const line = user.split('\n').find((item) => item.startsWith('FRAGMENTS: ')) ?? 'FRAGMENTS: []'
+  const ids = JSON.parse(line.slice('FRAGMENTS: '.length)).map(({ id }) => id)
+  const name = JSON.parse(user.split('\n').find((item) => item.startsWith('CHARACTER: '))
+    .slice('CHARACTER: '.length)).name
+  return JSON.stringify({
+    name,
+    bio: { value: `${name} появляется в каждой главе.`, fragmentIds: ids.slice(0, 1), confidence: 0.9 },
+    traits: [{ value: 'упрямый', fragmentIds: [ids[0], ids.at(-1)], confidence: 0.9 }],
+    locations: [],
+    gender: 'unknown'
+  })
+}
+
 /** Часы, которые двигаются только когда их просят: тест мерит структуру. */
 function clock() {
   let value = 1_000
@@ -57,13 +77,7 @@ test('the report carries a duration for every stage and for every card', async (
       if (isRoster) {
         return JSON.stringify({ classifications: [], merges: [] })
       }
-      return JSON.stringify({
-        name: 'Иван Петров',
-        bio: null,
-        traits: [],
-        locations: [],
-        gender: 'male'
-      })
+      return fullCard(messages)
     }
   })
 
@@ -94,9 +108,10 @@ test('every card says which window it belongs to, so the first-window wait is co
     text: book(),
     title: 'Тестовая книга',
     now: time.now,
-    complete: async () => {
+    complete: async (messages) => {
       time.advance(1_000)
-      return JSON.stringify({ traits: [], locations: [], gender: 'unknown' })
+      const isRoster = messages.some(({ content }) => content.includes('CANDIDATE_PAIRS'))
+      return isRoster ? JSON.stringify({ classifications: [], merges: [] }) : fullCard(messages)
     }
   })
 

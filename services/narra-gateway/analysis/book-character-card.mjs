@@ -17,7 +17,8 @@
 import { createHash } from 'node:crypto'
 import {
   buildCharacterNameMatcherSpec,
-  findCharacterNameMatches
+  findCharacterNameMatches,
+  stemNameToken
 } from './character-name-matcher.mjs'
 import {
   fragmentBelongsToWindow,
@@ -46,6 +47,17 @@ export const CARD_MEDIA_PRIORITY = Object.freeze({ foreground: 65, background: 4
 export function characterCardMediaPriority(priorityClass) {
   return CARD_MEDIA_PRIORITY[priorityClass] ?? CARD_MEDIA_PRIORITY.background
 }
+
+/**
+ * Меньше цитат — не карточка. Черта требует двух разных абзацев, био — чего-то
+ * кроме первого упоминания, и из одной-двух цитат модель собирает не человека, а
+ * пересказ абзаца: Тоудвайн из «Кровавого меридиана» получил биографию из
+ * перечня событий главы, потому что других цитат в его окне не было. Такую
+ * карточку переносим в окно, где материала больше, а не зовём модель впустую.
+ */
+export const MIN_CARD_FRAGMENTS = 3
+/** Карточка без черт характера не выводится: это цитата с именем, а не персонаж. */
+export const MIN_CARD_TRAITS = 1
 
 /** Предел входа одного вызова карточки — как в D3 work order'а. */
 export const MAX_CARD_REQUEST_BYTES = 48 * 1024
@@ -179,7 +191,8 @@ export function buildCharacterCardRequest({
   inventoryVersion = '',
   promptVersion = CHARACTER_CARD_PROMPT_VERSION,
   maxBytes = MAX_CARD_REQUEST_BYTES,
-  maxFragments = MAX_CARD_REQUEST_FRAGMENTS
+  maxFragments = MAX_CARD_REQUEST_FRAGMENTS,
+  minFragments = MIN_CARD_FRAGMENTS
 }) {
   if (!runId || !characterKey) throw cardError('CARD_REQUEST_INVALID', 'runId and characterKey are required')
   if (!window || !Number.isSafeInteger(window.startOffset) || !Number.isSafeInteger(window.endOffset) ||
@@ -205,6 +218,12 @@ export function buildCharacterCardRequest({
         `fragment ${fragment.fragmentId} belongs to ${fragment.characterKey}`
       )
     }
+  }
+  if (list.length < minFragments) {
+    throw cardError(
+      'CARD_FRAGMENTS_THIN',
+      `character ${characterKey} has ${list.length} fragments in its window, fewer than ${minFragments}`
+    )
   }
   const selected = selectRequestFragments(list, { maxBytes, maxFragments })
   if (!selected.length) {
@@ -303,6 +322,71 @@ export function extractiveCardBio(fragments, {
   return { value: sentences.join(' '), fragmentIds: [...new Set(fragmentIds)].sort() }
 }
 
+const NAME_WORD = /\p{L}+(?:[-’']\p{L}+)*/gu
+/** Служебные частицы внутри имени: «Клара де Малье», «Ludwig van Beethoven». */
+const NAME_PARTICLES = new Set([
+  'де', 'дю', 'фон', 'ван', 'дер', 'ди', 'да', 'ла', 'ле', 'ибн', 'бен',
+  'de', 'du', 'von', 'van', 'der', 'di', 'da', 'la', 'le', 'al', 'ibn', 'bin', 'of'
+])
+
+/**
+ * Имя, которым начинается биография: слова с заглавной подряд — до первого
+ * строчного слова или знака препинания. Модель просят начинать био с имени, и
+ * это начало говорит, о ком карточка.
+ *
+ * Не «всё до тире»: биография без тире — «Элизабет живёт в Лонгборне с
+ * сёстрами.» — тогда целиком сошла бы за имя, и «Лонгборн» проверялся бы как
+ * чужой человек.
+ */
+export function cardBioLeadName(value) {
+  const words = []
+  for (const match of String(value ?? '').trim().matchAll(/(\p{L}+(?:[-’']\p{L}+)*)([^\p{L}]*)/gu)) {
+    const [, word, separator] = match
+    if (!/^\p{Lu}/u.test(word) && !NAME_PARTICLES.has(word.toLocaleLowerCase('ru-RU'))) break
+    words.push(word)
+    if (!/^\s*$/u.test(separator)) break
+  }
+  while (words.length && NAME_PARTICLES.has(words[words.length - 1].toLocaleLowerCase('ru-RU'))) {
+    words.pop()
+  }
+  return words.join(' ')
+}
+
+function lowerTokens(value) {
+  return String(value ?? '').toLocaleLowerCase('ru-RU').match(NAME_WORD) ?? []
+}
+
+/**
+ * Полное имя в начале биографии, которого нет ни среди имён персонажа, ни в его
+ * цитатах. Такое имя модель собрала сама: в «Прямо в воде?» капитан Нолл и
+ * пассажир Ричард Ричардс получили по биографии «Ричард Нолл — капитан корабля»,
+ * хотя «Ричард Нолл» в книге не встречается ни разу, — и у Ричардса описание
+ * оказалось чужим. Имя из собственных имён персонажа проверять незачем; чужое
+ * обязано найтись в цитатах словами подряд, в любом падеже и порядке.
+ */
+export function ungroundedBioLead(bioValue, { names = [], fragments = [] } = {}) {
+  const lead = cardBioLeadName(bioValue)
+  const tokens = (lead.match(NAME_WORD) ?? []).filter((token) => /^\p{Lu}/u.test(token))
+  if (tokens.length < 2) return null
+  const own = new Set(names.flatMap(lowerTokens))
+  if (tokens.every((token) => own.has(token.toLocaleLowerCase('ru-RU')))) return null
+  // Слова имени обязаны стоять подряд — в прямом порядке или в обратном
+  // («Барабанов Николай Сергеевич»). Окно «где-то рядом» пропускало «Ричарда
+  // Нолла»: в цитатах «Нолл» и «Ричарду» стоят через слово, а человека с таким
+  // именем в книге нет.
+  const wanted = tokens.map((token) => stemNameToken(token.toLocaleLowerCase('ru-RU')))
+  const reversed = [...wanted].reverse()
+  const matchesAt = (stems, start, sequence) =>
+    sequence.every((stem, offset) => stems[start + offset] === stem)
+  for (const fragment of fragments) {
+    const stems = lowerTokens(fragment.quote).map((word) => stemNameToken(word))
+    for (let start = 0; start + wanted.length <= stems.length; start += 1) {
+      if (matchesAt(stems, start, wanted) || matchesAt(stems, start, reversed)) return null
+    }
+  }
+  return lead
+}
+
 function claimFragmentIds(claim) {
   return Array.isArray(claim?.fragmentIds) ? claim.fragmentIds : []
 }
@@ -368,23 +452,31 @@ export function finalizeCharacterCard({
   const traits = traitResult.kept.slice(0, MAX_CARD_TRAITS)
   const locationResult = groundedClaims(card.locations, allowed)
   const role = groundedClaim(card.role, allowed)
-  let bio = groundedClaim(card.bio, allowed)
-  let bioSource = 'model'
+  // Био и характер обязательны. Прежде био без модели заменялось первыми
+  // предложениями цитат, и читатель видел вместо описания абзац книги: «Когда
+  // малец познакомился с Тоудвайном, дождь лил уже шестнадцать дней подряд». Из
+  // пятидесяти двух героев трёх проверенных книг у тридцати восьми не было ни
+  // одной черты. Такая карточка не выводится; окно дальше по книге, где цитат
+  // больше, получает её ещё раз.
+  const bio = groundedClaim(card.bio, allowed)
   if (!bio) {
-    const fallback = extractiveCardBio(
-      input.fragments.map((item) => ({
-        fragmentId: item.id,
-        quote: item.quote,
-        startOffset: item.startOffset
-      })),
-      { names: [input.character.name, ...input.character.aliases].filter(Boolean) }
-    )
-    if (!fallback) {
-      throw cardError('CARD_BIO_MISSING', 'neither the model nor the fragments yield a bio')
-    }
-    bio = fallback
-    bioSource = 'extractive'
+    throw cardError('CARD_BIO_MISSING', 'the model returned no grounded bio')
   }
+  if (traits.length < MIN_CARD_TRAITS) {
+    throw cardError('CARD_TRAITS_MISSING', 'the model returned no stable trait')
+  }
+  // Только имена из инвентаря и состава: свои псевдонимы модель пишет сама, и
+  // выдуманное полное имя в них прошло бы проверку, которую должно не пройти.
+  const names = [input.character.name, ...(input.character.aliases ?? [])]
+    .filter((name) => typeof name === 'string' && name.trim())
+  const foreignLead = ungroundedBioLead(bio.value, { names, fragments: input.fragments })
+  if (foreignLead) {
+    throw cardError(
+      'CARD_BIO_UNGROUNDED_NAME',
+      `bio opens with «${foreignLead}», a name the fragments never give`
+    )
+  }
+  const bioSource = 'model'
 
   const fragmentSetHash = characterCardFragmentSetHash(windowFragments)
   const validated = validateCharacterCard({

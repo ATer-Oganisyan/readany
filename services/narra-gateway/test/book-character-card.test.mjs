@@ -3,9 +3,11 @@ import test from 'node:test'
 import {
   MAX_CARD_REQUEST_BYTES,
   buildCharacterCardRequest,
+  cardBioLeadName,
   characterCardFragmentSetHash,
   extractiveCardBio,
-  finalizeCharacterCard
+  finalizeCharacterCard,
+  ungroundedBioLead
 } from '../analysis/book-character-card.mjs'
 import { CHARACTER_CARD_PROMPT_VERSION } from '../analysis/book-character-card-contract.mjs'
 
@@ -171,69 +173,127 @@ test('a claim mixing a valid and an invalid fragment is not silently repaired', 
     input: built,
     result: {
       card: modelCard({
-        traits: [{
-          value: 'наблюдательная',
-          fragmentIds: ['frag:char:elizabeth:1', 'frag:elsewhere'],
-          confidence: 0.9
-        }]
+        traits: [
+          {
+            value: 'наблюдательная',
+            fragmentIds: ['frag:char:elizabeth:1', 'frag:elsewhere'],
+            confidence: 0.9
+          },
+          {
+            value: 'сдержанная',
+            fragmentIds: ['frag:char:elizabeth:1', 'frag:char:elizabeth:2'],
+            confidence: 0.8
+          }
+        ]
       })
     },
     fragments: FRAGMENTS,
     createdAt: '2026-09-10T10:00:00Z'
   })
-  assert.deepEqual(finalized.card.traits, [])
+  assert.deepEqual(finalized.card.traits.map(({ value }) => value), ['сдержанная'])
 })
 
-test('an empty bio falls back to whole sentences from the fragments', () => {
+test('a card whose model gave no bio is not published, even when quotes could fill it', () => {
+  // Прежде био без модели заменялось предложениями из цитат, и читатель видел
+  // вместо описания абзац книги. Такую карточку переносят туда, где цитат
+  // больше, а не выдают.
   const built = request()
-  const finalized = finalizeCharacterCard({
-    input: built,
-    result: { card: modelCard({ bio: null }) },
-    fragments: FRAGMENTS,
-    createdAt: '2026-09-10T10:00:00Z'
-  })
-  assert.equal(finalized.audit.bioSource, 'extractive')
-  assert.match(finalized.card.bio.value, /^Элизабет Беннет жила в Лонгборне/)
-  for (const fragmentId of finalized.card.bio.fragmentIds) {
-    assert.ok(FRAGMENTS.some((item) => item.fragmentId === fragmentId))
-  }
+  assert.throws(
+    () => finalizeCharacterCard({
+      input: built,
+      result: { card: modelCard({ bio: null }) },
+      fragments: FRAGMENTS,
+      createdAt: '2026-09-10T10:00:00Z'
+    }),
+    { code: 'CARD_BIO_MISSING' }
+  )
 })
 
-test('a card with no defensible trait is still a card', () => {
-  // Аудит вправе снять все черты; отказ выдать карточку был бы худшим исходом,
-  // чем карточка с био и пустым «Характером».
+test('a card with no defensible trait is not published', () => {
+  // Био без характера — это цитата с именем, а не карточка персонажа.
   const built = request()
-  const finalized = finalizeCharacterCard({
-    input: built,
-    result: { card: modelCard({ traits: [] }) },
-    fragments: FRAGMENTS,
-    createdAt: '2026-09-10T10:00:00Z'
-  })
-  assert.deepEqual(finalized.card.traits, [])
-  assert.ok(finalized.card.bio.value)
+  assert.throws(
+    () => finalizeCharacterCard({
+      input: built,
+      result: { card: modelCard({ traits: [] }) },
+      fragments: FRAGMENTS,
+      createdAt: '2026-09-10T10:00:00Z'
+    }),
+    { code: 'CARD_TRAITS_MISSING' }
+  )
 })
 
-test('a card with neither a bio nor usable fragment sentences fails the job', () => {
-  const short = [{ ...fragment(0, 'Э.'), quote: 'Э.' }]
+test('a window with fewer than three fragments produces no request and no model call', () => {
+  // Из одной-двух цитат модель собирает пересказ абзаца: Тоудвайн получил
+  // биографию из перечня событий главы, потому что других цитат в окне не было.
+  assert.throws(
+    () => request({ fragments: FRAGMENTS.slice(0, 2) }),
+    { code: 'CARD_FRAGMENTS_THIN' }
+  )
+})
+
+test('a bio that opens with a full name the book never gives is refused', () => {
+  // «Прямо в воде?»: капитан Нолл и пассажир Ричард Ричардс получили по
+  // биографии «Ричард Нолл — капитан корабля», а «Ричарда Нолла» в книге нет.
+  const fragments = [
+    fragment(0, 'Капитан Нолл пожал руку Гермионе.'),
+    fragment(1, 'Нолл напомнил, что на борту действуют правила.'),
+    fragment(2, 'Нолл кивнул и ушёл на мостик.', 40_000)
+  ].map((item) => ({ ...item, fragmentId: item.fragmentId.replace('elizabeth', 'noll'), characterKey: 'char:noll' }))
   const built = buildCharacterCardRequest({
     runId: 'run-1',
     bookEditionId: 'edition-1',
-    characterKey: 'char:elizabeth',
-    character: { canonicalName: 'Элизабет', names: ['Элизабет'] },
+    characterKey: 'char:noll',
+    character: { canonicalName: 'Нолл', names: ['Нолл'] },
     window: WINDOW,
-    fragments: short,
-    title: 'Книга',
+    fragments,
+    title: 'Прямо в воде?',
     normalizedTextHash: HASH
   })
   assert.throws(
     () => finalizeCharacterCard({
       input: built,
-      result: { card: modelCard({ bio: null, traits: [], locations: [], role: null }) },
-      fragments: short,
-      createdAt: '2026-09-10T10:00:00Z'
+      result: {
+        card: modelCard({
+          name: 'Нолл',
+          bio: { value: 'Ричард Нолл — капитан корабля.', fragmentIds: [fragments[0].fragmentId] },
+          role: null,
+          locations: [],
+          traits: [{ value: 'учтивый', fragmentIds: [fragments[0].fragmentId, fragments[1].fragmentId] }]
+        })
+      },
+      fragments,
+      createdAt: '2026-09-26T10:00:00Z'
     }),
-    { code: 'CARD_BIO_MISSING' }
+    { code: 'CARD_BIO_UNGROUNDED_NAME' }
   )
+})
+
+test('a full name in the bio passes when the character has it or the quotes give it', () => {
+  const quotes = [{ quote: 'Представились: Николая Сергеевича Барабанова тут знали все.' }]
+  // Своё имя проверять незачем.
+  assert.equal(ungroundedBioLead('Элизабет Беннет — вторая дочь.', {
+    names: ['Элизабет', 'Элизабет Беннет']
+  }), null)
+  // Чужое для состава, но названное в цитатах — в любом падеже.
+  assert.equal(ungroundedBioLead('Николай Сергеевич Барабанов — подполковник.', {
+    names: ['Барабанов'],
+    fragments: quotes
+  }), null)
+  // Имя из одного слова — это имя персонажа, а не утверждение о нём.
+  assert.equal(ungroundedBioLead('Военный — вербовщик.', { names: ['Вербовщик'] }), null)
+  assert.equal(ungroundedBioLead('Ричард Нолл — капитан.', {
+    names: ['Нолл'],
+    fragments: [{ quote: 'Ричардс и Нолл стояли у борта.' }]
+  }), 'Ричард Нолл')
+})
+
+test('the name a bio opens with stops at the first ordinary word or punctuation', () => {
+  assert.equal(cardBioLeadName('Ричард Нолл — капитан корабля.'), 'Ричард Нолл')
+  assert.equal(cardBioLeadName('Элизабет живёт в Лонгборне с сёстрами.'), 'Элизабет')
+  assert.equal(cardBioLeadName('Ирвинг, по прозвищу Док, — один из отряда.'), 'Ирвинг')
+  assert.equal(cardBioLeadName('Клара Клеменция де Малье — принцесса.'), 'Клара Клеменция де Малье')
+  assert.equal(cardBioLeadName('Isabella Thorpe is the eldest.'), 'Isabella Thorpe')
 })
 
 test('the extractive bio prefers a sentence that actually names the character', () => {
@@ -314,14 +374,14 @@ test('a paragraph that straddles the window belongs to the window it starts in',
     ...fragment(99, 'Элизабет вышла, и глава кончилась на полуслове.', WINDOW.endOffset - 10),
     endOffset: WINDOW.endOffset + 500
   }
-  const built = request({ fragments: [straddling] })
+  const built = request({ fragments: [straddling], minFragments: 1 })
   assert.equal(built.fragments.length, 1)
   const finalized = finalizeCharacterCard({
     input: built,
     result: {
       card: {
         bio: { value: 'Элизабет уходит.', fragmentIds: [built.fragments[0].id], confidence: 0.9 },
-        traits: []
+        traits: [{ value: 'решительная', fragmentIds: [built.fragments[0].id], confidence: 0.8 }]
       }
     },
     fragments: [straddling],

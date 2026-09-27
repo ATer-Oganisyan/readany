@@ -613,7 +613,8 @@ test('worker distinguishes a scheduled retry from an exhausted failure', async (
 test('the worker dispatches a character card job to the card runner', async () => {
   const text = [
     'Элизабет Беннет жила в Лонгборне с четырьмя сёстрами.',
-    'Элизабет заметила, что гость наблюдает за нею внимательно.'
+    'Элизабет заметила, что гость наблюдает за нею внимательно.',
+    'Элизабет снова заметила эту привычку и промолчала.'
   ].join('\n\n')
   const bytes = Buffer.from(text, 'utf8')
   const textHash = createHash('sha256').update(bytes).digest('hex')
@@ -631,7 +632,8 @@ test('the worker dispatches a character card job to the card runner', async () =
   }
   const fragments = [
     fragmentAt(0, 'Элизабет Беннет жила в Лонгборне с четырьмя сёстрами.'),
-    fragmentAt(1, 'Элизабет заметила, что гость наблюдает за нею внимательно.')
+    fragmentAt(1, 'Элизабет заметила, что гость наблюдает за нею внимательно.'),
+    fragmentAt(2, 'Элизабет снова заметила эту привычку и промолчала.')
   ]
   let published = null
   const repository = {
@@ -682,7 +684,10 @@ test('the worker dispatches a character card job to the card runner', async () =
       return {
         card: {
           gender: 'female',
-          traits: [],
+          traits: [{
+            value: 'наблюдательная',
+            fragmentIds: [fragments[1].fragmentId, fragments[2].fragmentId]
+          }],
           bio: {
             value: 'Элизабет живёт в Лонгборне с сёстрами.',
             fragmentIds: [fragments[0].fragmentId]

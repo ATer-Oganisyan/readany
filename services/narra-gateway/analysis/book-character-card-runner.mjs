@@ -14,6 +14,7 @@
 import { createHash } from 'node:crypto'
 import {
   CHARACTER_CARD_JOB_TYPE,
+  MIN_CARD_FRAGMENTS,
   buildCharacterCardRequest,
   characterCardMediaPriority,
   finalizeCharacterCard
@@ -35,7 +36,30 @@ function runnerError(code, message) {
  * Ошибки, после которых карточку имеет смысл собрать в другом окне, а не
  * похоронить: у персонажа просто нечем обосноваться здесь и сейчас.
  */
-const DEFERRABLE_CARD_ERRORS = new Set(['CARD_BIO_MISSING', 'CARD_FRAGMENTS_MISSING'])
+const DEFERRABLE_CARD_ERRORS = new Set([
+  'CARD_BIO_MISSING',
+  'CARD_TRAITS_MISSING',
+  'CARD_BIO_UNGROUNDED_NAME',
+  'CARD_FRAGMENTS_MISSING',
+  'CARD_FRAGMENTS_THIN'
+])
+/** Здесь модель не звали: цитат мало, и достаточно дойти до нужного числа. */
+const PRE_MODEL_CARD_ERRORS = new Set(['CARD_FRAGMENTS_MISSING', 'CARD_FRAGMENTS_THIN'])
+
+/**
+ * Сколько цитат требовать от следующего окна.
+ *
+ * Если модель уже не смогла собрать карточку, окно с одной лишней цитатой даст
+ * тот же ответ за ту же цену: у главного героя книги в сотни окон перенос на
+ * «+1 цитату» превращался бы в сотню вызовов. Поэтому после вызова модели
+ * просим заметного прироста — вдвое, но не меньше трёх цитат сверху, — а до
+ * вызова достаточно дойти до минимума карточки.
+ */
+export function deferredCardFragmentTarget(errorCode, currentFragmentCount) {
+  const current = Math.max(0, Number(currentFragmentCount) || 0)
+  if (PRE_MODEL_CARD_ERRORS.has(errorCode)) return Math.max(MIN_CARD_FRAGMENTS, current + 1)
+  return Math.max(current + 3, Math.ceil(current * 2))
+}
 
 export function createCharacterCardRunner({
   repository,
@@ -125,7 +149,11 @@ export function createCharacterCardRunner({
         characterKey: input.characterKey,
         windowIndex: input.windowIndex,
         priority: job.priority ?? 50,
-        jobId: job.id
+        jobId: job.id,
+        minFragments: deferredCardFragmentTarget(cause?.code, input.fragments?.length ?? 0),
+        // Если книга не дотягивает до минимума карточки, в последнем окне цитат
+        // будет всё так же мало: переносить туда — лишний круг без результата.
+        fallbackToLast: !PRE_MODEL_CARD_ERRORS.has(cause?.code)
       })
       if (!moved?.deferred) return null
       log.info('card.deferred', 'Карточка перенесена в окно с цитатами', {

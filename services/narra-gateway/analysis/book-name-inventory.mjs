@@ -69,6 +69,155 @@ const SALIENCE_FLOOR_MENTIONS = 12
 const SALIENCE_FLOOR_CHAPTERS = 3
 
 /**
+ * Прозвища из нарицательных слов: «малец», «судья», «старик».
+ *
+ * Инвентарь собирает собственные имена и слово, которое часто пишется со
+ * строчной, считает обычным словом — это правильно для «Дома» и «Весны», но
+ * так из «Кровавого меридиана» пропали оба главных героя. Мальца и судью книга
+ * называет так почти всегда, со строчной буквы: «малец» — 482 раза, «судья» —
+ * 473, больше, чем самого частого героя с именем (Глэнтон, 387). По имени судья
+ * назван двенадцать раз и потому получал пустую карточку, а мальца не было
+ * вовсе.
+ *
+ * Отличает кличку от обычного слова не соседство с речью вообще — рядом с
+ * «сказал» стоят и «затем», и «можно», — а место сразу после глагола речи в
+ * прошедшем времени: «— …, — сказал судья». Это атрибуция реплики, и её
+ * подлежащее — тот, кто говорит. Порог частоты относительный: прозвище героя
+ * упоминается не реже четверти самого частого имени книги. Решает, человек ли
+ * это и чьё это прозвище, подтверждение состава — здесь только кандидаты.
+ */
+const EPITHET_MIN_COUNT = 40
+const EPITHET_TOP_SHARE = 0.25
+const EPITHET_ATTRIBUTION_RATE = 0.03
+const EPITHET_MIN_CHAPTERS = 3
+const EPITHET_MAX = 6
+const EPITHET_ATTRIBUTION_VERBS = [
+  'сказа', 'спроси', 'ответи', 'крикну', 'произн', 'прошепта', 'пробормота',
+  'буркну', 'воскликну', 'добави', 'повтори', 'отозва', 'проговори', 'возрази',
+  'промолви', 'заяви', 'рявкну', 'прохрипе', 'пояснил', 'спрашива',
+  'отвеча', 'говори'
+]
+const EPITHET_ENGLISH_VERBS = new Set([
+  'said', 'asked', 'replied', 'answered', 'cried', 'whispered', 'muttered',
+  'shouted', 'called', 'added', 'repeated', 'exclaimed', 'murmured', 'returned'
+])
+const RUSSIAN_PAST_TENSE = /(?:л|ла|ло|ли|лся|лась|лось|лись)$/u
+const EPITHET_ARTICLES = new Set(['the', 'a', 'an', 'old', 'young'])
+/**
+ * Нарицательные слова, которые в атрибуции реплики встречаются, но героя не
+ * обозначают: местоимения, обобщения, «голос». Ложный кандидат стоит места в
+ * бюджете подтверждения, поэтому очевидные отсекаются здесь.
+ */
+const EPITHET_STOPWORDS = new Set([
+  'он', 'она', 'оно', 'они', 'его', 'её', 'ее', 'их', 'ему', 'ей', 'им', 'него',
+  'неё', 'нее', 'ним', 'ней', 'них', 'нём', 'нем', 'я', 'ты', 'мы', 'вы', 'мне',
+  'меня', 'тебе', 'тебя', 'нам', 'нас', 'вам', 'вас', 'себя', 'себе', 'сам',
+  'сама', 'сами', 'само', 'самого', 'кто', 'что', 'кто-то', 'что-то', 'никто',
+  'ничто', 'ничего', 'никого', 'все', 'всё', 'весь', 'вся', 'всех', 'всем',
+  'каждый', 'каждого', 'тот', 'та', 'те', 'то', 'того', 'этот', 'эта', 'эти',
+  'это', 'этого', 'один', 'одна', 'одни', 'одного', 'другой', 'другая',
+  'другие', 'других', 'друг', 'остальные', 'некоторые', 'многие', 'тихо',
+  'громко', 'наконец', 'затем', 'потом', 'снова', 'опять', 'вдруг', 'тогда',
+  'теперь', 'уже', 'ещё', 'еще', 'даже', 'только', 'так', 'там', 'тут', 'здесь',
+  'можно', 'нельзя', 'нет', 'да', 'не', 'ни', 'же', 'ли', 'бы', 'вот', 'как',
+  'голос', 'голосом', 'человек', 'люди', 'народ', 'мужчина', 'женщина',
+  'внимание', 'кто-нибудь', 'что-нибудь',
+  'he', 'she', 'it', 'they', 'i', 'you', 'we', 'one', 'someone', 'somebody',
+  'voice', 'man', 'woman', 'people', 'everyone', 'nobody'
+])
+const EPITHET_ENDINGS = [
+  'ами', 'ями', 'ого', 'его', 'ому', 'ему', 'ой', 'ей', 'ёй', 'ом', 'ем', 'ём',
+  'ах', 'ях', 'ам', 'ям', 'ов', 'ев', 'ью', 'а', 'я', 'у', 'ю', 'е', 'и', 'ы', 'о', 'й'
+]
+
+/**
+ * Ключ падежных форм прозвища. Окончание срезается, беглая гласная у «-ец»
+ * убирается: «малец», «мальца», «мальцом» дают один ключ «малц». Мягкий знак
+ * вне этого места остаётся, поэтому «судья» и «суд» не склеиваются.
+ */
+function epithetKey(lower) {
+  let stem = lower
+  if (/^\p{Script=Cyrillic}/u.test(stem)) {
+    for (const ending of EPITHET_ENDINGS) {
+      if (stem.endsWith(ending) && stem.length - ending.length >= 3) {
+        stem = stem.slice(0, -ending.length)
+        break
+      }
+    }
+    stem = stem.replace(/[еь]ц$/u, 'ц')
+  }
+  return stem
+}
+
+function isAttributionVerb(lower) {
+  if (EPITHET_ENGLISH_VERBS.has(lower)) return true
+  return RUSSIAN_PAST_TENSE.test(lower) &&
+    EPITHET_ATTRIBUTION_VERBS.some((prefix) => lower.startsWith(prefix))
+}
+
+/**
+ * Кандидаты-прозвища поверх кандидатов-имён. Слово, уже ставшее именем,
+ * прозвищем не считается: «Глэнтон» и так в инвентаре.
+ */
+function epithetCandidates({ words, surviving, textIndex }) {
+  // Самое частое имя книги — по тем же ключам падежных форм, что у прозвищ:
+  // кандидатов-имён на этом шаге ещё нет, а порог нужен относительный.
+  // Считаются только формы, которые пишутся с заглавной и посреди фразы:
+  // слово, стоящее лишь в начале предложений, фильтр строчных тоже переживает,
+  // но это не имя, и порог по нему вырос бы в разы.
+  const nameCounts = new Map()
+  for (const [lower, entry] of surviving) {
+    if (entry.stats.midSentenceCount < Math.max(2, 0.1 * entry.stats.count)) continue
+    const key = epithetKey(lower)
+    nameCounts.set(key, (nameCounts.get(key) ?? 0) + entry.stats.count)
+  }
+  const topNamedCount = Math.max(0, ...nameCounts.values())
+  const threshold = Math.max(EPITHET_MIN_COUNT, Math.ceil(topNamedCount * EPITHET_TOP_SHARE))
+  const groups = new Map()
+  for (const [position, word] of words.entries()) {
+    const lower = word.lower
+    if (lower.length < 3 || EPITHET_STOPWORDS.has(lower) || NON_NAME_WORDS.has(lower)) continue
+    if (isAttributionVerb(lower)) continue
+    const key = epithetKey(lower)
+    if (key.length < 3) continue
+    let group = groups.get(key)
+    if (!group) {
+      group = { key, count: 0, attribution: 0, forms: new Map(), chapters: new Set(),
+        firstOffset: word.start, lastOffset: word.start, capitalizedMid: 0, positions: [] }
+      groups.set(key, group)
+    }
+    group.count += 1
+    group.forms.set(lower, (group.forms.get(lower) ?? 0) + 1)
+    group.chapters.add(textIndex.chapterIndexAt(word.start))
+    group.lastOffset = word.start
+    if (word.capitalized && !word.sentenceInitial) group.capitalizedMid += 1
+    // В английском между глаголом и прозвищем стоит артикль: «said the judge».
+    const previous = words[position - 1]
+    const speaker = previous && EPITHET_ARTICLES.has(previous.lower) ? words[position - 2] : previous
+    if (speaker && isAttributionVerb(speaker.lower)) group.attribution += 1
+    group.positions.push(position)
+  }
+  const found = []
+  for (const group of groups.values()) {
+    if (group.count < threshold) continue
+    if (group.chapters.size < EPITHET_MIN_CHAPTERS) continue
+    if (group.attribution < EPITHET_ATTRIBUTION_RATE * group.count) continue
+    // Уже имя: большая часть вхождений — формы, пережившие фильтр строчных.
+    // Одной такой формы мало: «Мальцу» в начале предложения строчной не бывает
+    // и фильтр переживает, но именем от этого не становится.
+    const named = [...group.forms.keys()]
+      .reduce((sum, form) => sum + (surviving.get(form)?.stats.count ?? 0), 0)
+    if (named > 0.5 * group.count) continue
+    const [[dominant]] = [...group.forms].sort((left, right) =>
+      right[1] - left[1] || left[0].localeCompare(right[0], 'ru'))
+    found.push({ group, displayName: titleCase(dominant) })
+  }
+  return found
+    .sort((left, right) => right.group.count - left.group.count)
+    .slice(0, EPITHET_MAX)
+}
+
+/**
  * Доля потолка, отданная страховке полноты.
  *
  * Потолок — бюджет одного вызова подтверждения состава, и делить его приходится
@@ -507,8 +656,36 @@ function mergeStats(target, source) {
   target.lastOffset = Math.max(target.lastOffset, source.lastOffset)
 }
 
+/**
+ * Во сколько раз форма на -а/-я должна быть чаще формы с нулевым или мягким
+ * окончанием, чтобы стать нормальной. У женского имени нулевая форма — это
+ * разговорный звательный падеж из реплик: «Кать, иди сюда», «Светлан, …». В
+ * «Земле лишних» «Кать» встречается дважды, «Катя» — 184 раза, и героиня
+ * выходила «Кать». У мужского имени именительный и так самый частый («Дмитрий»
+ * 181, «Дмитрия» 65), поэтому до порога его родительный не дотягивает.
+ */
+const FEMININE_NOMINATIVE_DOMINANCE = 4
+const LEADING_ENDINGS = new Set(['', 'ь', 'й'])
+
 /** Нормальная форма кластера: см. {@link NOMINATIVE_ENDING_ORDER}. */
 function chooseDisplayForm(clusterKey, forms) {
+  const chosen = chooseRankedDisplayForm(clusterKey, forms)
+  const base = clusterKey.replace(/:[mf]$/, '')
+  const endingOf = (value) => {
+    const lower = normalizedForm(value)
+    return lower.startsWith(base) ? lower.slice(base.length) : null
+  }
+  if (!LEADING_ENDINGS.has(endingOf(chosen) ?? '#')) return chosen
+  const chosenCount = forms.find((form) => form.value === chosen)?.count ?? 0
+  const feminine = forms
+    .filter((form) => ['а', 'я'].includes(endingOf(form.value)))
+    .sort((left, right) => right.count - left.count)[0]
+  return feminine && feminine.count >= FEMININE_NOMINATIVE_DOMINANCE * chosenCount
+    ? feminine.value
+    : chosen
+}
+
+function chooseRankedDisplayForm(clusterKey, forms) {
   const base = clusterKey.replace(/:[mf]$/, '')
   let best = null
   for (const form of forms) {
@@ -628,6 +805,13 @@ export function buildBookNameInventory({
     const [dominantCasing] = [...entry.casings].sort((left, right) =>
       right[1] - left[1] || left[0].localeCompare(right[0], 'ru'))
     surviving.set(lower, { ...entry, value: dominantCasing?.[0] ?? entry.value })
+  }
+
+  // Прозвища ищутся до сборки имён: их формы, случайно пережившие фильтр
+  // строчных, иначе стали бы отдельным «героем» «Мальцу».
+  const epithets = epithetCandidates({ words, surviving, textIndex })
+  for (const { group } of epithets) {
+    for (const form of group.forms.keys()) surviving.delete(form)
   }
 
   // Основы для сведения падежных форм: вес основы — сумма упоминаний форм,
@@ -825,6 +1009,57 @@ export function buildBookNameInventory({
         tier: 'minor'
       })
     }
+  }
+
+  for (const { group, displayName } of epithets) {
+    // Соседнее имя: «Судья Холден» — прозвище и имя стоят подряд, и это повод
+    // для подтверждения состава проверить, один ли это человек.
+    const adjacent = new Map()
+    for (const position of group.positions) {
+      const next = words[position + 1]
+      if (!next?.capitalized) continue
+      const partnerKey = clusterKeyByForm.get(next.lower)
+      if (partnerKey) adjacent.set(partnerKey, (adjacent.get(partnerKey) ?? 0) + 1)
+    }
+    const chapterCount = group.chapters.size
+    const dispersion = textIndex.chapters.length > 0
+      ? rounded(chapterCount / textIndex.chapters.length)
+      : 0
+    const forms = [...group.forms.keys()]
+    candidates.push({
+      candidateKey: '',
+      displayName,
+      aliases: [],
+      fullName: '',
+      honorific: null,
+      honorificGender: null,
+      surfaceForms: [displayName, ...forms.filter((form) => form !== displayName.toLocaleLowerCase('ru-RU'))],
+      // Прозвище ищется без учёта регистра и только этими формами: так в тексте
+      // находят «мальца», не задевая «Малую Садовую».
+      epithet: true,
+      epithetForms: forms,
+      clusterKeys: [],
+      adjacentClusterKeys: [...adjacent.entries()]
+        .map(([clusterKey, count]) => ({ clusterKey, count }))
+        .sort((left, right) => right.count - left.count)
+        .slice(0, 8),
+      count: group.count,
+      midSentenceCount: group.capitalizedMid,
+      sentenceInitialRatio: 0,
+      chapterCount,
+      chapterDispersion: dispersion,
+      firstMentionTextOffset: group.firstOffset,
+      lastMentionTextOffset: group.lastOffset,
+      speechAdjacencyRate: rounded(group.attribution / group.count),
+      dialogueDashRate: 0,
+      honorificRate: 0,
+      possessiveRate: 0,
+      prepositionalRate: 0,
+      determinerRate: 0,
+      kindHint: 'person',
+      salience: rounded(group.count * (0.5 + 0.5 * dispersion)),
+      tier: 'minor'
+    })
   }
 
   candidates.sort((left, right) =>

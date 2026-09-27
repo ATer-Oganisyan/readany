@@ -53,7 +53,13 @@ export const EXTERNAL_EVIDENCE_PROFILE_VERSION = 'external-evidence-profile-v1'
 // v12: голое имя, за которым стоит не один человек, больше не сливается ни с
 //      кем наугад, а единственное полное имя — сливается уверенно. Прогоны v11
 //      переиспользовать нельзя: состав книги у них собран по прежним парам.
-export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v12'
+// v13: служебный текст (титул, благодарности, синопсисы глав, примечания) не
+//      участвует в поиске персонажей; прозвища из нарицательных слов стали
+//      кандидатами; карточка без био от модели и без черт не выводится и
+//      переносится туда, где цитат больше; первое упоминание слитого героя не
+//      раньше его первой цитаты. Прогоны v12 переиспользовать нельзя: у них
+//      другой инвентарь, другие первые упоминания и другие окна карточек.
+export const CARDS_PIPELINE_IMPLEMENTATION_VERSION = 'cards-v13'
 export const CARDS_PIPELINE_INVENTORY_VERSION = 'name-inventory-v1'
 export const CARDS_PIPELINE_CARD_VERSION = 'character-card-v1'
 export const CARDS_PIPELINE_CONFIRMATION_VERSION = 'roster-confirm-v1'

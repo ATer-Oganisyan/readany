@@ -25,6 +25,7 @@
  * а не в `fullName`.
  */
 
+import { cardBioLeadName } from './book-character-card.mjs'
 import { createHash } from 'node:crypto'
 import {
   BOOK_ANALYSIS_MARKUP_VERSION,
@@ -123,6 +124,118 @@ function nameTokens(name) {
   return String(name ?? '').toLowerCase().split(NAME_TOKEN_SEPARATOR).filter(Boolean)
 }
 
+/**
+ * Уменьшительное: «Лав» из «Прямо в воде?» — это Лаванда Браун, и обе карточки
+ * начинались словами «пресс-секретарь Министерства магии, бывшая однокурсница
+ * Гермионы». Начало имени само по себе ничего не доказывает — «Ник» бывает и
+ * Никитой, и Николаем, — поэтому нужна ещё и одна и та же роль. Роль берётся из
+ * первого предложения биографии: дальше биографии одного человека расходятся
+ * подробностями, и по всему тексту совпадение тонуло в различиях.
+ */
+const DIMINUTIVE_MIN_LENGTH = 3
+const DIMINUTIVE_ROLE_OVERLAP = 0.5
+const ROLE_WORD_MIN_LENGTH = 4
+const ROLE_STEM_LENGTH = 5
+/** Полное имя из биографии: два-три слова с заглавной, как «Ричард Нолл». */
+const FULL_NAME_MAX_TOKENS = 3
+
+/** Основы слов роли: первое предложение биографии после имени. */
+function bioRoleStems(card, name = card.name) {
+  const bio = String(card?.bio?.value ?? '')
+  const lead = cardBioLeadName(bio)
+  const rest = lead ? bio.slice(bio.indexOf(lead) + lead.length) : bio
+  const firstSentence = rest.split(/[.!?…](?:\s|$)/u)[0] ?? rest
+  const own = new Set(nameTokens([name, card.name, ...(card.aliases ?? [])].join(' ')))
+  return new Set((firstSentence.toLowerCase().match(/\p{L}+/gu) ?? [])
+    .filter((word) => word.length >= ROLE_WORD_MIN_LENGTH && !own.has(word))
+    .map((word) => word.slice(0, ROLE_STEM_LENGTH)))
+}
+
+/** Доля общих основ от меньшего набора: у короткой роли не штраф за длинную. */
+function overlap(left, right) {
+  if (!left.size || !right.size) return 0
+  let shared = 0
+  for (const item of left) if (right.has(item)) shared += 1
+  return shared / Math.min(left.size, right.size)
+}
+
+/**
+ * Полное имя, которым биография называет персонажа с однословным именем:
+ * «Нолл» с биографией «Нолл Ричардс — капитан» — это «Нолл Ричардс».
+ * Имя берётся, только если оно содержит имя карточки, и только из двух-трёх
+ * слов с заглавной: «Военный — вербовщик» полным именем не становится.
+ * Выдуманное полное имя сюда не доходит: его отвергает приёмка карточки.
+ */
+function fullNameFromBio(card) {
+  const tokens = nameTokens(card.name)
+  if (!tokens.length || tokens.length > FULL_NAME_MAX_TOKENS) return ''
+  const lead = cardBioLeadName(card?.bio?.value)
+  const words = lead.split(/\s+/u).filter(Boolean)
+  if (words.length < 2 || words.length > FULL_NAME_MAX_TOKENS) return ''
+  const leadTokens = nameTokens(lead)
+  if (!tokens.every((token) => leadTokens.includes(token))) return ''
+  // Полнее — больше слов, или те же слова в том порядке, в каком их даёт
+  // биография: «Родман Спенсер» из состава — это «Спенсер Родман Четвертый».
+  return leadTokens.join(' ') === tokens.join(' ') ? '' : lead
+}
+
+/**
+ * Полное имя в скобках сразу за именем биографии: «Скар (Скарлетт Йорк) —
+ * коллега Драко», «Дэйви (Дэвид Браун) — участник отряда». Модель сама
+ * говорит, кто это; остаётся найти карточку с этим именем.
+ */
+function parentheticalName(card) {
+  const bio = String(card?.bio?.value ?? '').trim()
+  const lead = cardBioLeadName(bio)
+  if (!lead) return ''
+  const match = /^\s*\(([^()]{2,60})\)/u.exec(bio.slice(lead.length))
+  return match ? cardBioLeadName(match[1]) : ''
+}
+
+/**
+ * Оборот, которым биография сама называет второе имя человека: «Холден,
+ * известный как судья», «Дэвид Браун, которого товарищи называют Дэйви»,
+ * «Ирвинг, по прозвищу Док». Это прямое утверждение модели по цитатам, а не
+ * догадка по сходству, и сильнее него у проекции признака нет.
+ */
+const ALIAS_STATEMENT = new RegExp(
+  '(?:называ\\p{L}*|зовут|прозва\\p{L}*|клич\\p{L}*|по\\s+прозвищу|по\\s+кличке|' +
+  'известн\\p{L}*\\s+как|он\\s+же|она\\s+же|a\\.?k\\.?a\\.?|known\\s+as|nicknamed|called)' +
+  "\\s+[«\"„“]?(\\p{L}[\\p{L}’'-]*(?:\\s+\\p{Lu}[\\p{L}’'-]*)?)",
+  'giu'
+)
+
+function aliasStatements(card) {
+  const bio = String(card?.bio?.value ?? '')
+  const firstSentence = bio.split(/[.!?…](?:\s|$)/u)[0] ?? bio
+  return [...firstSentence.matchAll(ALIAS_STATEMENT)].map((match) => match[1])
+}
+
+function sameTokens(left, right) {
+  const a = nameTokens(left)
+  const b = nameTokens(right)
+  return a.length > 0 && a.length === b.length && a.every((token) => b.includes(token))
+}
+
+/**
+ * Токен — начало другого токена: «алекс» в «александра», «лав» в «лаванда».
+ * Продолжение не короче двух букв: одна буква — это женская форма фамилии или
+ * падеж, «Крылов» и «Крылова» — муж и жена, а не одно лицо.
+ */
+const PREFIX_MIN_EXTENSION = 2
+
+function isPrefixToken(short, long) {
+  return short.length >= DIMINUTIVE_MIN_LENGTH &&
+    long.length - short.length >= PREFIX_MIN_EXTENSION &&
+    long.startsWith(short)
+}
+
+function gendersCompatible(left, right) {
+  const a = left?.gender ?? 'unknown'
+  const b = right?.gender ?? 'unknown'
+  return a === 'unknown' || b === 'unknown' || a === b
+}
+
 export function reconcileCardsByBioLead({ cards, fragmentsByCharacter }) {
   const groups = new Map()
   for (const card of cards) {
@@ -136,11 +249,14 @@ export function reconcileCardsByBioLead({ cards, fragmentsByCharacter }) {
   const renamed = new Map()
   for (const [key, { lead, members }] of groups) {
     if (members.length < 2) continue
-    const leadTokens = new Set(nameTokens(key))
+    const leadTokens = [...new Set(nameTokens(key))]
     const kin = members.filter((card) => {
       if ((card.aliases ?? []).some((alias) => String(alias).toLowerCase() === key)) return true
       const tokens = nameTokens(card.name)
-      return tokens.length > 0 && tokens.every((token) => leadTokens.has(token))
+      // Слово имени — слово общего начала или его начало: «Алекс» — это
+      // «Александра Стенли», если биография Алекса так и начинается.
+      return tokens.length > 0 && tokens.every((token) =>
+        leadTokens.includes(token) || leadTokens.some((part) => isPrefixToken(token, part)))
     })
     if (kin.length < 2) continue
     const primary = kin.sort((left, right) =>
@@ -154,15 +270,128 @@ export function reconcileCardsByBioLead({ cards, fragmentsByCharacter }) {
       if (card.characterKey !== primary.characterKey) absorbed.set(card.characterKey, primary.characterKey)
     }
   }
-  if (!absorbed.size) return { cards, fragmentsByCharacter, merges: [] }
 
+  // Однословное имя получает полное из биографии — до поиска остальных
+  // дублей: «Холден» становится «Судьёй Холденом», и лишь тогда видно, что
+  // «Судья» — это он.
+  for (const card of cards) {
+    if (absorbed.has(card.characterKey) || renamed.has(card.characterKey)) continue
+    const fullName = fullNameFromBio(card)
+    if (fullName) renamed.set(card.characterKey, fullName)
+  }
+  const nameOf = (card) => renamed.get(card.characterKey) ?? card.name
+  const standing = () => cards.filter((card) => !absorbed.has(card.characterKey))
+
+  // Полное имя в скобках: «Скар (Скарлетт Йорк)» уходит к «Скарлетт Йорк».
+  for (const card of standing()) {
+    const named = parentheticalName(card)
+    if (!named) continue
+    const wanted = nameTokens(named)
+    const targets = standing().filter((other) =>
+      other.characterKey !== card.characterKey &&
+      wanted.every((token) => nameTokens(nameOf(other)).includes(token)))
+    if (targets.length === 1) absorbed.set(card.characterKey, targets[0].characterKey)
+  }
+
+  // Полное имя в скобках без своей карточки — это полное имя самой карточки:
+  // «Уэбстер (Маркус Уэбстер)» и есть Маркус Уэбстер.
+  for (const card of standing()) {
+    if (absorbed.has(card.characterKey)) continue
+    const named = parentheticalName(card)
+    if (!named || nameTokens(named).length > FULL_NAME_MAX_TOKENS) continue
+    if (!nameTokens(nameOf(card)).every((token) => nameTokens(named).includes(token))) continue
+    if (sameTokens(named, nameOf(card))) continue
+    renamed.set(card.characterKey, named)
+  }
+
+  // Биография сама говорит, что это один человек. Оставшейся становится
+  // карточка с большим числом упоминаний — она собрана по большему числу
+  // цитат, — а именем — полное обращение: прозвище перед именем, «Судья Холден».
+  for (const card of standing()) {
+    if (absorbed.has(card.characterKey)) continue
+    const lead = cardBioLeadName(card?.bio?.value)
+    const describesItself = Boolean(lead) && nameTokens(lead).every((token) =>
+      nameTokens(nameOf(card)).includes(token) ||
+      (card.aliases ?? []).some((name) => nameTokens(name).includes(token)))
+    for (const alias of aliasStatements(card)) {
+      let other = null
+      let combined = ''
+      if (describesItself) {
+        // «Холден, известный как судья»: второе имя — чужая карточка «Судья».
+        other = standing().find((item) => item.characterKey !== card.characterKey &&
+          sameTokens(nameOf(item), alias))
+        if (other && nameTokens(alias).length === 1 && nameTokens(nameOf(card)).length === 1) {
+          combined = `${alias.charAt(0).toLocaleUpperCase('ru-RU')}${alias.slice(1)} ${nameOf(card)}`
+        }
+      } else if (sameTokens(alias, nameOf(card))) {
+        // «Дэвид Браун, которого называют Дэйви» в карточке «Дэйви»: карточка
+        // описывает того, чьё имя стоит в начале.
+        other = standing().find((item) => item.characterKey !== card.characterKey &&
+          sameTokens(nameOf(item), lead))
+      }
+      if (!other || absorbed.has(other.characterKey) || !gendersCompatible(card, other)) continue
+      const [primary, secondary] = (other.mentionCount ?? 0) > (card.mentionCount ?? 0)
+        ? [other, card]
+        : [card, other]
+      absorbed.set(secondary.characterKey, primary.characterKey)
+      if (combined) renamed.set(primary.characterKey, combined)
+      else if (primary === card && !describesItself) renamed.set(primary.characterKey, nameOf(other))
+      break
+    }
+  }
+
+  // Уменьшительное имя сливается с полным, когда роль в биографиях одна. Если
+  // подходящих полных двое, решать не из чего — карточки остаются врозь.
+  for (const short of standing()) {
+    const [token, ...rest] = nameTokens(nameOf(short))
+    if (!token || rest.length || token.length < DIMINUTIVE_MIN_LENGTH) continue
+    if (absorbed.has(short.characterKey)) continue
+    const shortRole = bioRoleStems(short, nameOf(short))
+    if (shortRole.size < 2) continue
+    const fuller = standing().filter((other) =>
+      other.characterKey !== short.characterKey &&
+      nameTokens(nameOf(other)).some((part) => isPrefixToken(token, part)) &&
+      overlap(shortRole, bioRoleStems(other, nameOf(other))) >= DIMINUTIVE_ROLE_OVERLAP)
+    if (fuller.length !== 1) continue
+    absorbed.set(short.characterKey, fuller[0].characterKey)
+  }
+
+  // Имя без фамилии или фамилия без имени — та же персона, что полное имя,
+  // если такое слово носит ровно одна полная карточка и пол не спорит: «Рон»
+  // и «Рон Уизли», «Судья» и «Судья Холден». Двое носителей — это семья или
+  // тёзки, и слово ничего не решает.
+  for (const short of standing()) {
+    const [token, ...rest] = nameTokens(nameOf(short))
+    if (!token || rest.length || absorbed.has(short.characterKey)) continue
+    const bearers = standing().filter((other) =>
+      other.characterKey !== short.characterKey &&
+      nameTokens(nameOf(other)).length > 1 &&
+      nameTokens(nameOf(other)).includes(token))
+    if (bearers.length !== 1 || !gendersCompatible(short, bearers[0])) continue
+    absorbed.set(short.characterKey, bearers[0].characterKey)
+  }
+
+  if (!absorbed.size && !renamed.size) return { cards, fragmentsByCharacter, merges: [], renames: [] }
+
+  // Цепочка слияний сводится к последнему: карточка, поглотившая другую, могла
+  // сама уйти к третьей.
+  const finalTarget = (key) => {
+    let current = key
+    const seen = new Set()
+    while (absorbed.has(current) && !seen.has(current)) {
+      seen.add(current)
+      current = absorbed.get(current)
+    }
+    return current
+  }
   const byKey = new Map(cards.map((card) => [card.characterKey, card]))
   const mergedFragments = new Map(fragmentsByCharacter)
   const merges = []
-  for (const [fromKey, toKey] of absorbed) {
+  for (const fromKey of absorbed.keys()) {
+    const toKey = finalTarget(fromKey)
     const from = byKey.get(fromKey)
     const to = byKey.get(toKey)
-    if (!from || !to) continue
+    if (!from || !to || fromKey === toKey) continue
     const previousName = to.name
     const leadName = renamed.get(toKey)
     if (leadName) {
@@ -172,6 +401,10 @@ export function reconcileCardsByBioLead({ cards, fragmentsByCharacter }) {
         : leadName
       renamed.delete(toKey)
     }
+    // Поглощённый несёт свои упоминания: список героев ранжируется по ним, и
+    // «Судья» с четырьмя сотнями упоминаний не должен уступать место из-за
+    // того, что остался «Судья Холден» с одиннадцатью.
+    to.mentionCount = (to.mentionCount ?? 0) + (from.mentionCount ?? 0)
     merges.push({ fromKey, toKey, fromName: from.name, toName: to.name })
     to.aliases = [...new Set([
       ...(to.aliases ?? []),
@@ -185,10 +418,26 @@ export function reconcileCardsByBioLead({ cards, fragmentsByCharacter }) {
     ])
     mergedFragments.delete(fromKey)
   }
+  // Переименования без слияния: имя из биографии, прежнее имя — в псевдонимы.
+  const renames = []
+  for (const [characterKey, fullName] of renamed) {
+    const card = byKey.get(characterKey)
+    if (!card || absorbed.has(characterKey)) continue
+    const previousName = card.name
+    card.name = fullName
+    if (!card.fullName || nameTokens(card.fullName).length <= nameTokens(fullName).length) {
+      card.fullName = fullName
+    }
+    card.aliases = [...new Set([...(card.aliases ?? []), previousName])]
+      .filter((alias) => alias && alias !== card.name)
+      .slice(0, 32)
+    renames.push({ characterKey, fromName: previousName, toName: fullName })
+  }
   return {
     cards: cards.filter((card) => !absorbed.has(card.characterKey)),
     fragmentsByCharacter: mergedFragments,
-    merges
+    merges,
+    renames
   }
 }
 

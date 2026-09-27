@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { buildBookNameInventory } from './book-name-inventory.mjs'
 import { buildBookCardWindows } from './book-card-windows.mjs'
 import { collectBookCharacterFragments } from './book-character-fragments.mjs'
+import { bookCharacterAnalysisText } from './book-paratext.mjs'
 import { inventoryRoster } from './book-name-inventory.mjs'
 import { createStableBookChunks } from './book-analysis-chunking.mjs'
 import {
@@ -91,8 +92,23 @@ export function createBookAnalysisPrepareWorker({
     let cardWindows = null
     let characterFragments = null
     try {
+      // Персонажей ищут в тексте без служебных мест: титул, благодарности,
+      // синопсисы глав и примечания дают ложных героев и ложные первые
+      // упоминания. Длина и абзацы у маскированного текста те же, поэтому
+      // смещения инвентаря и цитат по-прежнему указывают в настоящий текст.
+      const characterText = bookCharacterAnalysisText(structured.text, {
+        navigation: structured.navigation
+      })
+      if (characterText.ranges.length) {
+        log.info('prepare.paratext_masked', 'Служебный текст исключён из поиска персонажей', {
+          run: input.runId,
+          range_count: characterText.ranges.length,
+          masked_chars: characterText.ranges.reduce(
+            (sum, range) => sum + range.endOffset - range.startOffset, 0)
+        })
+      }
       nameInventory = buildNameInventory({
-        text: structured.text,
+        text: characterText.text,
         navigation: structured.navigation,
         normalizedTextHash
       })
@@ -106,7 +122,7 @@ export function createBookAnalysisPrepareWorker({
       // точная цитата с глобальными смещениями, — поэтому считать их надо тем
       // же проходом, что и окна, иначе окна и цитаты разъедутся.
       characterFragments = collectFragments({
-        text: structured.text,
+        text: characterText.text,
         navigation: structured.navigation,
         // Рассказчика инвентарь уже назвал. Его свидетельства — его собственные
         // «я»-абзацы: имя его встречается поздно, и без них начало книги
@@ -118,7 +134,8 @@ export function createBookAnalysisPrepareWorker({
             candidate.displayName,
             ...candidate.aliases,
             ...(candidate.fullName ? [candidate.fullName] : [])
-          ]
+          ],
+          ...(candidate.epithet ? { epithetForms: candidate.epithetForms } : {})
         }))
       })
     } catch (error) {

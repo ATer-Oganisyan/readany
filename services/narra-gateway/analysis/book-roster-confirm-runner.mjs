@@ -210,7 +210,7 @@ export function createRosterConfirmRunner({
         ...request
       })
       const confirmation = validateRosterConfirmation({ request, response })
-      const roster = applyRosterConfirmation({ request, candidates, confirmation })
+      const roster = applyRosterConfirmation({ request, candidates, confirmation, fragments })
       const revisions = rosterRevisionsAfterConfirmation(input.previousRoster ?? [], roster)
 
       const result = await repository.completeRosterConfirmation(job, {

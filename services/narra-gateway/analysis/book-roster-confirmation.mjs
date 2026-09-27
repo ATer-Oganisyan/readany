@@ -21,7 +21,7 @@ import { NAME_HONORIFICS } from './book-name-inventory.mjs'
 import { splitHonorificNames } from './book-character-fragments.mjs'
 
 export const ROSTER_CONFIRMATION_VERSION = 'roster-confirm-v1'
-export const ROSTER_CONFIRMATION_PROMPT_VERSION = 'roster-confirm-prompt-v3'
+export const ROSTER_CONFIRMATION_PROMPT_VERSION = 'roster-confirm-prompt-v4'
 
 export const MAX_CONFIRMATION_CANDIDATES = 128
 export const MAX_FRAGMENTS_PER_CANDIDATE = 2
@@ -412,6 +412,9 @@ function confirmationRoster(candidates, fragments, fragmentLimit) {
     mentionCount: candidate.count,
     chapterCount: candidate.chapterCount,
     kindHint: candidate.kindHint,
+    // Прозвище из нарицательного слова: модели нужно знать, что «Судья» найден
+    // не как имя, иначе она примет его за должность без человека.
+    ...(candidate.epithet ? { epithet: true } : {}),
     signals: {
       speechAdjacencyRate: candidate.speechAdjacencyRate,
       dialogueDashRate: candidate.dialogueDashRate,
@@ -721,12 +724,43 @@ export function validateRosterConfirmation({ request, response }) {
 }
 
 /**
+ * Первое упоминание слитого персонажа — не раньше его первой цитаты.
+ *
+ * Без цитат (стенд, тест) остаётся прежнее правило: самое раннее упоминание
+ * среди слитых кандидатов. С цитатами упоминание, которому не предшествует ни
+ * одна цитата, сдвигается к первой цитате; обычный случай, где цитата
+ * начинается вместе с упоминанием, не меняется.
+ */
+function rosterFirstMention(rows, firstFragmentOffset) {
+  const mention = Math.min(...rows.map(({ firstMentionTextOffset }) => firstMentionTextOffset))
+  if (!firstFragmentOffset.size) return mention
+  const starts = rows
+    .map(({ candidateKey }) => firstFragmentOffset.get(candidateKey))
+    .filter(Number.isSafeInteger)
+  if (!starts.length) return mention
+  return Math.max(mention, Math.min(...starts))
+}
+
+/**
  * Итоговый roster после подтверждения: слитые кандидаты становятся одной
  * записью, места и группы отсеиваются. Каноническое имя компонента — имя
  * самого частого кандидата, если модель не назвала другое.
  */
-export function applyRosterConfirmation({ request, candidates, confirmation }) {
+export function applyRosterConfirmation({ request, candidates, confirmation, fragments = null }) {
   const byKey = new Map(candidates.map((candidate) => [candidate.candidateKey, candidate]))
+  // Первая цитата каждого кандидата. Карточка строится только из цитат, а окно
+  // ей выбирается по первому упоминанию; когда упоминание раньше первой цитаты,
+  // окно открывается там, где собирать нечего, и позже его никто не откроет.
+  // Так пропал Рауль из «Земли лишних»: слитый с «Раулито», он унаследовал
+  // первое упоминание редкой формы «Рауль», для которой цитат не собирали, и
+  // карточка не была поставлена ни разу — вместе с ним ещё двадцать героев книги.
+  const firstFragmentOffset = new Map()
+  for (const entry of fragments?.characters ?? []) {
+    const starts = (entry.fragments ?? [])
+      .map(({ startOffset }) => startOffset)
+      .filter(Number.isSafeInteger)
+    if (starts.length) firstFragmentOffset.set(entry.characterKey, Math.min(...starts))
+  }
   const kinds = new Map(confirmation.classifications.map((item) => [item.candidateKey, item]))
   const sets = new DisjointSet([...byKey.keys()])
   for (const { leftKey, rightKey } of confirmation.acceptedMerges) sets.union(leftKey, rightKey)
@@ -757,8 +791,7 @@ export function applyRosterConfirmation({ request, candidates, confirmation }) {
       canonicalName,
       names: names.filter((name) => normalizedName(name) !== normalizedName(canonicalName)),
       mentionCount: rows.reduce((sum, { count }) => sum + count, 0),
-      firstMentionTextOffset: Math.min(...rows.map(({ firstMentionTextOffset }) =>
-        firstMentionTextOffset)),
+      firstMentionTextOffset: rosterFirstMention(rows, firstFragmentOffset),
       chapterCount: Math.max(...rows.map(({ chapterCount }) => chapterCount)),
       tier: rows.some(({ tier }) => tier === 'significant') ? 'significant' : 'roster'
     })
