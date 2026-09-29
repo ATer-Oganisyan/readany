@@ -276,6 +276,15 @@ export function clearReaderVoicePlan(): void {
   activeVoicePlan = new Map();
 }
 
+/** Переводит на новый голос нарратора уже размеченную очередь (смена голоса во время чтения). */
+export function replaceReaderNarratorVoice(previousVoice: string, nextVoice: string): void {
+  for (const [key, assignment] of activeVoicePlan) {
+    if (assignment.voice === previousVoice) {
+      activeVoicePlan.set(key, { ...assignment, voice: nextVoice });
+    }
+  }
+}
+
 /** Голос для чанка синтеза; null — чанк вне плана (фолбэк — нарратор). */
 export function resolveReaderVoiceForChunk(text: string): ChunkVoiceAssignment | null {
   return activeVoicePlan.get(planKey(text)) ?? null;

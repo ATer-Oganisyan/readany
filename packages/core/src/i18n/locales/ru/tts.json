@@ -150,7 +150,15 @@
     "systemVoiceNote": "Выберите системный голос в настройках вашего устройства.",
     "browserVoiceNote": "Выберите системный голос в настройках вашего устройства.",
     "stop": "Стоп",
-    "noTextFound": "На странице нет текста для озвучивания"
+    "noTextFound": "На странице нет текста для озвучивания",
+    "playerMore": "Ещё",
+    "narratorVoice": "Голос рассказчика",
+    "narratorMale": "Мужской",
+    "narratorFemale": "Женский",
+    "readingSpeed": "Скорость чтения",
+    "speedNormal": "Средняя",
+    "speedFast": "Быстрая",
+    "speedVeryFast": "Очень быстрая"
   },
   "fonts": {
     "title": "Шрифты",

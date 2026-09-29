@@ -45,6 +45,18 @@ struct ReadAnyMenuItem: Record {
   @Field var destructive = false
 }
 
+struct ReadAnyMenuChoice: Record {
+  @Field var key = ""
+  @Field var label = ""
+  @Field var checked = false
+}
+
+/** An inline titled group of checkable choices, e.g. "Narrator voice". */
+struct ReadAnyMenuSection: Record {
+  @Field var title = ""
+  @Field var items: [ReadAnyMenuChoice] = []
+}
+
 public final class ReadAnyNativeControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ReadAnyNativeControls")
@@ -199,12 +211,20 @@ public final class ReadAnyNativeControlsModule: Module {
     }
 
     View(ReadAnySheetNavigationBar.self) {
-      Events("onClosePress")
+      Events("onClosePress", "onMenuItemPress")
       Prop("title") { (view, value: String) in view.title = value }
       Prop("closeAccessibilityLabel") { (view, value: String) in
         view.closeAccessibilityLabel = value
       }
       Prop("isDark") { (view, value: Bool) in view.isDark = value }
+      Prop("showsCloseButton") { (view, value: Bool) in view.showsCloseButton = value }
+      Prop("transparentBackground") { (view, value: Bool) in
+        view.transparentBackground = value
+      }
+      Prop("menuAccessibilityLabel") { (view, value: String) in
+        view.menuAccessibilityLabel = value
+      }
+      Prop("menuSections") { (view, value: [ReadAnyMenuSection]) in view.menuSections = value }
 
       OnViewDidUpdateProps { view in
         view.updateConfiguration()
@@ -952,10 +972,17 @@ public struct ReadAnyValueStepper: ExpoSwiftUI.View {
 
 final class ReadAnySheetNavigationBar: ExpoView {
   let onClosePress = EventDispatcher()
+  let onMenuItemPress = EventDispatcher()
 
   var title = ""
   var closeAccessibilityLabel = "Закрыть"
   var isDark = true
+  var showsCloseButton = true
+  /** Lets the sheet's own colour show through (the audiobook player). */
+  var transparentBackground = false
+  var menuAccessibilityLabel = "Ещё"
+  /** Non-empty adds a "More" button whose menu shows these groups. */
+  var menuSections: [ReadAnyMenuSection] = []
 
   private let navigationBar = UINavigationBar()
   private let navigationItem = UINavigationItem()
@@ -984,7 +1011,6 @@ final class ReadAnySheetNavigationBar: ExpoView {
       target: self,
       action: #selector(handleClosePress)
     )
-    navigationItem.rightBarButtonItem = closeItem
     navigationBar.setItems([navigationItem], animated: false)
     updateConfiguration()
   }
@@ -993,16 +1019,44 @@ final class ReadAnySheetNavigationBar: ExpoView {
     onClosePress()
   }
 
+  private lazy var menuItem = UIBarButtonItem(
+    image: MishanaerIconAssets.image("dots-three-horizontal"),
+    menu: nil
+  )
+
+  private func makeMenu() -> UIMenu {
+    UIMenu(children: menuSections.map { section in
+      UIMenu(
+        title: section.title,
+        options: [.displayInline, .singleSelection],
+        children: section.items.map { choice in
+          UIAction(title: choice.label, state: choice.checked ? .on : .off) { [weak self] _ in
+            self?.onMenuItemPress(["key": choice.key])
+          }
+        }
+      )
+    })
+  }
+
   func updateConfiguration() {
     overrideUserInterfaceStyle = isDark ? .dark : .light
     navigationBar.overrideUserInterfaceStyle = isDark ? .dark : .light
     navigationItem.title = title
     closeItem.accessibilityLabel = closeAccessibilityLabel
+    menuItem.accessibilityLabel = menuAccessibilityLabel
+    menuItem.menu = makeMenu()
+    // UIKit lists right items from the trailing edge: close stays outermost.
+    navigationItem.rightBarButtonItems =
+      (showsCloseButton ? [closeItem] : []) + (menuSections.isEmpty ? [] : [menuItem])
 
     if #available(iOS 15.0, *) {
       let appearance = UINavigationBarAppearance()
-      appearance.configureWithOpaqueBackground()
-      appearance.backgroundColor = isDark ? .black : .systemBackground
+      if transparentBackground {
+        appearance.configureWithTransparentBackground()
+      } else {
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = isDark ? .black : .systemBackground
+      }
       appearance.titleTextAttributes = [
         .foregroundColor: isDark ? UIColor.white : UIColor.label
       ]

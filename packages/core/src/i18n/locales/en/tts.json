@@ -150,7 +150,15 @@
     "systemVoiceNote": "Choose the system voice in your device settings",
     "browserVoiceNote": "Choose the system voice in your device settings",
     "stop": "Stop",
-    "noTextFound": "No readable text found on this page"
+    "noTextFound": "No readable text found on this page",
+    "playerMore": "More",
+    "narratorVoice": "Narrator voice",
+    "narratorMale": "Male",
+    "narratorFemale": "Female",
+    "readingSpeed": "Reading speed",
+    "speedNormal": "Normal",
+    "speedFast": "Fast",
+    "speedVeryFast": "Very fast"
   },
   "fonts": {
     "title": "Fonts",
