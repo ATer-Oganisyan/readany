@@ -48,6 +48,8 @@ export interface Bookmark {
   cfi: string;
   label?: string;
   chapterTitle?: string;
+  /** One-based page/location shown by the reader when the bookmark was created. */
+  pageNumber?: number;
   createdAt: number;
 }
 

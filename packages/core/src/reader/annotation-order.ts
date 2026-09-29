@@ -36,6 +36,30 @@ export function compareCfiPosition(leftCfi?: string, rightCfi?: string): number 
   return (leftCfi ?? "").localeCompare(rightCfi ?? "");
 }
 
+/** Splits `epubcfi(base,start,end)` into point CFIs; a point CFI is both start and end. */
+function getCfiRangeBounds(cfi: string): [string, string] {
+  const match = cfi.trim().match(/^epubcfi\(([^,]*),([^,]*),([^,]*)\)$/);
+  if (!match) return [cfi, cfi];
+  const [, base, start, end] = match;
+  return [`epubcfi(${base}${start})`, `epubcfi(${base}${end})`];
+}
+
+/**
+ * Whether a saved position (a bookmark's page range) starts on the page shown now.
+ * Page ranges shift when layout changes, so matching the exact string misses bookmarks
+ * that the reader just navigated to.
+ */
+export function isCfiOnPage(savedCfi: string, pageCfi: string): boolean {
+  if (!savedCfi || !pageCfi) return false;
+  if (savedCfi === pageCfi) return true;
+  const [pageStart, pageEnd] = getCfiRangeBounds(pageCfi);
+  if (pageStart === pageEnd) return false;
+  const [savedStart] = getCfiRangeBounds(savedCfi);
+  return (
+    compareCfiPosition(savedStart, pageStart) >= 0 && compareCfiPosition(savedStart, pageEnd) < 0
+  );
+}
+
 export function compareAnnotationPosition(
   left: PositionedAnnotation,
   right: PositionedAnnotation,

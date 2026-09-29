@@ -31,5 +31,6 @@ export type { SelectionNoteMutation, SelectionNoteMutationInput } from "./select
 export {
   compareAnnotationPosition,
   compareCfiPosition,
+  isCfiOnPage,
   sortAnnotationsByPosition,
 } from "./annotation-order";

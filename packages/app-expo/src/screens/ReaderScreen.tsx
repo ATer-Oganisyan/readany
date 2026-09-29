@@ -938,6 +938,7 @@ function ReaderContent({ route, navigation, onClose }: Props & { onClose: () => 
     bookId,
     currentCfi,
     currentChapter,
+    pageNumber: bookLocation ? bookLocation.current + 1 : undefined,
     requestPageSnippet,
     onBookmarkAdded: handleBookmarkAdded,
     onBookmarkRemoved: handleBookmarkRemoved,

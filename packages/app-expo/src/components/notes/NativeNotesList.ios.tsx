@@ -14,6 +14,7 @@ import {
 } from "@expo/ui/swift-ui";
 import {
   buttonStyle,
+  contentShape,
   font,
   foregroundStyle,
   frame,
@@ -22,6 +23,7 @@ import {
   listRowInsets,
   listStyle,
   scrollContentBackground,
+  shapes,
 } from "@expo/ui/swift-ui/modifiers";
 import { useTranslation } from "react-i18next";
 import type { NativeNotesListProps } from "./NativeNotesList";
@@ -66,7 +68,11 @@ export function NativeNotesList({ sections, onPress, onDelete }: NativeNotesList
                     <VStack
                       alignment="leading"
                       spacing={2}
-                      modifiers={[frame({ maxWidth: 10000, alignment: "leading" })]}
+                      modifiers={[
+                        frame({ maxWidth: 10000, alignment: "leading" }),
+                        // Plain buttons only hit-test drawn text; make the whole row tappable.
+                        contentShape(shapes.rectangle()),
+                      ]}
                     >
                       <Text
                         modifiers={[

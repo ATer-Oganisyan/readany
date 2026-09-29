@@ -668,6 +668,13 @@ export async function initDatabase(): Promise<void> {
       await allowStandaloneHighlights(database);
 
       // Migration 8: Add updated_at to tables that need it for incremental sync
+      const bookmarkColumns = await database.select<{ name: string }>(
+        "PRAGMA table_info(bookmarks)",
+      );
+      if (!bookmarkColumns.some((column) => column.name === "page_number")) {
+        await database.execute("ALTER TABLE bookmarks ADD COLUMN page_number INTEGER");
+      }
+
       const tablesNeedingUpdatedAt = ["bookmarks"];
       for (const table of tablesNeedingUpdatedAt) {
         try {

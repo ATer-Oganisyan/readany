@@ -374,6 +374,11 @@ export function ProfileScreen() {
             label: t("tabs.notes", "Заметки"),
             action: () => nav.navigate("ProfileNotes"),
           },
+          {
+            icon: { name: "bookmark", fallback: "bookmark" },
+            label: t("bookmarks.title", "Закладки"),
+            action: () => nav.navigate("ProfileBookmarks"),
+          },
           // TODO(P3): «Поиск по книгам» — готового поиска библиотеки в мобильном
           // приложении нет (LibraryScreen ищет только оригинальный файл книги);
           // добавить пункт, когда появится полноценный поиск по библиотеке.

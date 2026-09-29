@@ -2,7 +2,7 @@ import { sortAnnotationsByPosition } from "../reader/annotation-order";
 import type { Bookmark } from "../types";
 import { getDB, getDeviceId, insertTombstone, nextSyncVersion } from "./db-core";
 
-export async function getBookmarks(bookId: string): Promise<Bookmark[]> {
+export async function getBookmarks(bookId?: string): Promise<Bookmark[]> {
   const database = await getDB();
   const rows = await database.select<{
     id: string;
@@ -11,7 +11,13 @@ export async function getBookmarks(bookId: string): Promise<Bookmark[]> {
     label: string | null;
     chapter_title: string | null;
     created_at: number;
-  }>("SELECT * FROM bookmarks WHERE book_id = ? ORDER BY created_at DESC", [bookId]);
+    page_number: number | null;
+  }>(
+    bookId === undefined
+      ? "SELECT bookmarks.* FROM bookmarks JOIN books ON books.id = bookmarks.book_id WHERE books.deleted_at IS NULL ORDER BY bookmarks.created_at DESC"
+      : "SELECT * FROM bookmarks WHERE book_id = ? ORDER BY created_at DESC",
+    bookId === undefined ? [] : [bookId],
+  );
   return sortAnnotationsByPosition(
     rows.map((r) => ({
       id: r.id,
@@ -20,6 +26,7 @@ export async function getBookmarks(bookId: string): Promise<Bookmark[]> {
       label: r.label || undefined,
       chapterTitle: r.chapter_title || undefined,
       createdAt: r.created_at,
+      pageNumber: r.page_number ?? undefined,
     })),
   );
 }
@@ -30,7 +37,7 @@ export async function insertBookmark(bookmark: Bookmark): Promise<void> {
   const syncVersion = await nextSyncVersion(database, "bookmarks");
   const updatedAt = Math.max(Date.now(), bookmark.createdAt);
   await database.execute(
-    "INSERT INTO bookmarks (id, book_id, cfi, label, chapter_title, created_at, updated_at, sync_version, last_modified_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO bookmarks (id, book_id, cfi, label, chapter_title, created_at, updated_at, sync_version, last_modified_by, page_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       bookmark.id,
       bookmark.bookId,
@@ -41,6 +48,7 @@ export async function insertBookmark(bookmark: Bookmark): Promise<void> {
       updatedAt,
       syncVersion,
       deviceId,
+      bookmark.pageNumber ?? null,
     ],
   );
 }

@@ -4,6 +4,7 @@ import FilledArrowRotateCcwUpAsset from "../../../assets/icons/mishanaer/filled/
 import FilledBellAsset from "../../../assets/icons/mishanaer/filled/bell.svg";
 import FilledBinAsset from "../../../assets/icons/mishanaer/filled/bin.svg";
 import FilledBookAsset from "../../../assets/icons/mishanaer/filled/book.svg";
+import FilledBookmarkAsset from "../../../assets/icons/mishanaer/filled/bookmark.svg";
 import FilledChatBubbleAsset from "../../../assets/icons/mishanaer/filled/chat-bubble.svg";
 import FilledChatBubblesAsset from "../../../assets/icons/mishanaer/filled/chat-bubbles.svg";
 import FilledCloudAsset from "../../../assets/icons/mishanaer/filled/cloud.svg";
@@ -292,6 +293,7 @@ export const filledIconComponents = {
   bell: FilledBellAsset,
   bin: FilledBinAsset,
   book: FilledBookAsset,
+  bookmark: FilledBookmarkAsset,
   "chat-bubble": FilledChatBubbleAsset,
   "chat-bubbles": FilledChatBubblesAsset,
   cloud: FilledCloudAsset,
@@ -373,6 +375,7 @@ export const filledIconImages = {
   bell: require("../../../assets/icons/mishanaer/filled-png/bell.png"),
   bin: require("../../../assets/icons/mishanaer/filled-png/bin.png"),
   book: require("../../../assets/icons/mishanaer/filled-png/book.png"),
+  bookmark: require("../../../assets/icons/mishanaer/filled-png/bookmark.png"),
   "chat-bubble": require("../../../assets/icons/mishanaer/filled-png/chat-bubble.png"),
   "chat-bubbles": require("../../../assets/icons/mishanaer/filled-png/chat-bubbles.png"),
   cloud: require("../../../assets/icons/mishanaer/filled-png/cloud.png"),

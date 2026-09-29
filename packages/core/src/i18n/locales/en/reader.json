@@ -107,7 +107,7 @@
     "title": "Bookmarks",
     "add": "Bookmark this page",
     "addCurrent": "Add bookmark",
-    "removeCurrent": "Remove bookmark from this page",
+    "removeCurrent": "Remove bookmark",
     "remove": "Remove bookmark",
     "added": "Bookmark added",
     "removed": "Bookmark removed",
@@ -116,7 +116,13 @@
     "pullToRemove": "Pull down to remove bookmark",
     "releaseToRemove": "Release to remove bookmark",
     "empty": "No bookmarks yet",
-    "emptyHint": "Use the bookmark button in the toolbar to mark pages"
+    "emptyHint": "Use the bookmark button in the toolbar to mark pages",
+    "page": "Page {{page}}",
+    "pageUnknown": "Page not saved",
+    "loadFailed": "Could not load bookmarks",
+    "retryHint": "Open this section again to retry.",
+    "deleteFailed": "Could not delete bookmark",
+    "openBookmark": "Open bookmark in “{{title}}”"
   },
   "highlights": {
     "yellow": "Yellow",

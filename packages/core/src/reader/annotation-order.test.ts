@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareCfiPosition, sortAnnotationsByPosition } from "./annotation-order";
+import { compareCfiPosition, isCfiOnPage, sortAnnotationsByPosition } from "./annotation-order";
 
 describe("annotation-order", () => {
   it("sorts EPUB CFIs by numeric book position", () => {
@@ -33,5 +33,29 @@ describe("annotation-order", () => {
     ]);
 
     expect(sorted.map((item) => item.id)).toEqual(["positioned", "missing", "blank"]);
+  });
+
+  describe("isCfiOnPage", () => {
+    const page = "epubcfi(/6/6!/4/2,/116/1:145,/126/1:72)";
+
+    it("matches a bookmark whose page started inside the visible page", () => {
+      // Saved before a layout change: its page began at /118, which now falls on this page.
+      expect(isCfiOnPage("epubcfi(/6/6!/4/2,/118,/124/1:66)", page)).toBe(true);
+    });
+
+    it("matches the exact same page range", () => {
+      expect(isCfiOnPage(page, page)).toBe(true);
+    });
+
+    it("ignores bookmarks that start before or after the visible page", () => {
+      expect(isCfiOnPage("epubcfi(/6/6!/4/2,/106/1:761,/108/1:817)", page)).toBe(false);
+      expect(isCfiOnPage("epubcfi(/6/6!/4/2,/126/1:72,/140)", page)).toBe(false);
+      expect(isCfiOnPage("epubcfi(/6/8!/4/2,/2,/10)", page)).toBe(false);
+    });
+
+    it("compares page CFIs exactly", () => {
+      expect(isCfiOnPage("page:3", "page:3")).toBe(true);
+      expect(isCfiOnPage("page:3", "page:4")).toBe(false);
+    });
   });
 });

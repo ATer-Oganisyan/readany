@@ -19,10 +19,16 @@ export interface NativeNotesListProps {
   sections: NativeNoteListSection[];
   onPress: (id: string) => void;
   onDelete: (id: string) => void;
+  itemAccessibilityKey?: string;
 }
 
 /** Android note list. */
-export function NativeNotesList({ sections, onPress, onDelete }: NativeNotesListProps) {
+export function NativeNotesList({
+  sections,
+  onPress,
+  onDelete,
+  itemAccessibilityKey = "notes.openNote",
+}: NativeNotesListProps) {
   const colors = useColors();
   const { t } = useTranslation();
 
@@ -43,7 +49,7 @@ export function NativeNotesList({ sections, onPress, onDelete }: NativeNotesList
       )}
       renderItem={({ item, index, section }) => (
         <BookCardContextMenu
-          accessibilityLabel={t("notes.openNote", "Открыть заметку «{{title}}»", {
+          accessibilityLabel={t(itemAccessibilityKey, "Открыть «{{title}}»", {
             title: item.title,
           })}
           onPress={() => onPress(item.id)}
@@ -59,7 +65,7 @@ export function NativeNotesList({ sections, onPress, onDelete }: NativeNotesList
         >
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={t("notes.openNote", "Открыть заметку «{{title}}»", {
+            accessibilityLabel={t(itemAccessibilityKey, "Открыть «{{title}}»", {
               title: item.title,
             })}
             onPress={() => onPress(item.id)}

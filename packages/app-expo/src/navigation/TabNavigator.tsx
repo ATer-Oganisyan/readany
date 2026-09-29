@@ -2,6 +2,7 @@ import { AudiobookPlayerAccessory } from "@/components/tts/audiobook-player-acce
 import { getFilledIconImageSource, getStrokeIconImageSource } from "@/components/ui/MishanaerIcon";
 import { NativeButton } from "@/components/ui/NativeButton";
 import { AUDIOBOOK_PLAYER_ENABLED } from "@/lib/audiobook-player";
+import { BookmarksScreen } from "@/screens/BookmarksScreen";
 import { ChatsScreen } from "@/screens/ChatsScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
@@ -43,6 +44,7 @@ export type SearchTabStackParamList = { SearchHome: undefined };
 export type ProfileTabStackParamList = {
   ProfileHome: undefined;
   ProfileNotes: { bookId?: string } | undefined;
+  ProfileBookmarks: undefined;
 };
 
 const Tab = createNativeBottomTabNavigator<TabParamList>();
@@ -223,6 +225,14 @@ function ProfileTabStackNavigator() {
                 ),
               }),
         })}
+      />
+      <ProfileStack.Screen
+        name="ProfileBookmarks"
+        component={BookmarksScreen}
+        options={{
+          title: t("bookmarks.title", "Закладки"),
+          headerBackButtonDisplayMode: "minimal",
+        }}
       />
     </ProfileStack.Navigator>
   );

@@ -2,6 +2,7 @@
  * useReaderBookmark — handles bookmark toggling, pending snippet requests, and bookmark list.
  */
 import { type AnnotationState, useAnnotationStore } from "@/stores";
+import { isCfiOnPage } from "@readany/core/reader";
 import { generateId } from "@readany/core/utils";
 import { useCallback, useMemo, useRef } from "react";
 
@@ -9,6 +10,7 @@ export interface UseReaderBookmarkOptions {
   bookId: string;
   currentCfi: string;
   currentChapter: string;
+  pageNumber?: number;
   requestPageSnippet: () => void;
   onBookmarkAdded?: () => void;
   onBookmarkRemoved?: () => void;
@@ -27,6 +29,7 @@ export function useReaderBookmark({
   bookId,
   currentCfi,
   currentChapter,
+  pageNumber,
   requestPageSnippet,
   onBookmarkAdded,
   onBookmarkRemoved,
@@ -34,10 +37,13 @@ export function useReaderBookmark({
   const { bookmarks, addBookmark, removeBookmark } = useAnnotationStore();
   const pendingBookmarkRef = useRef(false);
 
-  const existingBookmark = useMemo(
-    () => bookmarks.find((b) => b.bookId === bookId && b.cfi === currentCfi),
+  // A bookmark keeps the page range it was saved on; after a layout change that
+  // range starts on a different page, so match by position, not by exact CFI.
+  const pageBookmarks = useMemo(
+    () => bookmarks.filter((b) => b.bookId === bookId && isCfiOnPage(b.cfi, currentCfi)),
     [bookmarks, bookId, currentCfi],
   );
+  const existingBookmark = pageBookmarks[0];
   const isBookmarked = !!existingBookmark;
 
   const bookBookmarks = useMemo(
@@ -47,8 +53,8 @@ export function useReaderBookmark({
 
   const handleToggleBookmark = useCallback(() => {
     if (!currentCfi || !bookId) return;
-    if (isBookmarked && existingBookmark) {
-      removeBookmark(existingBookmark.id);
+    if (isBookmarked) {
+      for (const bookmark of pageBookmarks) removeBookmark(bookmark.id);
       onBookmarkRemoved?.();
     } else {
       pendingBookmarkRef.current = true;
@@ -62,6 +68,7 @@ export function useReaderBookmark({
             cfi: currentCfi,
             label: undefined,
             chapterTitle: currentChapter || undefined,
+            pageNumber,
             createdAt: Date.now(),
           });
           onBookmarkAdded?.();
@@ -72,8 +79,9 @@ export function useReaderBookmark({
     currentCfi,
     bookId,
     isBookmarked,
-    existingBookmark,
+    pageBookmarks,
     currentChapter,
+    pageNumber,
     removeBookmark,
     addBookmark,
     requestPageSnippet,
@@ -92,13 +100,14 @@ export function useReaderBookmark({
             cfi: currentCfi,
             label: text || undefined,
             chapterTitle: currentChapter || undefined,
+            pageNumber,
             createdAt: Date.now(),
           });
           onBookmarkAdded?.();
         }
       }
     },
-    [addBookmark, bookId, currentCfi, currentChapter, onBookmarkAdded],
+    [addBookmark, bookId, currentCfi, currentChapter, pageNumber, onBookmarkAdded],
   );
 
   return {

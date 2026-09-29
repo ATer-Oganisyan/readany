@@ -22,6 +22,7 @@ const sampleBookmark: Bookmark = {
   cfi: "epubcfi(/6/2!/4/2/10)",
   label: "Important part",
   chapterTitle: "Chapter 1",
+  pageNumber: 42,
   createdAt: 1000,
 };
 
@@ -39,6 +40,20 @@ describe("bookmark-queries", () => {
   });
 
   describe("getBookmarks", () => {
+    it("loads bookmarks across books and preserves saved page numbers", async () => {
+      mockSelect.mockResolvedValue([
+        { id: "bm-1", book_id: "book-1", cfi: "page:42", page_number: 42, created_at: 1000 },
+        { id: "bm-2", book_id: "book-2", cfi: "page:7", page_number: null, created_at: 2000 },
+      ]);
+      const bookmarks = await getBookmarks();
+      expect(bookmarks).toHaveLength(2);
+      expect(bookmarks.find((item) => item.id === "bm-1")?.pageNumber).toBe(42);
+      expect(bookmarks.find((item) => item.id === "bm-2")?.pageNumber).toBeUndefined();
+      expect(mockSelect).toHaveBeenCalledWith(
+        expect.stringContaining("WHERE books.deleted_at IS NULL"),
+        [],
+      );
+    });
     it("returns mapped bookmarks for a specific book", async () => {
       mockSelect.mockResolvedValue([
         {
@@ -131,6 +146,8 @@ describe("bookmark-queries", () => {
       expect(params[3]).toBe("Important part");
       expect(params[5]).toBe(1000);
       expect(params[6]).toBe(1500);
+      expect(sql).toContain("page_number");
+      expect(params[9]).toBe(42);
     });
   });
 

@@ -17,7 +17,7 @@ import { EmptyStateActionButton } from "@/components/ui/empty-state-action-butto
 import { openMobileBook } from "@/lib/library/open-mobile-book";
 import { toast } from "@/lib/notifications";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
-import { NATIVE_SCROLL_EDGE_EFFECTS } from "@/navigation/scroll-edge-effects";
+import { NATIVE_SCROLL_EDGE_EFFECTS, topScrollEdgeEffect } from "@/navigation/scroll-edge-effects";
 import { useAnnotationStore, useLibraryStore } from "@/stores";
 import { useColors } from "@/styles/theme";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -34,6 +34,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   ScrollView,
   TouchableOpacity,
@@ -42,19 +44,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { HighlightCard } from "./notes/HighlightCard";
 import { NoteCard } from "./notes/NoteCard";
+import { groupByAnnotationDay } from "./notes/group-by-annotation-day";
 import { makeStyles } from "./notes/notes-styles";
 import { useResolvedCovers } from "./notes/useResolvedCovers";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type DetailTab = "notes" | "highlights";
-
-const DAY_MS = 24 * 60 * 60 * 1_000;
-
-function startOfDay(date: Date) {
-  const result = new Date(date);
-  result.setHours(0, 0, 0, 0);
-  return result.getTime();
-}
 
 function cleanNoteText(value: string) {
   return value
@@ -106,6 +101,16 @@ export function NotesView({
   const [detailTab, setDetailTab] = useState<DetailTab>("notes");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editNote, setEditNote] = useState("");
+  const [topEdgeEffect, setTopEdgeEffect] = useState<"hidden" | "hard">("hidden");
+  const scrollEdgeEffects = useMemo(
+    () => ({ ...NATIVE_SCROLL_EDGE_EFFECTS, top: topEdgeEffect }),
+    [topEdgeEffect],
+  );
+  const handleScroll = useCallback(({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+    setTopEdgeEffect(
+      topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top),
+    );
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -199,40 +204,16 @@ export function NotesView({
     [highlightsWithBooks, initialBookId],
   );
 
-  const noteSections = useMemo<NativeNoteListSection[]>(() => {
-    const today = startOfDay(new Date());
-    const buckets: Array<{ title: string; from: number; to: number }> = [
-      { title: t("notes.today", "Сегодня"), from: today, to: Number.POSITIVE_INFINITY },
-      { title: t("notes.yesterday", "Вчера"), from: today - DAY_MS, to: today },
-      {
-        title: t("notes.last7Days", "За последние 7 дней"),
-        from: today - 7 * DAY_MS,
-        to: today - DAY_MS,
-      },
-      {
-        title: t("notes.last30Days", "За последние 30 дней"),
-        from: today - 30 * DAY_MS,
-        to: today - 7 * DAY_MS,
-      },
-      {
-        title: t("notes.earlier", "Раньше"),
-        from: Number.NEGATIVE_INFINITY,
-        to: today - 30 * DAY_MS,
-      },
-    ];
-
-    return buckets
-      .map((bucket) => ({
-        title: bucket.title,
-        data: allNotes
-          .filter((highlight) => {
-            const timestamp = highlight.updatedAt || highlight.createdAt;
-            return timestamp >= bucket.from && timestamp < bucket.to;
-          })
-          .map((highlight) => noteListItem(highlight, t("notes.noteFallback", "Заметка"))),
-      }))
-      .filter((section) => section.data.length > 0);
-  }, [allNotes, t]);
+  const noteSections = useMemo<NativeNoteListSection[]>(
+    () =>
+      groupByAnnotationDay(
+        allNotes,
+        (highlight) => highlight.updatedAt || highlight.createdAt,
+        (highlight) => noteListItem(highlight, t("notes.noteFallback", "Заметка")),
+        t,
+      ),
+    [allNotes, t],
+  );
 
   // Group by chapter
   const itemsByChapter = useMemo(() => {
@@ -483,9 +464,11 @@ export function NotesView({
             </Text>
           </View>
         ) : (
-          <ScrollViewMarker style={s.detailList} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+          <ScrollViewMarker style={s.detailList} scrollEdgeEffects={scrollEdgeEffects}>
             <ScrollView
               style={s.detailList}
+              onScroll={handleScroll}
+              scrollEventThrottle={100}
               contentInsetAdjustmentBehavior="automatic"
               showsVerticalScrollIndicator={false}
               alwaysBounceVertical
@@ -536,9 +519,11 @@ export function NotesView({
   if (noteSections.length === 0) {
     return (
       <SafeAreaView style={[s.container, { backgroundColor: colors.background }]} edges={edges}>
-        <ScrollViewMarker style={{ flex: 1 }} scrollEdgeEffects={NATIVE_SCROLL_EDGE_EFFECTS}>
+        <ScrollViewMarker style={{ flex: 1 }} scrollEdgeEffects={scrollEdgeEffects}>
           <ScrollView
             style={{ flex: 1 }}
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
             contentInsetAdjustmentBehavior="automatic"
             contentContainerStyle={{ flexGrow: 1 }}
             alwaysBounceVertical
