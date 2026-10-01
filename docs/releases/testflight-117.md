@@ -10,7 +10,8 @@
 - Apple upload: `UPLOAD SUCCEEDED`, без ошибок. Прежнее предупреждение 90737 о настройке открытия документов не блокирует выпуск.
 - [App Store Connect build](https://appstoreconnect.apple.com/teams/d8b33429-d4a7-418c-824a-45a168acda6f/apps/6801546949/testflight/ios/6e4d6e28-97e0-49de-aaac-122ce7a8c3c3): `VALID`.
 - Beta review: `APPROVED`; external state: `IN_BETA_TESTING`.
-- Сборка назначена группе `Narra External`; [публичная ссылка TestFlight](https://testflight.apple.com/join/6h3wT64n) активна.
+- Сборка доступна группам `Narra Internal` (автоматический доступ ко всем сборкам)
+  и `Narra External`; [публичная ссылка TestFlight](https://testflight.apple.com/join/6h3wT64n) активна.
 - `What to Test` заполнено для `ru` и `en-US`, автоматическое уведомление тестировщиков включено.
 
 До выпуска прошли 34 теста, TypeScript, Biome и проверка diff; на симуляторе
