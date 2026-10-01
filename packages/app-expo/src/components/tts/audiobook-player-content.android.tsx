@@ -205,10 +205,8 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
             accessibilityLabel={label}
             accessibilityState={{ disabled: !enabled }}
             disabled={!enabled}
-            onPress={() => {
-              hapticLight();
-              onPress();
-            }}
+            onPressIn={hapticLight}
+            onPress={onPress}
             style={{
               width: Icon ? 56 : 80,
               height: Icon ? 56 : 80,

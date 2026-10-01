@@ -18,6 +18,7 @@ import { catalogGridLayout } from "@/lib/narra/catalog-grid-layout";
 import { CATALOG_SHELF_GAP, CATALOG_SHELF_SHADOW_INSETS } from "@/lib/narra/catalog-shelf-layout";
 import { buildCatalogShelves, catalogCategoryCoverWindow } from "@/lib/narra/catalog-shelves";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
+import { NATIVE_SCROLL_EDGE_EFFECTS, topScrollEdgeEffect } from "@/navigation/scroll-edge-effects";
 import { useLibraryStore } from "@/stores";
 import {
   largeTitleFontFamily,
@@ -66,6 +67,7 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
   const { catalog } = snapshot;
   const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
   const [viewportHeight, setViewportHeight] = useState(layout.height);
+  const [topEdgeEffect, setTopEdgeEffect] = useState<"hidden" | "hard">("hidden");
   const navigating = useRef(false);
   const opening = useRef(false);
   const viewability = useRef({ itemVisiblePercentThreshold: 1 }).current;
@@ -135,9 +137,15 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
   useLayoutEffect(
     () =>
       navigation.setOptions(
-        usesWrappedTitle ? { title: "", headerLargeTitleEnabled: false } : { title },
+        usesWrappedTitle
+          ? {
+              title: "",
+              headerLargeTitleEnabled: false,
+              scrollEdgeEffects: { ...NATIVE_SCROLL_EDGE_EFFECTS, top: topEdgeEffect },
+            }
+          : { title },
       ),
-    [navigation, title, usesWrappedTitle],
+    [navigation, title, usesWrappedTitle, topEdgeEffect],
   );
   useEffect(
     () =>
@@ -207,6 +215,14 @@ const CategoryGrid = memo(function CategoryGrid({ route, navigation }: Props) {
         numColumns={2}
         keyExtractor={(book) => book.bookEditionId}
         contentInsetAdjustmentBehavior="automatic"
+        onScroll={({ nativeEvent }) => {
+          if (usesWrappedTitle) {
+            setTopEdgeEffect(
+              topScrollEdgeEffect(nativeEvent.contentOffset.y, nativeEvent.contentInset.top),
+            );
+          }
+        }}
+        scrollEventThrottle={100}
         contentContainerStyle={contentStyle}
         columnWrapperStyle={columnStyle}
         removeClippedSubviews={false}

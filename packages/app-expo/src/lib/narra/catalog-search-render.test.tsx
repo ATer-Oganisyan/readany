@@ -1013,6 +1013,27 @@ describe("Category screen behavior with native boundaries replaced", () => {
     expect(runtime.navigation.setOptions).toHaveBeenCalledWith({
       title: "",
       headerLargeTitleEnabled: false,
+      scrollEdgeEffects: {
+        top: "hidden",
+        bottom: "automatic",
+        left: "automatic",
+        right: "automatic",
+      },
+    });
+    await act(() =>
+      grid(mounted.root).props.onScroll({
+        nativeEvent: { contentOffset: { x: 0, y: 20 }, contentInset: { top: 100 } },
+      }),
+    );
+    expect(runtime.navigation.setOptions).toHaveBeenLastCalledWith({
+      title: "",
+      headerLargeTitleEnabled: false,
+      scrollEdgeEffects: {
+        top: "hard",
+        bottom: "automatic",
+        left: "automatic",
+        right: "automatic",
+      },
     });
   });
 
@@ -1023,7 +1044,9 @@ describe("Category screen behavior with native boundaries replaced", () => {
     const initialRows = list.props.initialNumToRender;
     await act(() => {
       list.props.onLayout({ nativeEvent: { layout: { width: 393, height: 480 } } });
-      list.props.onScroll({ nativeEvent: { contentOffset: { x: 0, y: 600 } } });
+      list.props.onScroll({
+        nativeEvent: { contentOffset: { x: 0, y: 600 }, contentInset: { top: 100 } },
+      });
     });
     expect(list.props.initialNumToRender).toBeLessThan(initialRows);
     const data = list.props.data as CachedBackendCatalogBook[];

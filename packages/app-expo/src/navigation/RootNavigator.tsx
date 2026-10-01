@@ -170,7 +170,11 @@ export function RootNavigator() {
           component={CatalogCategoryScreen}
           options={({ route }) => ({
             ...(Platform.OS === "ios"
-              ? { title: "", headerLargeTitleEnabled: false }
+              ? {
+                  title: "",
+                  headerLargeTitleEnabled: false,
+                  scrollEdgeEffects: { ...NATIVE_SCROLL_EDGE_EFFECTS, top: "hidden" as const },
+                }
               : { title: route.params.title }),
             statusBarHidden: false,
             statusBarStyle: isDark ? "light" : "dark",
@@ -197,7 +201,9 @@ export function RootNavigator() {
             // UIKit zoom needs an interactive-capable modal; its swipe dismissal
             // is disabled in SystemSheetZoom so horizontal drags turn pages.
             gestureEnabled:
-              Platform.OS === "ios" && Number(Platform.Version) >= 26 && !!route.params.zoomSourceId,
+              Platform.OS === "ios" &&
+              Number(Platform.Version) >= 26 &&
+              !!route.params.zoomSourceId,
             // No native header: the Foliate reader owns its complete chrome.
             headerShown: false,
             statusBarAnimation: "fade",

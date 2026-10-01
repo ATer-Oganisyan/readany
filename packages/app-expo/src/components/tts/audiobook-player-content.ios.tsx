@@ -29,6 +29,7 @@ import {
   minimumScaleFactor,
   monospacedDigit,
   multilineTextAlignment,
+  onLongPressGesture,
   padding,
   shapes,
   tint,
@@ -68,13 +69,11 @@ function SentenceButton({
   const Icon = direction === "previous" ? PreviousSentenceIcon : NextSentenceIcon;
   return (
     <Button
-      onPress={() => {
-        hapticLight();
-        onPress();
-      }}
+      onPress={onPress}
       modifiers={[
         buttonStyle(playerButtonStyle),
         buttonBorderShape("circle"),
+        ...(enabled ? [onLongPressGesture(hapticLight, 0)] : []),
         frame({ width: 56, height: 56 }),
         tint(color),
         accessibilityLabel(label),
@@ -227,13 +226,11 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
             label={t("tts.prevSentence")}
           />
           <Button
-            onPress={() => {
-              hapticLight();
-              player.togglePlayback();
-            }}
+            onPress={player.togglePlayback}
             modifiers={[
               buttonStyle(playerButtonStyle),
               buttonBorderShape("circle"),
+              onLongPressGesture(hapticLight, 0),
               frame({ width: 80, height: 80 }),
               tint(color),
               accessibilityLabel(

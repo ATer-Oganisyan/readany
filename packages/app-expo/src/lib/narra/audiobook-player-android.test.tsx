@@ -6,10 +6,25 @@ import { type ReactTestRenderer, act, create } from "react-test-renderer";
 import { expect, it, vi } from "vitest";
 
 vi.mock("@/lib/haptics", () => ({ hapticLight: vi.fn() }));
-vi.mock("react-native", () => ({ Pressable: "Pressable", ScrollView: "ScrollView", Text: "Text", View: "View" }));
-vi.mock("@/hooks/use-responsive-layout", () => ({ useResponsiveLayout: () => ({ width: 390, centeredContentWidth: 358 }) }));
-vi.mock("@/styles/foreground-for-background", () => ({ foregroundForBackground: () => ({ primary: "#000", secondary: "#777", isDark: false }) }));
-vi.mock("@/styles/theme", () => ({ bodyTypography: {}, fontFamily: {}, fontSize: {}, largeTitleFontFamily: "", title24Typography: {} }));
+vi.mock("react-native", () => ({
+  Pressable: "Pressable",
+  ScrollView: "ScrollView",
+  Text: "Text",
+  View: "View",
+}));
+vi.mock("@/hooks/use-responsive-layout", () => ({
+  useResponsiveLayout: () => ({ width: 390, centeredContentWidth: 358 }),
+}));
+vi.mock("@/styles/foreground-for-background", () => ({
+  foregroundForBackground: () => ({ primary: "#000", secondary: "#777", isDark: false }),
+}));
+vi.mock("@/styles/theme", () => ({
+  bodyTypography: {},
+  fontFamily: {},
+  fontSize: {},
+  largeTitleFontFamily: "",
+  title24Typography: {},
+}));
 vi.mock("@/components/tts/animated-play-pause", () => ({ AnimatedPlayPause: "PlayPause" }));
 vi.mock("@/components/tts/audiobook-cover", () => ({ AudiobookCover: "Cover" }));
 vi.mock("../../../assets/icons/sentence-backward.svg", () => ({ default: "PreviousIcon" }));
@@ -22,7 +37,10 @@ vi.mock("@expo/ui/jetpack-compose", () => ({
   Column: "Column",
   Row: "Row",
   RNHostView: "RNHostView",
-  Slider: Object.assign((props: object) => createElement("Slider", props), { Thumb: "Thumb", Track: "Track" }),
+  Slider: Object.assign((props: object) => createElement("Slider", props), {
+    Thumb: "Thumb",
+    Track: "Track",
+  }),
   Text: "Text",
   Icon: "Icon",
   IconButton: "IconButton",
@@ -61,13 +79,23 @@ it("uses sentence actions and chapter boundaries instead of timed seeking on And
   act(() => {
     tree = create(<AudiobookPlayerContent {...props} />);
   });
-  const button = (label: string) =>
-    tree.root
+  const button = (label: string) => {
+    const found = tree.root
       .findAllByType("Pressable" as never)
-      .find((node) => node.props.accessibilityLabel === label)!;
+      .find((node) => node.props.accessibilityLabel === label);
+    if (!found) throw new Error(`Missing button: ${label}`);
+    return found;
+  };
   try {
     expect(button("tts.prevSentence").props.disabled).toBe(!true);
     expect(button("tts.nextSentence").props.disabled).toBe(!true);
+    act(() => {
+      button("tts.prevSentence").props.onPressIn();
+      button("tts.nextSentence").props.onPressIn();
+    });
+    expect(hapticLight).toHaveBeenCalledTimes(2);
+    expect(previous).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
     act(() => {
       button("tts.prevSentence").props.onPress();
       button("tts.nextSentence").props.onPress();
