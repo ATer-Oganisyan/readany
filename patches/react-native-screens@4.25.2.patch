@@ -1,8 +1,164 @@
+diff --git a/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt b/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
+index f3ad60c1fa229957a2281f39d3f3f735eb510f78..a9602b3b22a8fce3b1b1f1c7aaef0790d052de65 100644
+--- a/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
++++ b/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
+@@ -2,6 +2,7 @@ package com.swmansion.rnscreens.gamma.helpers
+ 
+ import android.annotation.SuppressLint
+ import android.content.Context
++import android.graphics.Bitmap
+ import android.graphics.drawable.Drawable
+ import android.net.Uri
+ import android.os.Handler
+@@ -56,7 +57,8 @@ private fun loadImageInternal(
+ 
+                 if (closeableImage is CloseableStaticBitmap) {
+                     val bitmap = closeableImage.underlyingBitmap
+-                    val drawable = bitmap.toDrawable(context.resources)
++                    // The drawable outlives the Fresco reference closed below. Own its pixels.
++                    val drawable = bitmap.copy(Bitmap.Config.ARGB_8888, false).toDrawable(context.resources)
+                     onLoaded(drawable)
+                 }
+ 
+diff --git a/ios/RNSScreen.h b/ios/RNSScreen.h
+index 232824844177bc85ad56a88f661441d8a5d776ef..e10ef258cd9901278a952fa9a6a55ac93954675d 100644
+--- a/ios/RNSScreen.h
++++ b/ios/RNSScreen.h
+@@ -51,7 +51,7 @@ NS_ASSUME_NONNULL_BEGIN
+ - (void)calculateAndNotifyHeaderHeightChangeIsModal:(BOOL)isModal;
+ - (void)notifyFinishTransitioning;
+ - (RNSScreenView *)screenView;
+-- (void)setViewToSnapshot;
++- (void)addSnapshotToView;
+ - (CGFloat)calculateHeaderHeightIsModal:(BOOL)isModal;
+ - (BOOL)isRemovedFromParent;
+ - (void)notifyPresentedControllerDismissed;
+@@ -92,6 +92,8 @@ NS_ASSUME_NONNULL_BEGIN
+ 
+ @property (nonatomic, retain) NSNumber *transitionDuration;
+ @property (nonatomic, readonly) BOOL dismissed;
++// React may delete this component before its native transition finishes.
++@property (nonatomic, readonly, getter=isInvalidated) BOOL invalidated;
+ @property (nonatomic) BOOL hideKeyboardOnSwipe;
+ @property (nonatomic) BOOL customAnimationOnSwipe;
+ @property (nonatomic) BOOL preventNativeDismiss;
+diff --git a/ios/RNSScreen.mm b/ios/RNSScreen.mm
+index 69d4d9a4704a7bef3fa207de2dbb2d5119846ccb..e8cbcaf3581266bf706c11736149bbd59687f116 100644
+--- a/ios/RNSScreen.mm
++++ b/ios/RNSScreen.mm
+@@ -814,6 +814,8 @@ - (BOOL)isTransparentModal
+ 
+ - (void)invalidateImpl
+ {
++  _invalidated = YES;
++
+   // We want to run after container updates are performed (transitions etc.)
+   __weak auto weakSelf = self;
+ 
+@@ -1448,7 +1450,6 @@ + (void)load
+ @implementation RNSScreen {
+   __weak id _previousFirstResponder;
+   CGRect _lastViewFrame;
+-  RNSScreenView *_initialView;
+   UIView *_fakeView;
+   CADisplayLink *_animationTimer;
+   CGFloat _currentAlpha;
+@@ -1469,7 +1470,6 @@ - (instancetype)initWithView:(UIView *)view
+     _fakeView = [UIView new];
+     _shouldNotify = YES;
+     _isRemovedFromParent = NO;
+-    _initialView = (RNSScreenView *)view;
+   }
+   return self;
+ }
+@@ -1801,9 +1801,12 @@ - (void)handleAnimation
+ 
+ - (void)notifyTransitionProgress:(double)progress closing:(BOOL)closing goingForward:(BOOL)goingForward
+ {
+-  if ([self.view isKindOfClass:[RNSScreenView class]]) {
+-    // if the view is already snapshot, there is not sense in sending progress since on JS side
+-    // the component is already not present
++  if (![self.view isKindOfClass:[RNSScreenView class]]) {
++    return;
++  }
++
++  // React has already removed invalidated screens from the JS tree.
++  if (!static_cast<RNSScreenView *>(self.view).isInvalidated) {
+     [(RNSScreenView *)self.view notifyTransitionProgress:progress closing:closing goingForward:goingForward];
+   }
+ }
+@@ -1957,11 +1960,9 @@ - (int)getIndexOfView:(UIView *)view
+   return (int)[[self.screenView.reactSuperview reactSubviews] indexOfObject:view];
+ }
+ 
+-// Since the view of the controller can be a snapshot of type `UIView`,
+-// when we want to check props of ScreenView, we need to get them from _initialView
+ - (RNSScreenView *)screenView
+ {
+-  return _initialView;
++  return static_cast<RNSScreenView *>(self.view);
+ }
+ 
+ - (void)hideHeaderIfNecessary
+@@ -2041,18 +2042,19 @@ - (RNSOrientation)evaluateOrientation
+ 
+ #pragma mark - Fabric specific
+ 
+-- (void)setViewToSnapshot
++- (void)addSnapshotToView
+ {
+-  UIView *superView = self.view.superview;
+   // if we dismissed the view natively, it will already be detached from view hierarchy
+-  if (self.view.window != nil) {
+-    auto afterUpdates = self.screenView.snapshotAfterUpdates;
+-    UIView *snapshot = [self.view snapshotViewAfterScreenUpdates:afterUpdates];
+-    snapshot.frame = self.view.frame;
+-    [self.view removeFromSuperview];
+-    self.view = snapshot;
+-    [superView addSubview:snapshot];
++  if (self.view.window == nil) {
++    return;
+   }
++
++  // Backport software-mansion/react-native-screens#4407: keep the view UIKit
++  // captured for the transition. Swapping it can leave dismissal unfinished.
++  UIView *snapshot = [self.view snapshotViewAfterScreenUpdates:self.screenView.snapshotAfterUpdates];
++  snapshot.frame = self.view.bounds;
++  snapshot.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
++  [self.view addSubview:snapshot];
+ }
+ 
+ @end
 diff --git a/ios/RNSScreenStack.mm b/ios/RNSScreenStack.mm
-index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..f6a19cf0d95ed8768972797e6cfd2ff251617644 100644
+index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..75a3db7fdf9a7c6bd37a4ec75e479bbb8f002f04 100644
 --- a/ios/RNSScreenStack.mm
 +++ b/ios/RNSScreenStack.mm
-@@ -494,6 +494,15 @@ - (void)setModalViewControllers:(NSArray<UIViewController *> *)controllers
+@@ -251,8 +251,9 @@ - (void)navigationController:(UINavigationController *)navigationController
+       willShowViewController:(UIViewController *)viewController
+                     animated:(BOOL)animated
+ {
+-  if (![viewController.view isKindOfClass:[RNSScreenView class]]) {
+-    // if the current view is a snapshot, config was already removed so we don't trigger the method
++  if (![viewController.view isKindOfClass:[RNSScreenView class]] ||
++      static_cast<RNSScreenView *>(viewController.view).isInvalidated) {
++    // React has already removed the config of an invalidated screen.
+     return;
+   }
+   auto *screenView = static_cast<RNSScreenView *>(viewController.view);
+@@ -449,7 +450,11 @@ - (void)setModalViewControllers:(NSArray<UIViewController *> *)controllers
+       // flag in order to perform updates at a later point. Here we are done with all modals
+       // transitions and check this flag again. If it was set, we reset the flag and execute updates.
+       weakSelf.scheduleModalsUpdate = NO;
+-      [weakSelf updateContainer];
++      // UIKit zoom finishes cleaning up after its completion returns. Starting
++      // a queued dismiss here can lose that dismiss's completion on iOS 27.
++      dispatch_async(dispatch_get_main_queue(), ^{
++        [weakSelf updateContainer];
++      });
+     }
+     // we trigger the update of orientation here because, when dismissing the modal from JS,
+     // neither `viewWillAppear` nor `presentationControllerDidDismiss` are called, same for status bar.
+@@ -494,6 +499,15 @@ - (void)setModalViewControllers:(NSArray<UIViewController *> *)controllers
          return;
        }
  
@@ -18,7 +174,7 @@ index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..f6a19cf0d95ed8768972797e6cfd2ff2
        [previous presentViewController:next
                               animated:shouldAnimate
                             completion:^{
-@@ -1099,7 +1107,7 @@ - (BOOL)isScrollViewPanGestureRecognizer:(UIGestureRecognizer *)gestureRecognize
+@@ -1099,7 +1113,7 @@ - (BOOL)isScrollViewPanGestureRecognizer:(UIGestureRecognizer *)gestureRecognize
  // https://github.com/facebook/react-native/blob/69b131c2b1627f64f34a534dac4cf48a542e6ea6/packages/react-native/React/Views/ScrollView/RCTScrollView.m#L557
  - (BOOL)scrollViewHasHorizontalPart:(UIScrollView *)scrollView
  {
@@ -27,7 +183,7 @@ index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..f6a19cf0d95ed8768972797e6cfd2ff2
  }
  
  // Custom method for compatibility with iOS < 13.4
-@@ -1203,6 +1211,12 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+@@ -1203,6 +1217,12 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
    if (@available(iOS 26, *)) {
      if (gestureRecognizer == _controller.interactiveContentPopGestureRecognizer &&
          [self isScrollViewPanGestureRecognizer:otherGestureRecognizer]) {
@@ -40,7 +196,7 @@ index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..f6a19cf0d95ed8768972797e6cfd2ff2
        // ScrollView should take precedence when scrolling horizontally (it should be required to fail).
        // However, if it does not allow for horizontal scrolling, there should be no such restriction,
        // and swiping horizontally should dismiss the screen.
-@@ -1224,8 +1238,11 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+@@ -1224,8 +1244,11 @@ - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
      // as `RNSScreenEdgeGestureRecognizer` but we don't want ScrollView being recognized on condition that the former
      // fails, but rather the opposite & that the ScrollView recognizer has a higher priority See also
      // gestureRecognizer:shouldRequireFailureOfGestureRecognizer
@@ -54,6 +210,26 @@ index bfd0a519a09eb346dfd687fe2feb0b5489d34c32..f6a19cf0d95ed8768972797e6cfd2ff2
    }
  #endif // check for iOS >= 26
  
+@@ -1361,7 +1384,7 @@ - (nullable RNSScreenView *)childScreenForTag:(react::Tag)tag
+ - (void)unmountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView index:(NSInteger)index
+ {
+   RNSScreenView *screenChildComponent = (RNSScreenView *)childComponentView;
+-  [screenChildComponent.controller setViewToSnapshot];
++  [screenChildComponent.controller addSnapshotToView];
+ 
+   RCTAssert(
+       screenChildComponent.reactSuperview == self,
+@@ -1379,7 +1402,9 @@ - (void)unmountChildComponentView:(UIView<RCTComponentViewProtocol> *)childCompo
+       @([[_reactSubviews objectAtIndex:index] tag]));
+   screenChildComponent.reactSuperview = nil;
+   [_reactSubviews removeObject:screenChildComponent];
+-  [screenChildComponent removeFromSuperview];
++  if (screenChildComponent.window == nil) {
++    [screenChildComponent removeFromSuperview];
++  }
+ }
+ 
+ - (void)mountingTransactionWillMount:(const facebook::react::MountingTransaction &)transaction
 diff --git a/ios/tabs/bottom-accessory/RNSTabsBottomAccessoryComponentView.mm b/ios/tabs/bottom-accessory/RNSTabsBottomAccessoryComponentView.mm
 index 47706c442582322e3e4ea75b22ba960db9048ea2..75da31a63491fdcb12aa3b6f291b9be44a996944 100644
 --- a/ios/tabs/bottom-accessory/RNSTabsBottomAccessoryComponentView.mm
@@ -255,24 +431,3 @@ index 289c9d958eb913a451161da11bda7fd44aeca377..66b55f2ff7c73f894024c7a33542cc80
      RCTAssert([viewController isKindOfClass:RNSTabsScreenViewController.class],
                @"[RNScreens] Unexpected type of controller: %@",
                viewController.class);
-diff --git a/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt b/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
---- a/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
-+++ b/android/src/main/java/com/swmansion/rnscreens/gamma/helpers/ImageLoader.kt
-@@ -2,6 +2,7 @@
- 
- import android.annotation.SuppressLint
- import android.content.Context
-+import android.graphics.Bitmap
- import android.graphics.drawable.Drawable
- import android.net.Uri
- import android.os.Handler
-@@ -56,7 +57,8 @@
- 
-                 if (closeableImage is CloseableStaticBitmap) {
-                     val bitmap = closeableImage.underlyingBitmap
--                    val drawable = bitmap.toDrawable(context.resources)
-+                    // The drawable outlives the Fresco reference closed below. Own its pixels.
-+                    val drawable = bitmap.copy(Bitmap.Config.ARGB_8888, false).toDrawable(context.resources)
-                     onLoaded(drawable)
-                 }
- 

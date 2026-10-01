@@ -87,7 +87,7 @@ final class SystemSheetZoomSourceRepository: NSObject {
           }
           if !registered { restoreClipping() }
         }
-        return source
+        return (source as? SystemSheetZoomSourceView)?.zoomContentView ?? source
       })
     }
     return .zoom(options: nil, sourceBarButtonItemProvider: { _ in
@@ -280,6 +280,23 @@ final class SystemSheetZoomDestinationView: ExpoView {
 
 final class SystemSheetZoomSourceView: ExpoView {
   let onZoomReturn = EventDispatcher()
+  // UIKit inserts a reparenting view beside the zoom source. Keep it inside
+  // this wrapper so it cannot change the sibling indices owned by Fabric.
+  let zoomContentView = UIView()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    zoomContentView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    addSubview(zoomContentView)
+  }
+
+  override func mountChildComponentView(_ childComponentView: UIView, index: Int) {
+    zoomContentView.insertSubview(childComponentView, at: index)
+  }
+
+  override func unmountChildComponentView(_ childComponentView: UIView, index: Int) {
+    childComponentView.removeFromSuperview()
+  }
 
   var sourceIdentifier = "" {
     didSet {
