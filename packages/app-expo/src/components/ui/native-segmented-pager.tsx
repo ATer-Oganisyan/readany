@@ -18,6 +18,7 @@ interface NativeSegmentedPagerProps {
   values: readonly string[];
   selectedIndex: number;
   onSelect: (index: number) => void;
+  onSegmentPress?: () => void;
   colorScheme: "light" | "dark";
   accessibilityLabel: string;
   children: ReactElement[];
@@ -56,6 +57,7 @@ export const NativeSegmentedPager = forwardRef<
     values,
     selectedIndex,
     onSelect,
+    onSegmentPress,
     colorScheme,
     accessibilityLabel,
     children,
@@ -132,10 +134,12 @@ export const NativeSegmentedPager = forwardRef<
   // программное переключение вибрировать не должно.
   const handleSegmentSelect = useCallback(
     (index: number) => {
-      if (index !== activePageRef.current) hapticSelection();
+      if (onSegmentPress || index !== activePageRef.current) {
+        (onSegmentPress ?? hapticSelection)();
+      }
       selectPage(index);
     },
-    [selectPage],
+    [onSegmentPress, selectPage],
   );
 
   const rememberPageHeight = (index: number, event: LayoutChangeEvent) => {

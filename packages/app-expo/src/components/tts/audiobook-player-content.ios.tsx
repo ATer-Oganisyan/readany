@@ -1,8 +1,9 @@
-import { foregroundForBackground } from "@/styles/foreground-for-background";
 // Source: SchroederNathan/expo-ui-examples/src/examples/mini-player/player-screen.tsx
 // MIT: vendor/expo-ui-examples-LICENSE.txt. Transport layout adapted to a native sheet.
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { hapticLight } from "@/lib/haptics";
 import { useTheme } from "@/styles/ThemeContext";
+import { foregroundForBackground } from "@/styles/foreground-for-background";
 import {
   bodyTypography,
   fontFamily,
@@ -13,20 +14,12 @@ import {
 } from "@/styles/theme";
 import { spacingPixels } from "@deslop/primitives";
 import { Host, RNHostView } from "@expo/ui/swift-ui";
-import {
-  Button,
-  HStack,
-  Slider,
-  Spacer,
-  Text,
-  VStack,
-} from "@expo/ui/swift-ui";
+import { Button, HStack, Slider, Spacer, Text, VStack } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
   background,
-  buttonStyle,
   buttonBorderShape,
-  tint,
+  buttonStyle,
   disabled,
   fixedSize,
   font,
@@ -38,6 +31,7 @@ import {
   multilineTextAlignment,
   padding,
   shapes,
+  tint,
   truncationMode,
 } from "@expo/ui/swift-ui/modifiers";
 import { useTranslation } from "react-i18next";
@@ -46,8 +40,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PreviousSentenceIcon from "../../../assets/icons/sentence-backward.svg";
 import NextSentenceIcon from "../../../assets/icons/sentence-forward.svg";
 
-import { AudiobookCover } from "./audiobook-cover";
 import { AnimatedPlayPause } from "./animated-play-pause";
+import { AudiobookCover } from "./audiobook-cover";
 import type { AudiobookPlayerContentProps } from "./audiobook-player-content.types";
 
 const primary = foregroundStyle({ type: "hierarchical", style: "primary" });
@@ -74,7 +68,10 @@ function SentenceButton({
   const Icon = direction === "previous" ? PreviousSentenceIcon : NextSentenceIcon;
   return (
     <Button
-      onPress={onPress}
+      onPress={() => {
+        hapticLight();
+        onPress();
+      }}
       modifiers={[
         buttonStyle(playerButtonStyle),
         buttonBorderShape("circle"),
@@ -107,12 +104,12 @@ function SentenceButton({
 export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
   const { t } = useTranslation();
   const { isDark, colors } = useTheme();
-  const foreground = props.backgroundColor ? foregroundForBackground(props.backgroundColor) : undefined;
+  const foreground = props.backgroundColor
+    ? foregroundForBackground(props.backgroundColor)
+    : undefined;
   const color = foreground?.primary ?? colors.foreground;
   const contentIsDark = foreground?.isDark ?? isDark;
-  const buttonBackgroundColor = contentIsDark
-    ? "rgba(255,255,255,0.2)"
-    : "rgba(0,0,0,0.2)";
+  const buttonBackgroundColor = contentIsDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)";
   const layout = useResponsiveLayout();
   const { width } = layout;
   const { bottom } = useSafeAreaInsets();
@@ -230,7 +227,10 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
             label={t("tts.prevSentence")}
           />
           <Button
-            onPress={player.togglePlayback}
+            onPress={() => {
+              hapticLight();
+              player.togglePlayback();
+            }}
             modifiers={[
               buttonStyle(playerButtonStyle),
               buttonBorderShape("circle"),

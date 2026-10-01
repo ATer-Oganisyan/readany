@@ -5,6 +5,7 @@ import { isGeneratedBookCoverPath, shouldRenderCoverTypography } from "@/lib/boo
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { loadingCoverColorForTitleAuthor } from "@/lib/book/loading-cover-placeholder";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
+import { hapticLight } from "@/lib/haptics";
 import { useResolvedCovers } from "@/screens/notes/useResolvedCovers";
 import { useColors } from "@/styles/theme";
 /**
@@ -86,6 +87,7 @@ export const BookCard = memo(function BookCard({
         <Pressable
           onPress={(event) => {
             if (swipePressGuard?.canPress(event) === false) return;
+            hapticLight();
             onOpen(book);
           }}
           onPressIn={onPressIn}

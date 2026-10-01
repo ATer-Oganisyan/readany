@@ -4,6 +4,7 @@ import {
 } from "@/components/navigation/SystemSheetZoomSource";
 import { useTTSBuffering } from "@/components/reader/tts/useTTSNativePlayer";
 import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
+import { hapticLight } from "@/lib/haptics";
 import { navigate } from "@/lib/navigationRef";
 import { useTTSStore } from "@/stores/tts-store";
 import { subtitleTypography, useColors } from "@/styles/theme";
@@ -34,6 +35,7 @@ export function AudiobookPlayerAccessory({
     Platform.OS === "ios" ? PlatformColor("secondaryLabel") : colors.mutedForeground;
   const sourceId = useId();
   const onOpen = async () => {
+    hapticLight();
     await prepareSheetZoom(sourceId);
     navigate("AudiobookPlayer", { sourceId });
   };
@@ -60,7 +62,10 @@ export function AudiobookPlayerAccessory({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t(playing ? "tts.pause" : "tts.playShort")}
-            onPress={() => toggle()}
+            onPress={() => {
+              hapticLight();
+              toggle();
+            }}
             hitSlop={{ top: 6, bottom: 6 }}
             style={styles.closeButton}
           >
@@ -90,15 +95,20 @@ export function AudiobookPlayerAccessory({
           <Text numberOfLines={1} style={[styles.title, { color: LABEL }]}>
             {title}
           </Text>
-          <Text numberOfLines={1} style={[styles.artist, { color: SECONDARY_LABEL }]}>
-            {chapter}
-          </Text>
+          {!!chapter?.trim() && (
+            <Text numberOfLines={1} style={[styles.artist, { color: SECONDARY_LABEL }]}>
+              {chapter}
+            </Text>
+          )}
         </View>
       </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t(playing ? "tts.pause" : "tts.playShort")}
-        onPress={() => toggle()}
+        onPress={() => {
+          hapticLight();
+          toggle();
+        }}
         hitSlop={8}
         style={styles.button}
       >
@@ -113,6 +123,7 @@ export function AudiobookPlayerAccessory({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t("common.close")}
+        onPressIn={hapticLight}
         onPress={stop}
         hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
         style={styles.closeButton}

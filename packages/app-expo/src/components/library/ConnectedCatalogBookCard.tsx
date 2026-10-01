@@ -41,6 +41,7 @@ export const ConnectedCatalogBookCard = memo(function ConnectedCatalogBookCard({
       style={{ width: cardWidth, height: (cardWidth * 41) / 28 }}
     >
       <CatalogBookCard
+        revealKey={book}
         title={displayedBook.title}
         author={displayedBook.author}
         coverUri={displayedBook.coverUri}

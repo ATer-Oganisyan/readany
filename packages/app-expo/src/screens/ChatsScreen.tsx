@@ -12,6 +12,7 @@ import { InitialsAvatar } from "@/components/ui/initials-avatar";
 import { NativeSegmentedPager } from "@/components/ui/native-segmented-pager";
 import { getBookTabLabel } from "@/lib/book/book-tab-label";
 import { countRender } from "@/lib/diagnostics/interaction-performance";
+import { hapticLight } from "@/lib/haptics";
 import { loadBackendCharacterMedia } from "@/lib/narra/backend-character-media";
 import { characterBiography } from "@/lib/narra/character-profile";
 import {
@@ -163,6 +164,7 @@ const ChatsContent = memo(function ChatsContent({ model }: { model: ChatListMode
             values={segmentValues}
             selectedIndex={selectedSegmentIndex}
             onSelect={selectChatPage}
+            onSegmentPress={hapticLight}
             colorScheme={isDark ? "dark" : "light"}
             accessibilityLabel={t("chats.bookFilter", "Фильтр по книге")}
             scrollableSegments

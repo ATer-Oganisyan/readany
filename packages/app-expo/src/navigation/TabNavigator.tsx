@@ -61,7 +61,8 @@ const tabContentInsets =
 
 const TAB_ICONS = {
   Library: getFilledIconImageSource("book"),
-  Chats: getFilledIconImageSource("chat-bubbles"),
+  // Source: sboo-create/zoobr, mobile-kirilltarelkin, assets/figma/6ff29.png.
+  Chats: require("../../assets/icons/zoobr/chat.png"),
   Profile: getFilledIconImageSource("person"),
   Search: getStrokeIconImageSource("magnifying-glass"),
 } as const;

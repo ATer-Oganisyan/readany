@@ -1,3 +1,4 @@
+import { COVER_PRESS_FEEDBACK } from "@/components/library/cover-press-config";
 import { Text } from "@/components/ui/Typography";
 import { bodyTypography, fontFamily, useTheme, withOpacity } from "@/styles/theme";
 import { spacingPixels } from "@deslop/primitives";
@@ -5,7 +6,7 @@ import type { CitationPart, MessageV2 } from "@readany/core/types/message";
 import { LinearGradient } from "expo-linear-gradient";
 import { Message, MessageScroller, Shimmer, useMessageScroller } from "panelui-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   type LayoutChangeEvent,
@@ -19,7 +20,14 @@ import {
   type KeyboardChatScrollViewRef,
   useKeyboardHandler,
 } from "react-native-keyboard-controller";
-import { runOnJS } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  ReduceMotion,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { NarraKeyboardChatScrollView } from "./narra-keyboard-chat-scroll-view";
 import { StreamingWords } from "./streaming-words";
@@ -50,9 +58,44 @@ const ROW_HALF_GAP = ELEMENT_GAP / 2;
 const EDGE_FADE_HEIGHT = ELEMENT_GAP;
 /** Даёт TextInput и FlatList закончить связанный пересчёт высоты после отправки. */
 const FOLLOW_LAYOUT_SETTLE_MS = 80;
-/** Повтор после первого окна виртуализации FlatList. */
-const FOLLOW_LAYOUT_RETRY_MS = 140;
 const EMPTY_IDS: ReadonlySet<string> = new Set();
+const SENT_MESSAGE_TIMING = {
+  duration: COVER_PRESS_FEEDBACK.durationMs,
+  easing: Easing.bezier(...COVER_PRESS_FEEDBACK.easing),
+  reduceMotion: ReduceMotion.System,
+};
+
+function MessageAppearance({
+  children,
+  animate,
+  messageId,
+  appearedIds,
+}: {
+  children: ReactNode;
+  animate: boolean;
+  messageId: string;
+  appearedIds: MutableRefObject<Set<string>>;
+}) {
+  const progress = useSharedValue(animate && !appearedIds.current.has(messageId) ? 0 : 1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ scale: 0.5 + 0.5 * progress.value }],
+  }));
+  useEffect(() => {
+    if (!animate || appearedIds.current.has(messageId)) {
+      progress.value = 1;
+      return;
+    }
+    // Each row owns its reveal: virtualization must not leave it waiting for
+    // a scroll notification that already happened while the row was unmounted.
+    const timer = setTimeout(() => {
+      progress.value = withTiming(1, SENT_MESSAGE_TIMING);
+      appearedIds.current.add(messageId);
+    }, FOLLOW_LAYOUT_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [animate, appearedIds, messageId, progress]);
+  return <Animated.View style={animatedStyle}>{children}</Animated.View>;
+}
 /** Насколько далеко от живого края слежение за ответом ещё уместно. */
 const NEAR_LIVE_EDGE = 160;
 /** Геометрия сообщения по продуктовой спецификации чата. */
@@ -123,54 +166,22 @@ function citationsOf(message: MessageV2): CitationPart[] {
  * только при появлении нового пользовательского сообщения.
  */
 function FollowSentMessage({
-  bottomInset,
-  chatScrollViewRef,
+  animateToEndRef,
   messageId,
 }: {
-  bottomInset: number;
-  chatScrollViewRef: MutableRefObject<KeyboardChatScrollViewRef | null>;
+  animateToEndRef: MutableRefObject<(() => void) | null>;
   messageId?: string;
 }) {
-  const { scrollToEnd, scrollToMessage } = useMessageScroller();
   const previousMessageId = useRef(messageId);
-  const pendingFollow = useRef(false);
-
   useEffect(() => {
     const changed = previousMessageId.current !== messageId;
     previousMessageId.current = messageId;
-    if (changed && messageId) pendingFollow.current = true;
-    // В обычной колонке (без плавающего композера) MessageScroller сам ведёт
-    // живой край; дополнительная синхронизация нужна только для overlay-инпута.
-    if (!pendingFollow.current || bottomInset <= 0 || !messageId) return;
-    const targetMessageId = messageId;
-
-    let firstFrame = 0;
-    let retryFrame = 0;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    const settleTimer = setTimeout(() => {
-      firstFrame = requestAnimationFrame(() => {
-        scrollToMessage(targetMessageId, false);
-        // Первая команда монтирует целевую строку длинной виртуальной ленты.
-        // После этого можно безопасно перейти к реальному нижнему краю: так
-        // лента продолжит вести и следующий ответ, сохраняя 12pt до инпута.
-        retryTimer = setTimeout(() => {
-          retryFrame = requestAnimationFrame(() => {
-            scrollToEnd(false);
-            chatScrollViewRef.current?.scrollToEnd({ animated: false });
-            pendingFollow.current = false;
-          });
-        }, FOLLOW_LAYOUT_RETRY_MS);
-      });
+    if (!changed || !messageId) return;
+    const timer = setTimeout(() => {
+      animateToEndRef.current?.();
     }, FOLLOW_LAYOUT_SETTLE_MS);
-
-    return () => {
-      clearTimeout(settleTimer);
-      if (retryTimer) clearTimeout(retryTimer);
-      if (firstFrame) cancelAnimationFrame(firstFrame);
-      if (retryFrame) cancelAnimationFrame(retryFrame);
-    };
-  }, [bottomInset, chatScrollViewRef, messageId, scrollToEnd, scrollToMessage]);
-
+    return () => clearTimeout(timer);
+  }, [animateToEndRef, messageId]);
   return null;
 }
 
@@ -354,6 +365,7 @@ export function NarraChatTranscript({
   const { t } = useTranslation();
   const todayLabel = t("chat.today", "Сегодня");
   const typingLabel = t("chat.typing", "Печатает…");
+  const appearedIds = useRef(new Set<string>());
   const rows = useMemo(
     () => buildRows(messages, locale, todayLabel, renderText),
     [locale, messages, todayLabel, renderText],
@@ -364,7 +376,7 @@ export function NarraChatTranscript({
     }
     return undefined;
   }, [messages]);
-  // Ответы, пришедшие при открытом чате: их проявляем по словам. История,
+  // Новые сообщения: исходящие масштабируем, ответы проявляем по словам. История,
   // с которой чат открылся, появляется сразу — иначе каждое открытие
   // превращалось бы в представление.
   const [arrivals, setArrivals] = useState(() => ({
@@ -372,15 +384,14 @@ export function NarraChatTranscript({
     seenIds: new Set(messages.map((message) => message.id)),
     revealIds: EMPTY_IDS,
   }));
-  // Обновляем состояние до commit: новый ответ не должен сначала попасть
-  // на экран обычным текстом, а затем перемонтироваться для анимации.
+  // Определяем новые сообщения до commit, чтобы анимация шла с первого кадра.
   if (arrivals.messages !== messages) {
     const tail = messages.at(-1);
-    const isNewAnswer = tail?.role === "assistant" && !arrivals.seenIds.has(tail.id);
+    const isNewMessage = tail && !arrivals.seenIds.has(tail.id);
     setArrivals({
       messages,
       seenIds: new Set([...arrivals.seenIds, ...messages.map((message) => message.id)]),
-      revealIds: isNewAnswer ? new Set(arrivals.revealIds).add(tail.id) : arrivals.revealIds,
+      revealIds: isNewMessage ? new Set(arrivals.revealIds).add(tail.id) : arrivals.revealIds,
     });
   }
   const { revealIds } = arrivals;
@@ -432,12 +443,14 @@ export function NarraChatTranscript({
 
   const fadeColor = colors.background;
   const chatScrollViewRef = useRef<KeyboardChatScrollViewRef>(null);
+  const animateToEndRef = useRef<(() => void) | null>(null);
   const scrollOffsetRef = useRef(0);
   const distanceFromBottomRef = useRef(0);
   const renderScrollComponent = useCallback(
     (props: ScrollViewProps) => (
       <NarraKeyboardChatScrollView
         {...props}
+        animateToEndRef={animateToEndRef}
         chatScrollViewRef={chatScrollViewRef}
         distanceFromBottomRef={distanceFromBottomRef}
         scrollOffsetRef={scrollOffsetRef}
@@ -471,24 +484,30 @@ export function NarraChatTranscript({
         <View style={styles.messageRow}>
           <Message align={isUser ? "end" : "start"}>
             <Message.Content>
-              <Message.Bubble
-                className="rounded-es-[20px] rounded-ee-[20px]"
-                style={[
-                  styles.messageBubble,
-                  // В тёмной теме входящий бабл держится на Primary 10, иначе он
-                  // сливается с приподнятой поверхностью шторки.
-                  !isUser && isDark ? { backgroundColor: colors.primary10 } : undefined,
-                ]}
+              <MessageAppearance
+                animate={isUser && revealIds.has(item.message.id)}
+                appearedIds={appearedIds}
+                messageId={item.message.id}
               >
-                <StreamingWords
-                  animate={!isUser && revealIds.has(item.message.id)}
-                  citations={citationsOf(item.message)}
-                  color={isUser ? colors.primaryForeground : colors.foreground}
-                  onCitationClick={onCitationClick}
-                  text={messageBody}
-                  textStyle={MESSAGE_TEXT_STYLE}
-                />
-              </Message.Bubble>
+                <Message.Bubble
+                  className="rounded-es-[20px] rounded-ee-[20px]"
+                  style={[
+                    styles.messageBubble,
+                    // В тёмной теме входящий бабл держится на Primary 10, иначе он
+                    // сливается с приподнятой поверхностью шторки.
+                    !isUser && isDark ? { backgroundColor: colors.primary10 } : undefined,
+                  ]}
+                >
+                  <StreamingWords
+                    animate={!isUser && revealIds.has(item.message.id)}
+                    citations={citationsOf(item.message)}
+                    color={isUser ? colors.primaryForeground : colors.foreground}
+                    onCitationClick={onCitationClick}
+                    text={messageBody}
+                    textStyle={MESSAGE_TEXT_STYLE}
+                  />
+                </Message.Bubble>
+              </MessageAppearance>
             </Message.Content>
           </Message>
         </View>
@@ -499,7 +518,11 @@ export function NarraChatTranscript({
 
   return (
     <View style={styles.host}>
-      <MessageScroller autoScroll defaultScrollPosition="end" style={styles.host}>
+      <MessageScroller
+        autoScroll={tailMessage?.role !== "user"}
+        defaultScrollPosition="end"
+        style={styles.host}
+      >
         <MessageScroller.List
           alwaysBounceVertical={false}
           automaticallyAdjustContentInsets={false}
@@ -532,16 +555,12 @@ export function NarraChatTranscript({
           composerMeasured={composerMeasured}
           scrollOffsetRef={scrollOffsetRef}
         />
-        <FollowSentMessage
-          bottomInset={baseBottomInset}
-          chatScrollViewRef={chatScrollViewRef}
-          messageId={latestUserMessageId}
-        />
+        <FollowSentMessage animateToEndRef={animateToEndRef} messageId={latestUserMessageId} />
         <FollowLiveEdge
           bottomInset={baseBottomInset}
           chatScrollViewRef={chatScrollViewRef}
           distanceFromBottomRef={distanceFromBottomRef}
-          tailId={tailId}
+          tailId={tailMessage?.role === "assistant" ? tailId : undefined}
           tailLength={tailLength}
         />
         {showTyping ? (

@@ -57,6 +57,7 @@ function setup(progress = 0.5, unlockProgress = 0.5, cfi = "epubcfi(/6/4)") {
     expect(isCharacterUnlocked(library.progress, character)).toBe(true);
   });
   const bindings = {
+    hapticLight: vi.fn(),
     useNarraStore: { getState: () => ({ updateCharacter }) },
     bookId: "book",
     characters: [character],
@@ -74,6 +75,7 @@ describe("character entry uses the current reading position", () => {
   it("publishes a just-unlocked character's progress before the first profile opens", () => {
     const { bindings, navigate, library } = setup();
     callback("onCharacterTap", bindings)({ characterId: "hero" });
+    expect(bindings.hapticLight).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith("NarraCharacterProfile", {
       bookId: "book",
       characterId: "hero",
@@ -94,12 +96,16 @@ describe("character entry uses the current reading position", () => {
     const { bindings, navigate, updateCharacter } = setup(0.49, 0.5);
     callback("onCharacterTap", bindings)({ characterId: "hero" });
     expect(updateCharacter).toHaveBeenCalledWith("book", "hero", { encounteredInReader: true });
-    expect(navigate).toHaveBeenCalledWith("NarraCharacterProfile", { bookId: "book", characterId: "hero" });
+    expect(navigate).toHaveBeenCalledWith("NarraCharacterProfile", {
+      bookId: "book",
+      characterId: "hero",
+    });
   });
 
   it("does not open a missing character", () => {
     const { bindings, navigate, updateBook } = setup(0.49, 0.5);
     callback("onCharacterTap", bindings)({ characterId: "unknown" });
+    expect(bindings.hapticLight).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
     expect(updateBook).not.toHaveBeenCalled();
   });

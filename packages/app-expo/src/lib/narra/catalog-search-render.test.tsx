@@ -6,6 +6,8 @@ import type { CachedBackendCatalog, CachedBackendCatalogBook } from "./backend-c
 import type { BookSearchResult } from "./catalog-search-results";
 import type { CatalogShelf } from "./catalog-shelves";
 
+vi.mock("@/lib/haptics", () => ({ hapticLight: vi.fn() }));
+
 interface SearchHeader {
   ref: { current: unknown };
   onChangeText: (event: { nativeEvent: { text: string } }) => void;

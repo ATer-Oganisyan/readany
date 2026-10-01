@@ -1,9 +1,11 @@
 import { AudiobookPlayerContent } from "@/components/tts/audiobook-player-content.android";
 import type { AudiobookPlayerContentProps } from "@/components/tts/audiobook-player-content.types";
+import { hapticLight } from "@/lib/haptics";
 import { createElement } from "react";
 import { type ReactTestRenderer, act, create } from "react-test-renderer";
 import { expect, it, vi } from "vitest";
 
+vi.mock("@/lib/haptics", () => ({ hapticLight: vi.fn() }));
 vi.mock("react-native", () => ({ Pressable: "Pressable", ScrollView: "ScrollView", Text: "Text", View: "View" }));
 vi.mock("@/hooks/use-responsive-layout", () => ({ useResponsiveLayout: () => ({ width: 390, centeredContentWidth: 358 }) }));
 vi.mock("@/styles/foreground-for-background", () => ({ foregroundForBackground: () => ({ primary: "#000", secondary: "#777", isDark: false }) }));
@@ -72,6 +74,7 @@ it("uses sentence actions and chapter boundaries instead of timed seeking on And
     });
     expect(previous).toHaveBeenCalledTimes(1);
     expect(next).toHaveBeenCalledTimes(1);
+    expect(hapticLight).toHaveBeenCalledTimes(2);
     expect(seekBackward).not.toHaveBeenCalled();
     expect(seekForward).not.toHaveBeenCalled();
     // The loader mirrors the direction the listener moved in.

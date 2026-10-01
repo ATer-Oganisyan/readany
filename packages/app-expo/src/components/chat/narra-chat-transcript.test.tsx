@@ -20,13 +20,24 @@ vi.mock("./streaming-words", async (importOriginal) => {
 vi.mock("react-native", () => ({
   Text: "Text",
   View: "View",
+  Platform: { OS: "ios" },
   StyleSheet: { create: <T,>(styles: T) => styles },
 }));
-vi.mock("react-native-reanimated", () => ({
-  default: { Text: "AnimatedText" },
-  cubicBezier: () => "ease-out",
-  useReducedMotion: () => false,
-}));
+vi.mock("react-native-reanimated", async () => {
+  const { useRef } = await import("react");
+  return {
+    default: { Text: "AnimatedText", View: "AnimatedView" },
+    useSharedValue: (value: number) => useRef({ value }).current,
+    useAnimatedStyle: (style: () => unknown) => style(),
+    withTiming: vi.fn((value: number) => value),
+    Easing: { bezier: (...curve: number[]) => curve },
+    ReduceMotion: { System: "system" },
+    cubicBezier: () => "ease-out",
+    useReducedMotion: () => false,
+  };
+});
+vi.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
+vi.mock("react-native-keyboard-controller", () => ({ useKeyboardHandler: vi.fn() }));
 vi.mock("@/components/ui/Typography", () => ({ Text: "Text" }));
 vi.mock("expo-linear-gradient", () => ({ LinearGradient: "Gradient" }));
 vi.mock("./narra-keyboard-chat-scroll-view", () => ({ NarraKeyboardChatScrollView: "ScrollView" }));
@@ -64,6 +75,9 @@ let tree: ReactTestRenderer;
 afterEach(() => {
   if (tree) act(() => tree.unmount());
   wordCommits.length = 0;
+  vi.clearAllMocks();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 function message(id: string, role: "user" | "assistant", text: string): MessageV2 {
@@ -79,12 +93,105 @@ function message(id: string, role: "user" | "assistant", text: string): MessageV
 }
 const renderText = (item: MessageV2) =>
   item.parts.map((part) => (part.type === "text" ? part.text : "")).join("");
-const transcript = (messages: MessageV2[]) => (
-  <NarraChatTranscript locale="ru" messages={messages} renderText={renderText} />
+const transcript = (messages: MessageV2[], inset = 0) => (
+  <NarraChatTranscript
+    locale="ru"
+    messages={messages}
+    renderText={renderText}
+    baseBottomInset={inset}
+  />
 );
 const nodes = (name: string) => tree.root.findAll((node) => String(node.type) === name);
 
 describe("incoming chat answers", () => {
+  it("fades and scales only a new outgoing bubble with cover timing and never replays it", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("requestAnimationFrame", (callback: () => void) => setTimeout(callback, 0));
+    vi.stubGlobal("cancelAnimationFrame", clearTimeout);
+    const { withTiming } = await import("react-native-reanimated");
+    const history = message("history", "user", "История");
+    const sent = message("sent", "user", "Новое сообщение");
+    act(() => {
+      tree = create(transcript([history], 300));
+    });
+    expect(nodes("AnimatedView")[0].props.style.transform[0].scale).toBe(1);
+    expect(nodes("AnimatedView")[0].props.style.opacity).toBe(1);
+    expect(withTiming).not.toHaveBeenCalled();
+    act(() => {
+      tree.update(transcript([history, sent], 300));
+    });
+    expect(nodes("AnimatedView").map((node) => node.props.style.transform[0].scale)).toEqual([
+      1, 0.5,
+    ]);
+    expect(nodes("AnimatedView").map((node) => node.props.style.opacity)).toEqual([1, 0]);
+    expect(withTiming).not.toHaveBeenCalled();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(withTiming).toHaveBeenCalledExactlyOnceWith(1, {
+      duration: 150,
+      easing: [0.33, 1, 0.68, 1],
+      reduceMotion: "system",
+    });
+    act(() => {
+      tree.update(transcript([history, sent], 300));
+    });
+    expect(nodes("AnimatedView").every((node) => node.props.style.transform[0].scale === 1)).toBe(
+      true,
+    );
+    expect(withTiming).toHaveBeenCalledTimes(1);
+    expect(nodes("AnimatedView").every((node) => node.props.style.opacity === 1)).toBe(true);
+    // Virtualized rows can unmount while reading history, then mount again.
+    act(() => {
+      tree.update(transcript([history], 300));
+    });
+    act(() => {
+      tree.update(transcript([history, sent, message("answer", "assistant", "Ответ")], 300));
+    });
+    expect(nodes("AnimatedView").every((node) => node.props.style.transform[0].scale === 1)).toBe(
+      true,
+    );
+    expect(withTiming).toHaveBeenCalledTimes(1);
+    expect(
+      wordCommits
+        .filter((commit) => commit.text === "Новое сообщение")
+        .every((commit) => commit.animate === false),
+    ).toBe(true);
+  });
+  it("reveals a sent row mounted after another send, without waiting for its scroll notification", async () => {
+    vi.useFakeTimers();
+    const { withTiming } = await import("react-native-reanimated");
+    const history = message("history", "assistant", "История");
+    const first = message("first", "user", "Первое");
+    const second = message("second", "user", "Второе");
+    act(() => {
+      tree = create(transcript([history]));
+    });
+    act(() => {
+      tree.update(transcript([history, first]));
+    });
+    // FlatList unmounts the row before its reveal timer runs.
+    act(() => {
+      tree.update(transcript([history]));
+    });
+    act(() => {
+      tree.update(transcript([history, second]));
+    });
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    act(() => {
+      tree.update(transcript([history, first, second]));
+    });
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    act(() => {
+      tree.update(transcript([history, first, second]));
+    });
+    expect(nodes("AnimatedView").every((node) => node.props.style.opacity === 1)).toBe(true);
+    expect(withTiming).toHaveBeenCalledTimes(2);
+  });
   it("animates the first greeting from its first committed frame", () => {
     act(() => {
       tree = create(transcript([]));

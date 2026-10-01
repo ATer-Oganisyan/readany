@@ -2,6 +2,7 @@ import { RotateCcwIcon } from "@/components/ui/Icon";
 import { useSwipePressGuard } from "@/components/ui/swipe-press-guard";
 import { generatedCoverTextTone } from "@/lib/book/cover-text-contrast";
 import { countRender } from "@/lib/diagnostics/interaction-performance";
+import { hapticLight } from "@/lib/haptics";
 import { catalogCoverDisplayState } from "@/lib/narra/catalog-cover-state";
 import { useColors } from "@/styles/theme";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,7 +32,12 @@ interface CatalogBookCardProps {
   isInLibrary: boolean;
   onPress: () => void;
   onRetryCover: () => void;
+  /** Stable catalog revision; remembers a completed reveal after a row leaves the viewport. */
+  revealKey?: object;
 }
+
+// Only presentation state, not images. Entries disappear with their catalog metadata.
+const revealedCovers = new WeakMap<object, string>();
 
 export const CatalogBookCard = memo(function CatalogBookCard({
   title,
@@ -43,6 +49,7 @@ export const CatalogBookCard = memo(function CatalogBookCard({
   cardWidth,
   onPress,
   onRetryCover,
+  revealKey,
 }: CatalogBookCardProps) {
   countRender("catalog.card");
   const colors = useColors();
@@ -56,7 +63,10 @@ export const CatalogBookCard = memo(function CatalogBookCard({
     [cardWidth, cardHeight],
   );
   const coverSource = useMemo(() => ({ uri: coverUri }), [coverUri]);
-  const [decodedCoverUri, setDecodedCoverUri] = useState<string | null>(null);
+  const wasRevealed = Boolean(coverUri && revealKey && revealedCovers.get(revealKey) === coverUri);
+  const [decodedCoverUri, setDecodedCoverUri] = useState<string | null>(
+    wasRevealed ? (coverUri ?? null) : null,
+  );
   const [failedCoverUri, setFailedCoverUri] = useState<string | null>(null);
   const currentCoverUri = useRef(coverUri);
   currentCoverUri.current = coverUri;
@@ -69,10 +79,13 @@ export const CatalogBookCard = memo(function CatalogBookCard({
   });
   const isCoverReady = display === "image";
   const reducedMotion = useReducedMotion();
-  const revealProgress = useRef(new Animated.Value(0)).current;
-  const [revealed, setRevealed] = useState(false);
+  const revealProgress = useRef(new Animated.Value(wasRevealed ? 2 : 0)).current;
+  const [revealed, setRevealed] = useState(wasRevealed);
   useEffect(() => {
-    if (isCoverReady && revealed) return;
+    if (isCoverReady && revealed) {
+      if (revealKey && coverUri) revealedCovers.set(revealKey, coverUri);
+      return;
+    }
     if (revealed) setRevealed(false);
     revealProgress.setValue(0);
     if (!isCoverReady) return;
@@ -93,12 +106,13 @@ export const CatalogBookCard = memo(function CatalogBookCard({
       if (finished) setRevealed(true);
     });
     return () => animation.stop();
-  }, [isCoverReady, reducedMotion, revealProgress, revealed]);
+  }, [coverUri, isCoverReady, reducedMotion, revealKey, revealProgress, revealed]);
   const interactive = isCoverReady && revealed;
   const showImage = !!coverUri && failedCoverUri !== coverUri;
   const handlePress = useCallback(
     (event: GestureResponderEvent) => {
       if (swipePressGuard?.canPress(event) === false) return;
+      hapticLight();
       onPress();
     },
     [swipePressGuard, onPress],
@@ -107,8 +121,11 @@ export const CatalogBookCard = memo(function CatalogBookCard({
     if (coverUri && currentCoverUri.current === coverUri) setDecodedCoverUri(coverUri);
   }, [coverUri]);
   const handleError = useCallback(() => {
-    if (coverUri && currentCoverUri.current === coverUri) setFailedCoverUri(coverUri);
-  }, [coverUri]);
+    if (coverUri && currentCoverUri.current === coverUri) {
+      if (revealKey) revealedCovers.delete(revealKey);
+      setFailedCoverUri(coverUri);
+    }
+  }, [coverUri, revealKey]);
   const handleRetry = useCallback(
     (event?: GestureResponderEvent) => {
       if (swipePressGuard?.canPress(event) === false) return;

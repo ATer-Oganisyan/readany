@@ -8,6 +8,7 @@ import { useAudiobookArtwork } from "@/components/tts/use-audiobook-artwork";
 import { NativeSheetNavigationBar } from "@/components/ui/NativeSheetNavigationBar";
 import { useCoverSheetColors } from "@/hooks/use-cover-sheet-colors";
 import { findBundledCatalogBookByTitle } from "@/lib/catalog/bundled-books";
+import { hapticLight } from "@/lib/haptics";
 import { changeNarratorVoice, useNarratorVoicePreference } from "@/lib/narra/narrator-voice";
 import { findNarrationChapter } from "@/lib/tts-chapter-progress";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
@@ -135,6 +136,7 @@ export function AudiobookPlayerScreen({
             },
           ]}
           onMenuItemPress={(key) => {
+            hapticLight();
             const voice = NARRATOR_VOICES.find((item) => key === `voice:${item.preference}`);
             if (voice) changeNarratorVoice(voice.preference);
             const speed = READING_SPEEDS.find((item) => key === `rate:${item.rate}`);

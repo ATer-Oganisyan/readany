@@ -29,3 +29,40 @@ export function catalogGridLayout({
     }),
   };
 }
+
+/** Fixed-height rows inside Library's existing scroll/pager; omitted rows keep their space. */
+export function catalogGridWindow({
+  itemCount,
+  columns,
+  rowHeight,
+  scrollY,
+  gridTop,
+  viewportHeight,
+  overscanRows = 3,
+}: {
+  itemCount: number;
+  columns: number;
+  rowHeight: number;
+  scrollY: number;
+  gridTop: number;
+  viewportHeight: number;
+  overscanRows?: number;
+}) {
+  const rows = Math.ceil(itemCount / columns);
+  const firstVisibleRow = Math.max(
+    0,
+    Math.min(rows - 1, Math.floor((scrollY - gridTop) / rowHeight)),
+  );
+  const firstRow = Math.max(0, firstVisibleRow - overscanRows);
+  const lastRow = Math.min(
+    rows,
+    Math.max(firstVisibleRow + 1, Math.ceil((scrollY - gridTop + viewportHeight) / rowHeight)) +
+      overscanRows,
+  );
+  return {
+    start: firstRow * columns,
+    end: Math.min(itemCount, lastRow * columns),
+    paddingTop: firstRow * rowHeight,
+    paddingBottom: (rows - lastRow) * rowHeight,
+  };
+}

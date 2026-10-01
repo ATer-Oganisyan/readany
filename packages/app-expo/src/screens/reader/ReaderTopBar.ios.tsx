@@ -1,5 +1,6 @@
 import { HostedMishanaerIcon } from "@/components/ui/HostedMishanaerIcon";
 import type { MishanaerIconName } from "@/components/ui/MishanaerIcon";
+import { hapticLight } from "@/lib/haptics";
 import { Button, HStack, Host } from "@expo/ui/swift-ui";
 import {
   accessibilityLabel,
@@ -102,7 +103,13 @@ export function ReaderTopBar(props: ReaderTopBarProps) {
     <View style={styles.container}>
       <Host matchContents colorScheme={props.isDark ? "dark" : "light"} style={styles.host}>
         <HStack modifiers={capsule}>
-          <Button onPress={props.onClosePress} modifiers={control(closeLabel)}>
+          <Button
+            onPress={() => {
+              hapticLight();
+              props.onClosePress();
+            }}
+            modifiers={control(closeLabel)}
+          >
             {icon({ systemName: "xmark" })}
           </Button>
         </HStack>
@@ -115,6 +122,7 @@ export function ReaderTopBar(props: ReaderTopBarProps) {
         isDark={props.isDark}
         onItemPress={(event) => {
           const key = event.nativeEvent.key;
+          if (key === "appearance" || key === "toc" || key === "notes") hapticLight();
           if (key === "appearance") {
             props.onAppearancePress();
             return;

@@ -35,6 +35,7 @@ import type { CachedBackendCatalogBook } from "@/lib/narra/backend-catalog-cache
 import { findReadableLibraryBookForCatalogBook } from "@/lib/narra/backend-catalog-library";
 import { retryCatalogCover as retrySharedCatalogCover } from "@/lib/narra/catalog-cover-coordinator";
 import { getCatalogBookWithCover } from "@/lib/narra/catalog-cover-store";
+import { catalogGridWindow } from "@/lib/narra/catalog-grid-layout";
 import { setCallback, setExtractorRef } from "@/lib/rag/auto-vectorize-service";
 import type { RootStackParamList } from "@/navigation/RootNavigator";
 import type { LibraryTabStackParamList } from "@/navigation/TabNavigator";
@@ -63,7 +64,15 @@ import { File as ExpoFile } from "expo-file-system";
  * Features: header sort/import, tag filter, vectorization progress banner,
  * tag management sheet, responsive book grid, empty/loading states.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -99,10 +108,9 @@ const GRID_GAP = 16;
 /** Запас рядов, для которых обложки грузятся заранее, ниже видимой области. */
 const COVER_LOOKAHEAD_ROWS = 3;
 /**
- * Каталог монтируется чанками: карточек в нём около сотни, а вьюхи для них
- * создаются разом, одним коммитом в главном потоке. Это подвешивало экран на
- * полсекунды каждый раз, когда библиотеку нужно показать — при переходе на
- * вкладку и при закрытии ридера, у которого экран под ним отсоединён.
+ * Доступная область каталога растёт чанками. Сами карточки монтируются только
+ * вокруг видимой области: сохранение всего пройденного префикса возвращало
+ * нагрузку при показе Library и закрытии ридера после длинной прокрутки.
  */
 const CATALOG_PAGE_SIZE = 10;
 /**
@@ -141,6 +149,7 @@ function LibraryCatalogLifecycle({
   books,
   chunkCount,
   scrollY,
+  gridTop,
   columnCount,
   gridItemWidth,
   gridGap,
@@ -150,6 +159,7 @@ function LibraryCatalogLifecycle({
   books: CachedBackendCatalogBook[];
   chunkCount: number;
   scrollY: number;
+  gridTop: number;
   columnCount: number;
   gridItemWidth: number;
   gridGap: number;
@@ -165,17 +175,22 @@ function LibraryCatalogLifecycle({
   }, [focused, guard]);
   const window = useMemo(() => {
     const rowHeight = gridItemWidth * (41 / 28) + gridGap;
-    const firstRow = Math.max(0, Math.floor(scrollY / rowHeight) - 1);
-    const rowsOnScreen = Math.max(1, Math.ceil(viewportHeight / rowHeight));
     const columns = Math.max(1, columnCount);
-    const first = firstRow * columns;
-    const visibleEnd = Math.min(chunkCount, (firstRow + rowsOnScreen + 1) * columns);
-    const nearbyEnd = Math.min(chunkCount, visibleEnd + COVER_LOOKAHEAD_ROWS * columns);
+    const { start, end } = catalogGridWindow({
+      itemCount: Math.min(chunkCount, books.length),
+      columns,
+      rowHeight,
+      scrollY,
+      gridTop,
+      viewportHeight,
+      overscanRows: 1,
+    });
+    const nearbyEnd = Math.min(chunkCount, end + COVER_LOOKAHEAD_ROWS * columns);
     return {
-      visible: books.slice(first, visibleEnd),
-      nearby: books.slice(visibleEnd, nearbyEnd),
+      visible: books.slice(start, end),
+      nearby: books.slice(end, nearbyEnd),
     };
-  }, [books, chunkCount, columnCount, gridGap, gridItemWidth, scrollY, viewportHeight]);
+  }, [books, chunkCount, columnCount, gridGap, gridItemWidth, gridTop, scrollY, viewportHeight]);
   useCatalogCoverWindow({ ...window, active: focused && enabled });
   return null;
 }
@@ -244,6 +259,16 @@ function LibraryScreenContent() {
     [topEdgeEffect],
   );
   const primaryScrollRef = useRef<ScrollView>(null);
+  const primaryContentRef = useRef<View>(null);
+  const catalogGridRef = useRef<View>(null);
+  const [catalogGridTop, setCatalogGridTop] = useState(0);
+  const measureCatalogGrid = useCallback(() => {
+    const content = primaryContentRef.current;
+    if (content == null) return;
+    catalogGridRef.current?.measureLayout(content, (_x, y) => {
+      setCatalogGridTop(Math.max(0, y));
+    });
+  }, []);
 
   const {
     books,
@@ -485,10 +510,9 @@ function LibraryScreenContent() {
   const catalogCoverLoadingEnabled = showCatalog && librarySection === "catalog";
 
   /**
-   * Докуда пользователь долистал каталог, округлённое вверх до чанка. Один
-   * счётчик на две задачи: сколько обложек качать и сколько карточек
-   * монтировать. Только растёт — иначе пролистанные карточки размонтировались
-   * бы, и возврат наверх снова стоил бы коммита.
+   * Докуда разрешена прокрутка, округлённое вверх до чанка. Не уменьшаем длину
+   * страницы, когда карточки вне окна размонтируются: скролл и пейджер сохраняют
+   * геометрию, а обложки остаются в существующем кеше.
    */
   const [catalogChunkCount, setCatalogChunkCount] = useState(CATALOG_PAGE_SIZE);
 
@@ -503,8 +527,7 @@ function LibraryScreenContent() {
     );
   }, [catalogScrollY, columnCount, gridGap, gridItemWidth, layout.height]);
 
-  // Mount the existing chunk without waiting for every cover. Each card owns
-  // its decode/skeleton state, so one finished cover cannot rebuild this grid.
+  // The available prefix sets scroll extent, not the number of mounted cards.
   const visibleCatalogBooks = useMemo(
     () => catalogBooks.slice(0, catalogChunkCount),
     [catalogBooks, catalogChunkCount],
@@ -550,6 +573,15 @@ function LibraryScreenContent() {
       ),
     ];
   }, [catalogBooks, skeletonPeekCount, visibleCatalogBooks]);
+
+  const catalogWindow = catalogGridWindow({
+    itemCount: visibleCatalogBooks.length + catalogSkeletonKeys.length,
+    columns: columnCount,
+    rowHeight: gridItemWidth * (41 / 28) + gridGap,
+    scrollY: catalogScrollY,
+    gridTop: catalogGridTop,
+    viewportHeight: layout.height,
+  });
 
   const handlePrimaryScroll = useCallback(
     ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -665,17 +697,18 @@ function LibraryScreenContent() {
 
     if (Platform.OS === "ios") {
       nav.setOptions({
-        unstable_headerRightItems: undefined,
-        headerRight: () => (
-          <ImportSourceHeaderMenuButton
-            accessibilityLabel={t("library.importFirst", "Добавить книгу")}
-            localLabel={t("library.importSourceLocal", "Выбрать файл")}
-            color={colors.foreground}
-            disabled={isBookImporting}
-            onLocalPress={() => void handleLocalImport()}
-            onFallbackPress={() => void handleLocalImport()}
-          />
-        ),
+        headerRight: undefined,
+        unstable_headerRightItems: () => [
+          {
+            type: "button",
+            label: t("library.importFirst", "Добавить книгу"),
+            accessibilityLabel: t("library.importFirst", "Добавить книгу"),
+            icon: { type: "sfSymbol", name: "plus" },
+            tintColor: colors.foreground,
+            disabled: isBookImporting,
+            onPress: () => void handleLocalImport(),
+          },
+        ],
       });
       return;
     }
@@ -1046,23 +1079,40 @@ function LibraryScreenContent() {
           style={s.catalogStatus}
         />
       ) : (
-        <View style={s.catalogGrid}>
-          {visibleCatalogBooks.map((catalogBook) => (
-            <View key={catalogBook.bookEditionId} style={s.gridItem}>
-              <ConnectedCatalogBookCard
-                book={catalogBook}
-                cardWidth={gridItemWidth}
-                isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
-                onPress={handleCatalogOpen}
-                onRetryCover={retryCatalogCover}
-              />
-            </View>
-          ))}
-          {catalogSkeletonKeys.map((key) => (
-            <View key={key} style={s.gridItem}>
-              <CatalogBookSkeleton cardWidth={gridItemWidth} />
-            </View>
-          ))}
+        <View
+          ref={catalogGridRef}
+          collapsable={false}
+          onLayout={measureCatalogGrid}
+          style={[
+            s.catalogGrid,
+            { paddingTop: catalogWindow.paddingTop, paddingBottom: catalogWindow.paddingBottom },
+          ]}
+        >
+          {Array.from({ length: catalogWindow.end - catalogWindow.start }, (_, offset) => {
+            const index = catalogWindow.start + offset;
+            const catalogBook = visibleCatalogBooks[index];
+            return (
+              <View
+                key={
+                  catalogBook?.bookEditionId ??
+                  catalogSkeletonKeys[index - visibleCatalogBooks.length]
+                }
+                style={s.gridItem}
+              >
+                {catalogBook ? (
+                  <ConnectedCatalogBookCard
+                    book={catalogBook}
+                    cardWidth={gridItemWidth}
+                    isInLibrary={catalogBooksInLibrary.has(catalogBook.catalogKey)}
+                    onPress={handleCatalogOpen}
+                    onRetryCover={retryCatalogCover}
+                  />
+                ) : (
+                  <CatalogBookSkeleton cardWidth={gridItemWidth} />
+                )}
+              </View>
+            );
+          })}
         </View>
       )}
       {catalogLoadMoreError && catalogBooks.length > 0 ? (
@@ -1125,6 +1175,7 @@ function LibraryScreenContent() {
         books={catalogBooks}
         chunkCount={catalogChunkCount}
         scrollY={catalogScrollY}
+        gridTop={catalogGridTop}
         columnCount={columnCount}
         gridItemWidth={gridItemWidth}
         gridGap={gridGap}
@@ -1135,10 +1186,12 @@ function LibraryScreenContent() {
         <ScrollViewMarker style={s.page} scrollEdgeEffects={libraryScrollEdgeEffects}>
           <ScrollView
             ref={primaryScrollRef}
+            innerViewRef={primaryContentRef as RefObject<View>}
             {...swipePressGuard?.scrollHandlers}
             {...swipePressGuard?.touchHandlers}
             contentInset={{ bottom: catalogScrollBottomInset }}
             onScroll={handlePrimaryScroll}
+            onContentSizeChange={measureCatalogGrid}
             scrollEventThrottle={100}
             contentInsetAdjustmentBehavior="automatic"
             style={s.primaryScroll}

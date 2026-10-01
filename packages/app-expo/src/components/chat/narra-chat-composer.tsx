@@ -1,11 +1,12 @@
 import { MishanaerIcon } from "@/components/ui/MishanaerIcon";
+import { hapticLight } from "@/lib/haptics";
 import { fontFamily, fontSize, useTheme } from "@/styles/theme";
 import { radiusPixels, spacingPixels } from "@deslop/primitives";
 import { AIInput } from "panelui-native";
 import type { ComponentPropsWithRef } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Animated, Easing, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardController } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { IMessage, InputToolbarProps } from "../../../vendor/react-native-chat/src";
@@ -46,33 +47,6 @@ export function NarraChatComposer<TMessage extends IMessage>({
   const inputProps = props.textInputProps;
   const onSend = props.onSend;
   const placeholder = inputProps?.placeholder ?? "";
-  const [displayedPlaceholder, setDisplayedPlaceholder] = useState(placeholder);
-  const placeholderOpacity = useRef(new Animated.Value(1)).current;
-  const visiblePlaceholder = useRef(placeholder);
-
-  useEffect(() => {
-    if (text || visiblePlaceholder.current === placeholder) {
-      visiblePlaceholder.current = placeholder;
-      setDisplayedPlaceholder(placeholder);
-      placeholderOpacity.setValue(1);
-      return;
-    }
-    const fade = (toValue: number) =>
-      Animated.timing(placeholderOpacity, {
-        toValue,
-        duration: 150,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      });
-    fade(0).start(({ finished }) => {
-      if (!finished) return;
-      visiblePlaceholder.current = placeholder;
-      setDisplayedPlaceholder(placeholder);
-      fade(1).start();
-    });
-    return () => placeholderOpacity.stopAnimation();
-  }, [placeholder, placeholderOpacity, text]);
-
   // Иногда поле остаётся first responder без клавиатуры: после смены языка
   // клавиатуры или интерактивного свайпа iOS её убирает, а фокус с TextInput
   // не снимает. Повторный тап по уже сфокусированному полю фокус не меняет,
@@ -123,6 +97,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
     (value: string) => {
       const trimmed = value.trim();
       if (!trimmed && !allowSendWithoutText) return;
+      hapticLight();
       onSend?.({ text: trimmed } as Partial<TMessage>, true);
     },
     [allowSendWithoutText, onSend],
@@ -162,9 +137,7 @@ export function NarraChatComposer<TMessage extends IMessage>({
       >
         {/* Сам TextInput остаётся многострочным и растёт вместе с текстом. */}
         <AIInput.Row style={styles.row}>
-          {/* Метрики строки считает сам AIInput: он центрирует одну строку в
-              контроле и растит поле вниз. Свои minHeight и паддинги перебивали
-              этот расчёт и сдвигали плейсхолдер вверх. */}
+          {/* Одна строка центрируется в поле той же высоты, что и кнопка. */}
           <View style={{ flex: 1, alignSelf: "center" }}>
             <AIInput.Field
               accessibilityLabel={inputProps?.placeholder}
@@ -174,24 +147,10 @@ export function NarraChatComposer<TMessage extends IMessage>({
               onBlur={handleFieldBlur}
               onFocus={handleFieldFocus}
               onPressIn={handleFieldPressIn}
-              placeholder=""
-              style={styles.field}
+              placeholder={placeholder.replace(/[\r\n]+/g, " ")}
+              // iOS can retain the multiline intrinsic height after a controlled clear.
+              style={[styles.field, !text && { height: SUBMIT_SIZE }]}
             />
-            {!text && (
-              <View pointerEvents="none" style={styles.placeholder} accessible={false}>
-                <Animated.Text
-                  accessible={false}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  style={[
-                    styles.placeholderText,
-                    { color: colors.mutedForeground, opacity: placeholderOpacity },
-                  ]}
-                >
-                  {displayedPlaceholder.replace(/[\r\n]+/g, " ")}
-                </Animated.Text>
-              </View>
-            )}
           </View>
           {/* Своя кнопка вместо AIInput.Submit: тот трёхликий контрол подменяет
               глиф на диктовку и стоп, а отправка в чате Narra всегда читается
@@ -259,19 +218,8 @@ const styles = StyleSheet.create({
     flex: 0,
     fontFamily: fontFamily.regular,
     fontSize: fontSize.base,
-  },
-  placeholder: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    justifyContent: "center",
-    paddingHorizontal: spacingPixels[8],
-  },
-  placeholderText: {
-    fontFamily: fontFamily.regular,
-    fontSize: fontSize.base,
+    paddingTop: SUBMIT_INSET,
+    paddingBottom: SUBMIT_INSET,
   },
   submit: {
     alignItems: "center",

@@ -1,4 +1,5 @@
 import { useResponsiveLayout } from "@/hooks/use-responsive-layout";
+import { hapticLight } from "@/lib/haptics";
 import { useTheme } from "@/styles/ThemeContext";
 import { foregroundForBackground } from "@/styles/foreground-for-background";
 import {
@@ -204,7 +205,10 @@ export function AudiobookPlayerContent(props: AudiobookPlayerContentProps) {
             accessibilityLabel={label}
             accessibilityState={{ disabled: !enabled }}
             disabled={!enabled}
-            onPress={onPress}
+            onPress={() => {
+              hapticLight();
+              onPress();
+            }}
             style={{
               width: Icon ? 56 : 80,
               height: Icon ? 56 : 80,

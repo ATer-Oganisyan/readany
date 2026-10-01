@@ -1,4 +1,5 @@
 vi.mock("./backend-character-media", () => ({ loadBackendCharacterMedia: vi.fn(async () => {}) }));
+vi.mock("@/lib/haptics", () => ({ hapticLight: vi.fn() }));
 import { prepareSheetZoomReturn } from "@/components/navigation/sheet-zoom-return";
 import type { Book } from "@readany/core/types";
 import type * as React from "react";
@@ -602,6 +603,31 @@ describe("Catalog card render and decode", () => {
     await act(() => hosts(view.root, "Image")[0].props.onLoad());
     expect(runtime.fades).toHaveLength(0);
     expect(hosts(view.root, "Pressable")[0].props.disabled).toBe(false);
+  });
+
+  it("restores a revealed cover after windowing, but decodes a replacement and retries failures", async () => {
+    runtime.manualFades = true;
+    const card = { ...props(), revealKey: {} };
+    const view = await render(<CatalogBookCard {...card} />);
+    await act(() => hosts(view.root, "Image")[0].props.onLoad());
+    await act(() => runtime.fades[0].finish());
+    await act(() => view.update(<View />));
+    await act(() => view.update(<CatalogBookCard {...card} />));
+    expect(hosts(view.root, "Pressable")[0].props.disabled).toBe(false);
+    expect(hosts(view.root, "LinearGradient")).toHaveLength(3);
+    expect(runtime.fades).toHaveLength(1);
+
+    await act(() => hosts(view.root, "Image")[0].props.onError());
+    await act(() => view.update(<View />));
+    await act(() => view.update(<CatalogBookCard {...card} />));
+    expect(hosts(view.root, "Pressable")[0].props.disabled).toBe(true);
+    await act(() => hosts(view.root, "Image")[0].props.onLoad());
+    await act(() => runtime.fades[1].finish());
+
+    await act(() => view.update(<View />));
+    await act(() => view.update(<CatalogBookCard {...card} coverUri="file:///new-revision" />));
+    expect(hosts(view.root, "Pressable")[0].props.disabled).toBe(true);
+    expect(hosts(view.root, "LinearGradient")).toHaveLength(0);
   });
 
   it("keeps the decoder Image mounted while adding text, gradients and the ready action", async () => {

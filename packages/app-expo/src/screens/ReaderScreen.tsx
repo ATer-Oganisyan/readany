@@ -1463,6 +1463,7 @@ function ReaderContent({ route, navigation, onClose }: Props & { onClose: () => 
     onCharacterTap: ({ characterId }) => {
       const character = characters.find((item) => item.id === characterId);
       if (!character) return;
+      hapticLight();
       useNarraStore.getState().updateCharacter(bookId, character.id, { encounteredInReader: true });
       suppressReaderTapUntilRef.current = Date.now() + 400;
       publishCharacterProgress();
@@ -1634,6 +1635,7 @@ function ReaderContent({ route, navigation, onClose }: Props & { onClose: () => 
   );
 
   const handleOpenCharacters = useCallback(() => {
+    hapticLight();
     publishCharacterProgress();
     navigation.navigate("NarraCharacters", { bookId, charactersSheetSourceId });
   }, [bookId, charactersSheetSourceId, navigation, publishCharacterProgress]);
@@ -1646,6 +1648,7 @@ function ReaderContent({ route, navigation, onClose }: Props & { onClose: () => 
   const openReaderAppearance = useCallback(() => setShowSettings(true), []);
 
   const openAudiobookPlayer = useCallback(async () => {
+    hapticLight();
     await openAudiobookPlayerFromReader(
       bookId,
       tts.startPageTTS,

@@ -295,6 +295,7 @@ final class ReadAnyMenuButton: ExpoView {
     super.init(appContext: appContext)
 
     button.translatesAutoresizingMaskIntoConstraints = false
+    button.addTarget(self, action: #selector(handleMenuTap), for: .touchDown)
     button.showsMenuAsPrimaryAction = true
     button.changesSelectionAsPrimaryAction = false
     if #available(iOS 16.0, *) {
@@ -310,6 +311,10 @@ final class ReadAnyMenuButton: ExpoView {
     ])
 
     updateConfiguration()
+  }
+
+  @objc private func handleMenuTap() {
+    UIImpactFeedbackGenerator(style: .light).impactOccurred()
   }
 
   func updateConfiguration() {
@@ -1044,7 +1049,10 @@ final class ReadAnySheetNavigationBar: ExpoView {
     navigationItem.title = title
     closeItem.accessibilityLabel = closeAccessibilityLabel
     menuItem.accessibilityLabel = menuAccessibilityLabel
-    menuItem.menu = makeMenu()
+    menuItem.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
+      UIImpactFeedbackGenerator(style: .light).impactOccurred()
+      completion(self?.makeMenu().children ?? [])
+    }])
     // UIKit lists right items from the trailing edge: close stays outermost.
     navigationItem.rightBarButtonItems =
       (showsCloseButton ? [closeItem] : []) + (menuSections.isEmpty ? [] : [menuItem])
