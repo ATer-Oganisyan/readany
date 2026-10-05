@@ -19,8 +19,21 @@ test('the whole environment is parsed once and handed back frozen', () => {
   assert.equal(config.ANALYTICS_ENV, 'development')
   assert.equal(config.API_LIMIT, 600)
   assert.equal(config.SPEECH_CONCURRENCY, 5)
+  assert.equal(config.INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS, 240_000)
   // Гейты конкурентности собираются здесь же, а не при первом запросе.
   assert.equal(typeof config.llmGate.status, 'function')
+})
+
+test('interactive portrait cascade budget is configurable in seconds', () => {
+  assert.equal(load({
+    INTERACTIVE_PORTRAIT_CASCADE_BUDGET_SECONDS: '300'
+  }).INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS, 300_000)
+  assert.throws(() => load({
+    INTERACTIVE_PORTRAIT_CASCADE_BUDGET_SECONDS: '0'
+  }), /INTERACTIVE_PORTRAIT_CASCADE_BUDGET_SECONDS/)
+  assert.throws(() => load({
+    INTERACTIVE_PORTRAIT_CASCADE_BUDGET_SECONDS: '481'
+  }), /INTERACTIVE_PORTRAIT_CASCADE_BUDGET_SECONDS/)
 })
 
 test('portrait cascade is opt-in and reads an ordered, bounded model list', () => {

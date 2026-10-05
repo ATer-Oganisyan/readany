@@ -8,6 +8,7 @@ import { createConcurrencyGate } from './concurrency.mjs'
 import { parseEnvBool, parseEnvInt } from './env.mjs'
 import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from '../providers/image-timeouts.mjs'
 import { coverImageConfig, normalizeImageQuality } from '../providers/providers.mjs'
+import { PORTRAIT_CASCADE_MAX_BUDGET_MS } from './generation-timeouts.mjs'
 import { insecureVideoEnvironmentAllowed, isSecureServiceUrl, serviceUrl } from './service-url.mjs'
 import { verifiedSberCertificates } from '../providers/sber-tls.mjs'
 
@@ -145,6 +146,11 @@ export function loadGatewayConfig(env = process.env) {
   const COVER_JOB_MAX_RESULT_MIB = envInt('COVER_JOB_MAX_RESULT_MIB', 16, 64)
   const COVER_JOB_MAX_ATTEMPTS = envInt('COVER_JOB_MAX_ATTEMPTS', 3, 10)
   const COVER_JOB_ATTEMPT_TIMEOUT_SECONDS = envInt('COVER_JOB_ATTEMPT_TIMEOUT_SECONDS', 32 * 60, 2 * 60 * 60)
+  const INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS = envInt(
+    'INTERACTIVE_PORTRAIT_CASCADE_BUDGET_SECONDS',
+    240,
+    PORTRAIT_CASCADE_MAX_BUDGET_MS / 1_000
+  ) * 1_000
   const COVER_JOB_WORKER_ENABLED = parseEnvBool(env, 'COVER_JOB_WORKER_ENABLED', true)
   const SCENE_JOB_MAX = envInt('SCENE_JOB_MAX', 1_000, 10_000)
   const SCENE_JOB_TTL_HOURS = envInt('SCENE_JOB_TTL_HOURS', 24, 168)
@@ -364,6 +370,7 @@ export function loadGatewayConfig(env = process.env) {
     COVER_JOB_MAX_RESULT_MIB,
     COVER_JOB_MAX_ATTEMPTS,
     COVER_JOB_ATTEMPT_TIMEOUT_SECONDS,
+    INTERACTIVE_PORTRAIT_CASCADE_BUDGET_MS,
     COVER_JOB_WORKER_ENABLED,
     SCENE_JOB_MAX,
     SCENE_JOB_TTL_HOURS,

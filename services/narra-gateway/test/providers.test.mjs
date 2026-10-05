@@ -24,27 +24,37 @@ test('only manual 3:4 portraits opt into the full ordered fallback cascade', () 
   assert.deepEqual(interactivePortraitCascadeOptions({
     aspectRatio: '3:4',
     fallbackModels,
-    cascadeBudgetMs: 480_000
+    cascadeBudgetMs: 480_000,
+    maxCascadeBudgetMs: 240_000
   }), {
     cascadeOnAnyError: true,
     fallbackModels,
-    cascadeBudgetMs: 120_000
+    cascadeBudgetMs: 240_000
   })
   assert.deepEqual(interactivePortraitCascadeOptions({
     aspectRatio: '1:1',
     fallbackModels,
-    cascadeBudgetMs: 480_000
+    cascadeBudgetMs: 480_000,
+    maxCascadeBudgetMs: 240_000
   }), {})
   assert.deepEqual(interactivePortraitCascadeOptions({
     aspectRatio: '3:2',
     fallbackModels,
-    cascadeBudgetMs: 480_000
+    cascadeBudgetMs: 480_000,
+    maxCascadeBudgetMs: 240_000
   }), {})
   assert.equal(interactivePortraitCascadeOptions({
     aspectRatio: '3:4',
     fallbackModels,
-    cascadeBudgetMs: 60_000
+    cascadeBudgetMs: 60_000,
+    maxCascadeBudgetMs: 240_000
   }).cascadeBudgetMs, 60_000)
+  assert.equal(interactivePortraitCascadeOptions({
+    aspectRatio: '3:4',
+    fallbackModels,
+    cascadeBudgetMs: 480_000,
+    maxCascadeBudgetMs: 300_000
+  }).cascadeBudgetMs, 300_000)
 })
 
 test('provider route is selected only from server environment', () => {
