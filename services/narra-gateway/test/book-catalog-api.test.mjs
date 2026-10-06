@@ -18,6 +18,7 @@ import {
   parseBookResolveBody,
   parseCatalogLanguage,
   parseLocalBookBody,
+  parseLocalBookIdempotencyKey,
   parseLocalMarkupBody,
   parseReaderProgressBody,
   parseSceneAtBody,
@@ -435,6 +436,28 @@ test('local book registration accepts metadata and rejects source-file fields', 
     content_sha256: 'a'.repeat(64), title: 'Book', author: 'Author',
     format: 'epub', language: 'ru-RU'
   }).language, 'ru')
+  assert.deepEqual(parseLocalBookBody({
+    content_sha256: 'a'.repeat(64), title: 'Book', author: 'Author',
+    format: 'epub', intent: 'explicit_import'
+  }), {
+    contentSha256: 'a'.repeat(64), title: 'Book', author: 'Author',
+    format: 'epub', language: null, intent: 'explicit_import'
+  })
+  assert.equal(parseLocalBookIdempotencyKey(ID, 'explicit_import'), ID)
+  assert.equal(
+    parseLocalBookIdempotencyKey(ID.toUpperCase(), 'explicit_import'),
+    ID
+  )
+  assert.equal(parseLocalBookIdempotencyKey(undefined, undefined), undefined)
+  assert.throws(
+    () => parseLocalBookIdempotencyKey(undefined, 'explicit_import'),
+    /Idempotency-Key/
+  )
+  assert.throws(() => parseLocalBookIdempotencyKey('not-a-uuid', 'explicit_import'), /UUID/)
+  assert.throws(() => parseLocalBookBody({
+    content_sha256: 'a'.repeat(64), title: 'Book', author: 'Author',
+    format: 'epub', intent: 'background'
+  }), /intent/)
   assert.throws(() => parseLocalBookBody({
     content_sha256: 'a'.repeat(64), title: 'Book', author: '', format: 'mobi'
   }), /unsupported book format/)

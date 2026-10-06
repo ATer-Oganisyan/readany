@@ -2,7 +2,7 @@
 type: component
 status: current
 scope: ReadAny clients, Narra mobile shell and embedded reader
-last-reviewed: 2026-09-07
+last-reviewed: 2026-10-06
 ---
 
 # Клиенты и reader runtime
@@ -109,8 +109,16 @@ Private backend analysis принимает `epub`, `fb2`, `fbz`, `txt`, `pdf`; 
 передаётся как EPUB. MOBI/AZW/CBZ могут читаться локально, но не отправляются в
 этот private analysis contract без поддерживаемого производного source.
 
-Дубликат уже известной локальной книги не запускает повторно backend upload,
-cover generation или automatic vectorization.
+По умолчанию дубликат уже известной локальной книги не запускает повторно
+backend upload, cover generation или automatic vectorization. В сборке с
+`EXPO_PUBLIC_PRIVATE_BOOK_REIMPORT_ENABLED=true` явный повторный выбор файла
+создаёт persisted import operation: UUID и нормализованный payload фиксируются
+до POST, выбранный binding — до PUT. Retry, потеря ответа и relaunch используют
+тот же ключ; новое завершённое пользовательское действие получает новый.
+Карточка локальной книги, файл, прогресс и закладки сохраняются. При смене
+backend edition старая сессия останавливается, server-derived manifest,
+персонажи, media и scene identity сбрасываются, поэтому revision новой edition
+может снова начинаться с 1. Новых экранов или элементов управления нет.
 
 ### Каталог
 

@@ -5,7 +5,7 @@ import {
 } from '../analysis/book-analysis-pipeline.mjs'
 import { createBookAnalysisScanPolicyFromEnv } from '../analysis/book-analysis-scan-policy.mjs'
 import { createConcurrencyGate } from './concurrency.mjs'
-import { parseEnvBool, parseEnvInt } from './env.mjs'
+import { parseEnvBool, parseEnvInt, parseEnvNonNegativeInt } from './env.mjs'
 import { kandinskyImageTimeoutMs, kandinskyRequestTimeoutMs } from '../providers/image-timeouts.mjs'
 import { coverImageConfig, normalizeImageQuality } from '../providers/providers.mjs'
 import { PORTRAIT_CASCADE_MAX_BUDGET_MS } from './generation-timeouts.mjs'
@@ -120,6 +120,12 @@ export function loadGatewayConfig(env = process.env) {
   const IMPORT_QUEUE_LIMIT = envInt('IMPORT_QUEUE_LIMIT', 2, 50)
   const BOOK_UPLOAD_MAX_BYTES = envInt('BOOK_UPLOAD_MAX_MIB', 50, 500) * 1024 * 1024
   const PRIVATE_MATERIAL_TTL_DAYS = envInt('PRIVATE_MATERIAL_TTL_DAYS', 7, 365)
+  const PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS = parseEnvNonNegativeInt(
+    env,
+    'PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS',
+    0,
+    2_147_483_647
+  )
   const PRIVATE_MATERIAL_CLEANUP_MS = envInt(
     'PRIVATE_MATERIAL_CLEANUP_MS',
     60 * 60 * 1_000,
@@ -350,6 +356,7 @@ export function loadGatewayConfig(env = process.env) {
     IMPORT_QUEUE_LIMIT,
     BOOK_UPLOAD_MAX_BYTES,
     PRIVATE_MATERIAL_TTL_DAYS,
+    PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS,
     PRIVATE_MATERIAL_CLEANUP_MS,
     PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE,
     LLM_RESPONSE_MAX_BYTES,

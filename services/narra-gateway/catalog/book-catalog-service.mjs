@@ -74,6 +74,17 @@ function bookBinding(edition) {
   return binding
 }
 
+function localImportFingerprint(input) {
+  return createHash('sha256').update(JSON.stringify({
+    author: input.author,
+    content_sha256: input.contentSha256,
+    format: input.format,
+    intent: input.intent,
+    language: input.language ?? null,
+    title: input.title
+  })).digest('hex')
+}
+
 function publicAsset(asset) {
   return {
     assetId: asset.assetId,
@@ -662,10 +673,30 @@ export function createBookCatalogService({
         throw new TypeError('repository.registerLocalBook is required')
       }
       const proposedBookEditionId = idFactory()
-      const edition = await store.registerLocalBook({
-        subjectId,
-        proposedBookEditionId,
-        ...input
+      let edition
+      try {
+        edition = await store.registerLocalBook({
+          subjectId,
+          proposedBookEditionId,
+          requestFingerprint: input.intent === 'explicit_import'
+            ? localImportFingerprint(input)
+            : undefined,
+          ...input
+        })
+      } catch (error) {
+        if (error?.code === 'IMPORT_OPERATION_EXPIRED') {
+          console.info('[book-import] registration resolved', {
+            outcome: 'operation_expired',
+            request_id: input.requestId
+          })
+        }
+        throw error
+      }
+      console.info('[book-import] registration resolved', {
+        outcome: edition.importOutcome,
+        resolution: edition.scope,
+        book_edition_id: edition.id,
+        ...(input.requestId ? { request_id: input.requestId } : {})
       })
       return bookBinding(edition)
     },
@@ -681,7 +712,7 @@ export function createBookCatalogService({
         throw serviceError('VALIDATION', 'Файл книги пуст', 400)
       }
       const contentSha256 = createHash('sha256').update(sourceBytes).digest('hex')
-      const objectKey = `books/private/${subjectId}/${contentSha256}/source`
+      const objectKey = `books/private/${subjectId}/${bookEditionId}/source`
       const prepared = await store.beginPrivateBookUpload({
         subjectId,
         bookEditionId,
@@ -705,7 +736,14 @@ export function createBookCatalogService({
       const edition = prepared.uploadRequired
         ? await store.completePrivateBookUpload({ subjectId, bookEditionId })
         : prepared.edition
-      if (!edition) throw serviceError('NOT_FOUND', 'Локальная книга не найдена', 404)
+      if (!edition) {
+        await store.abandonPrivateBookUpload?.({
+          subjectId,
+          bookEditionId,
+          objectKey: prepared.file.objectKey
+        })
+        throw serviceError('NOT_FOUND', 'Локальная книга не найдена', 404)
+      }
       await store.enqueueBookIdentity?.({ bookEditionId })
       const analysis = await ensureCanonicalAnalysis(edition)
       return {

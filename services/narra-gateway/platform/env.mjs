@@ -6,6 +6,17 @@ export function parseEnvInt(env, name, fallback, max) {
   return value
 }
 
+export function parseEnvNonNegativeInt(env, name, fallback, max) {
+  const raw = env[name]
+  const value = raw === undefined || raw === null || String(raw).trim() === ''
+    ? fallback
+    : Number(raw)
+  if (!Number.isSafeInteger(value) || value < 0 || value > max) {
+    throw new Error(`${name} must be an integer between 0 and ${max}`)
+  }
+  return value
+}
+
 export function parseEnvBool(env, name, fallback = false) {
   const value = String(env[name] ?? fallback).trim().toLowerCase()
   if (value === 'true') return true

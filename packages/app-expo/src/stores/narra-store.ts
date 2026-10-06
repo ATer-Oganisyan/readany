@@ -6,11 +6,13 @@ import {
 import { backendSceneMarkupIdentity } from "@/lib/narra/backend-scene-identity";
 import {
   type SceneBindingChange,
+  clearBackendEditionScenes,
   invalidateBackendScenes,
   migrateBackendSceneState,
   withBackendSceneAsset,
   withBackendSceneIntent,
 } from "@/lib/narra/backend-scene-state";
+import { applyCuratedPortraitAssets } from "@/lib/narra/curated-portraits";
 import {
   emptyNarraBookState,
   withNarraCharacterUpdates,
@@ -18,7 +20,6 @@ import {
   withNarraChatMessage,
   withNarraMemory,
 } from "@/lib/narra/domain";
-import { applyCuratedPortraitAssets } from "@/lib/narra/curated-portraits";
 import type { NarraGenreAnalysis } from "@/lib/narra/genre-analysis";
 import {
   CURRENT_PORTRAIT_PROMPT_VERSION,
@@ -29,6 +30,7 @@ import {
   SCENE_SUGGESTION_INTERVALS,
 } from "@/lib/narra/scene-suggestion";
 import type {
+  BackendImportOperation,
   NarraBookState,
   NarraCharacter,
   NarraChatMessage,
@@ -46,6 +48,7 @@ export interface NarraState {
     source: NonNullable<NarraBookState["backendOriginalSource"]>,
   ) => void;
   setBackendBinding: (bookId: string, binding: BackendBookBinding) => void;
+  setBackendImportOperation: (bookId: string, operation: BackendImportOperation) => void;
   applyBackendManifest: (
     bookId: string,
     manifest: BackendBookManifest,
@@ -110,18 +113,48 @@ export const useNarraStore = create<NarraState>()(
       setBackendBinding: (bookId, backendBinding) => {
         const state = get();
         const current = state.books[bookId] ?? emptyNarraBookState(bookId);
-        const previousIdentity = backendSceneMarkupIdentity(
-          current.backendManifest,
-          current.backendBinding,
+        const bindingChanged = Boolean(
+          current.backendBinding &&
+            (current.backendBinding.bookEditionId !== backendBinding.bookEditionId ||
+              current.backendBinding.resolution !== backendBinding.resolution),
         );
-        const nextIdentity = backendSceneMarkupIdentity(current.backendManifest, backendBinding);
+        const currentForBinding = bindingChanged
+          ? clearBackendEditionScenes({
+              ...current,
+              backendManifest: undefined,
+              characters: current.characters.filter((character) => !character.backendManaged),
+              analysisError: undefined,
+            })
+          : current;
+        const previousIdentity = backendSceneMarkupIdentity(
+          currentForBinding.backendManifest,
+          currentForBinding.backendBinding,
+        );
+        const nextIdentity = backendSceneMarkupIdentity(
+          currentForBinding.backendManifest,
+          backendBinding,
+        );
         const book =
           previousIdentity === nextIdentity
-            ? current
-            : invalidateBackendScenes(current, backendBinding.bookEditionId, nextIdentity);
+            ? currentForBinding
+            : invalidateBackendScenes(
+                currentForBinding,
+                backendBinding.bookEditionId,
+                nextIdentity,
+              );
         if (JSON.stringify(book.backendBinding) === JSON.stringify(backendBinding)) return;
         set({ books: { ...state.books, [bookId]: { ...book, backendBinding } } });
       },
+      setBackendImportOperation: (bookId, backendImportOperation) =>
+        set((state) => ({
+          books: {
+            ...state.books,
+            [bookId]: {
+              ...(state.books[bookId] ?? emptyNarraBookState(bookId)),
+              backendImportOperation,
+            },
+          },
+        })),
       applyBackendManifest: (bookId, manifest, progress, bookTitle) => {
         if (manifest.availability !== "ready") return;
         const state = get();

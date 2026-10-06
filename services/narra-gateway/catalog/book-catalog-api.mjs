@@ -144,20 +144,32 @@ function boundedText(value, name, max, { allowEmpty = false } = {}) {
 }
 
 export function parseLocalBookBody(body) {
-  exactKeys(body, ['content_sha256', 'title', 'author', 'format', 'language'], 'body')
+  exactKeys(body, ['content_sha256', 'title', 'author', 'format', 'language', 'intent'], 'body')
   const format = boundedText(body.format, 'format', 16)
   if (!BOOK_FORMATS.has(format)) validation('format: unsupported book format')
   const language = normalizeBookLanguage(body.language)
   if (body.language !== undefined && body.language !== null && body.language !== '' && !language) {
     validation('language: expected an ISO language tag')
   }
+  if (body.intent !== undefined && body.intent !== 'explicit_import') {
+    validation('intent: unsupported value')
+  }
   return {
     contentSha256: sha256(body.content_sha256),
     title: boundedText(body.title, 'title', 500),
     author: boundedText(body.author ?? '', 'author', 500, { allowEmpty: true }),
     format,
-    language
+    language,
+    ...(body.intent === 'explicit_import' ? { intent: body.intent } : {})
   }
+}
+
+export function parseLocalBookIdempotencyKey(value, intent) {
+  if (intent !== 'explicit_import') return undefined
+  if (Array.isArray(value) || typeof value !== 'string' || value.length > 128) {
+    validation('Idempotency-Key: invalid UUID')
+  }
+  return uuid(value.trim(), 'Idempotency-Key').toLowerCase()
 }
 
 function fraction(value, name) {
@@ -630,9 +642,16 @@ export function createBookCatalogRouter({
     '/local',
     express.json({ limit: '16kb' }),
     asyncRoute(async (req, res) => {
+      const input = parseLocalBookBody(req.body)
       const result = await service.registerLocalBook(
         subject(req),
-        parseLocalBookBody(req.body)
+        {
+          ...input,
+          requestId: parseLocalBookIdempotencyKey(
+            req.headers['idempotency-key'],
+            input.intent
+          )
+        }
       )
       res.status(result.resolution === 'catalog' ? 200 : 201).json(bookJson(result))
     })

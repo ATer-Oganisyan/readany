@@ -894,6 +894,18 @@ test('private retry migration persists owner-scoped idempotency without mutable 
   assert.doesNotMatch(migration, /provider|error_detail|book_text|prompt/i)
 })
 
+test('private import migration keeps owner-scoped results after an edition is deleted', async () => {
+  const migration = await readFile(
+    new URL('../migrations/038_private_book_import_requests.sql', import.meta.url),
+    'utf8'
+  )
+  assert.match(migration, /PRIMARY KEY \(owner_subject_id, request_id\)/)
+  assert.match(migration, /request_fingerprint CHAR\(64\)/)
+  assert.match(migration, /resolution IN \('private', 'catalog'\)/)
+  assert.doesNotMatch(migration, /REFERENCES book_editions|ON DELETE CASCADE/)
+  assert.doesNotMatch(migration, /provider|token|book_text|prompt/i)
+})
+
 test('operational controls use explicit pause state, heartbeats and scene latency timestamps', async () => {
   const migration = await readFile(
     new URL('../migrations/024_operational_controls.sql', import.meta.url),
@@ -976,6 +988,106 @@ test('FBZ uploads keep checksum and MIME validation before staging source bytes'
     await assert.rejects(createPostgresBookMarkupRepository(rejectedPool).beginPrivateBookUpload({ ...input, ...delta }), { code: 'UPLOAD_INTEGRITY' })
     assert.equal(rejectedPool.queries.some(({ sql }) => sql.includes('INSERT INTO book_files')), false)
   }
+})
+
+test('explicit private registration locks request before content and persists one result', async () => {
+  const subjectId = '123e4567-e89b-42d3-a456-426614174001'
+  const requestId = '123e4567-e89b-42d3-a456-426614174002'
+  const editionId = '123e4567-e89b-42d3-a456-426614174003'
+  const hash = 'a'.repeat(64)
+  const fingerprint = 'b'.repeat(64)
+  const now = new Date('2026-10-06T12:00:00.000Z')
+  const edition = {
+    id: editionId, scope: 'private', catalog_key: null, content_sha256: hash,
+    title: 'Book', author: 'Author', language: 'en', format: 'epub',
+    status: 'marking_up', source_storage: 'local_only',
+    expires_at: new Date('2026-10-13T12:00:00.000Z'), created_at: now
+  }
+  const pool = scriptedPool([
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [{ decision_time: now }] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [edition] }),
+    () => ({ rows: [] }),
+    () => ({ rows: [] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool, {
+    privateBookReimportReuseWindowSeconds: 120
+  })
+
+  const result = await repository.registerLocalBook({
+    subjectId,
+    proposedBookEditionId: editionId,
+    contentSha256: hash,
+    title: 'Book', author: 'Author', format: 'epub', language: 'en',
+    intent: 'explicit_import', requestId, requestFingerprint: fingerprint
+  })
+
+  assert.equal(result.id, editionId)
+  const transactionQueries = pool.queries.filter(({ sql }) => sql !== 'BEGIN' && sql !== 'COMMIT')
+  assert.match(transactionQueries[0].params[0], /book-import-request/)
+  assert.match(transactionQueries[1].sql, /FROM book_import_requests/)
+  assert.match(transactionQueries[2].params[0], /private-book:/)
+  assert.match(transactionQueries.at(-1).sql, /INSERT INTO book_import_requests/)
+  assert.deepEqual(transactionQueries.at(-1).params, [subjectId, requestId, fingerprint, editionId])
+})
+
+test('explicit registration rejects a reused key with a different normalized payload', async () => {
+  const subjectId = '123e4567-e89b-42d3-a456-426614174001'
+  const requestId = '123e4567-e89b-42d3-a456-426614174002'
+  const pool = scriptedPool([
+    () => ({ rows: [] }),
+    () => ({ rows: [{
+      request_fingerprint: 'a'.repeat(64),
+      book_edition_id: '123e4567-e89b-42d3-a456-426614174003',
+      resolution: 'private'
+    }] })
+  ])
+  const repository = createPostgresBookMarkupRepository(pool)
+
+  await assert.rejects(repository.registerLocalBook({
+    subjectId,
+    proposedBookEditionId: '123e4567-e89b-42d3-a456-426614174004',
+    contentSha256: 'c'.repeat(64),
+    title: 'Other', author: 'Author', format: 'epub',
+    intent: 'explicit_import', requestId, requestFingerprint: 'b'.repeat(64)
+  }), { code: 'IMPORT_IDEMPOTENCY_CONFLICT', status: 409 })
+  assert.equal(pool.queries.some(({ sql }) => /DELETE FROM book_editions/.test(sql)), false)
+})
+
+test('a ready source keeps its stored legacy object key on repeat upload', async () => {
+  const hash = 'a'.repeat(64)
+  const legacyKey = `books/private/123e4567-e89b-42d3-a456-426614174001/${hash}/source`
+  const edition = {
+    id: '123e4567-e89b-42d3-a456-426614174003', scope: 'private',
+    content_sha256: hash, format: 'epub', title: 'Book', author: '',
+    expires_at: new Date('2026-10-13T12:00:00.000Z')
+  }
+  const pool = scriptedPool([
+    () => ({ rows: [edition] }),
+    () => ({ rows: [{
+      book_edition_id: edition.id, object_key: legacyKey,
+      content_hash: hash, mime_type: 'application/epub+zip',
+      byte_size: 100, status: 'ready'
+    }] }),
+    () => ({ rows: [] })
+  ])
+  const result = await createPostgresBookMarkupRepository(pool).beginPrivateBookUpload({
+    subjectId: '123e4567-e89b-42d3-a456-426614174001',
+    bookEditionId: edition.id,
+    contentSha256: hash,
+    objectKey: `books/private/123e4567-e89b-42d3-a456-426614174001/${edition.id}/source`,
+    mimeType: 'application/epub+zip',
+    byteSize: 100
+  })
+
+  assert.equal(result.uploadRequired, false)
+  assert.equal(result.file.objectKey, legacyKey)
+  assert.equal(pool.queries.some(({ sql }) => /INSERT INTO book_files/.test(sql)), false)
 })
 
 test('публикация ищет цитаты через состав книги, а не по ключу кандидата', async () => {

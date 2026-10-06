@@ -845,7 +845,7 @@ test('private source upload verifies bytes, persists a temporary source and star
           edition: { ...edition, sourceStorage: 'local_only' },
           uploadRequired: true,
           file: {
-            objectKey: `books/private/reader-1/${contentSha256}/source`,
+            objectKey: `books/private/reader-1/${EDITION.id}/source`,
             contentSha256,
             mimeType: 'application/epub+zip',
             byteSize: bytes.byteLength
@@ -889,6 +889,7 @@ test('private source upload verifies bytes, persists a temporary source and star
 
   assert.equal(result.sourceUploaded, true)
   assert.equal(result.analysisRunId, 'run-v3')
+  assert.equal(calls[0][1].objectKey, `books/private/reader-1/${EDITION.id}/source`)
   assert.deepEqual(calls.map(([name]) => name), ['begin', 'store', 'complete', 'analysis'])
 })
 
@@ -1420,6 +1421,14 @@ test('local registration and markup store only metadata and derived character pr
   assert.equal(registered.sourceDownloadPath, undefined)
   assert.equal(calls[0][1].proposedBookEditionId, 'edition-proposed')
   assert.equal(calls[0][1].language, 'en')
+
+  await service.registerLocalBook('reader', {
+    contentSha256: HASH,
+    title: 'Book', author: 'Author', format: 'epub', language: 'en',
+    intent: 'explicit_import', requestId: '123e4567-e89b-42d3-a456-426614174000'
+  })
+  assert.match(calls[1][1].requestFingerprint, /^[0-9a-f]{64}$/)
+  assert.equal(calls[1][1].requestId, '123e4567-e89b-42d3-a456-426614174000')
 
   const published = await service.publishLocalMarkup('reader', 'book-private', {
     characters: [{

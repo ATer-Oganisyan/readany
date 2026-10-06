@@ -117,7 +117,8 @@ const {
   COVER_GLOBAL_DAILY_LIMIT, VIDEO_LIMIT, VIDEO_DAILY_LIMIT, VIDEO_GLOBAL_DAILY_LIMIT,
   IMPORT_LIMIT, IMPORT_DAILY_LIMIT, IMPORT_GLOBAL_DAILY_LIMIT, IMPORT_DAILY_BYTES_MB,
   IMPORT_GLOBAL_DAILY_BYTES_MB, IMPORT_CONCURRENCY, IMPORT_QUEUE_LIMIT, BOOK_UPLOAD_MAX_BYTES,
-  PRIVATE_MATERIAL_TTL_DAYS, PRIVATE_MATERIAL_CLEANUP_MS, PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE, LLM_RESPONSE_MAX_BYTES,
+  PRIVATE_MATERIAL_TTL_DAYS, PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS,
+  PRIVATE_MATERIAL_CLEANUP_MS, PRIVATE_MATERIAL_CLEANUP_BATCH_SIZE, LLM_RESPONSE_MAX_BYTES,
   KANDINSKY_QUEUE_LIMIT, KANDINSKY_IMAGE_TIMEOUT_MS, KANDINSKY_REQUEST_TIMEOUT_MS, VIDEO_QUEUE_LIMIT,
   LLM_CONCURRENCY, LLM_QUEUE_LIMIT, SPEECH_CONCURRENCY, SPEECH_QUEUE_LIMIT,
   IMAGE_CONCURRENCY, IMAGE_QUEUE_LIMIT, COVER_CONCURRENCY, COVER_QUEUE_LIMIT,
@@ -645,7 +646,7 @@ app.use(
     callback(null, {
       origin: true,
       methods: ['GET', 'POST'],
-      allowedHeaders: ['Authorization', 'Content-Type', 'X-Audio-Type'],
+      allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'X-Audio-Type'],
       exposedHeaders: ['X-Narra-Auth-Error', 'RateLimit-Reset'],
       maxAge: 3600
     })
@@ -815,6 +816,9 @@ if (process.env.DATABASE_URL) {
   })
   bookMarkupRepository = createPostgresBookMarkupRepository(bookMarkupPool, {
     privateMaterialTtlDays: PRIVATE_MATERIAL_TTL_DAYS,
+    privateBookReimportReuseWindowSeconds: PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS,
+    analysisPipelineForEdition: (bookEditionId, scope) =>
+      BOOK_ANALYSIS_PIPELINE_FOR_EDITION(bookEditionId, scope) ?? BOOK_ANALYSIS_PIPELINE,
     beforeCreateReaderScene: reserveSceneJobBudget
   })
   bookAnalysisRepository = createPostgresBookAnalysisRepository(bookMarkupPool, {

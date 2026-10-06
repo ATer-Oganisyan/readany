@@ -120,10 +120,27 @@ export interface NarraSummary {
   generatedAt: number;
 }
 
+export interface BackendExplicitImportPayload {
+  content_sha256: string;
+  title: string;
+  author: string;
+  format: string;
+  language?: string;
+  intent: "explicit_import";
+}
+
+export interface BackendImportOperation {
+  requestId: string;
+  phase: "registration_pending" | "source_pending" | "completed" | "expired";
+  payload: BackendExplicitImportPayload;
+  binding?: BackendBookBinding;
+}
+
 export interface NarraBookState {
   backendOriginalSource?: { path: string; format: string; hash: string };
   backendBinding?: BackendBookBinding;
   backendManifest?: BackendBookManifest;
+  backendImportOperation?: BackendImportOperation;
   bookId: string;
   /** Проверенная жанровая разметка из того же LLM-анализа, что и персонажи. */
   genre?: NarraGenreAnalysis;

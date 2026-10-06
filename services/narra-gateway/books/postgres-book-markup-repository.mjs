@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { assertLeaseSeconds, claimJobSql, jobQueueColumns, renewLeaseSql } from '../db/pg-job-queue.mjs'
-import { transaction } from '../db/postgres-runtime.mjs'
+import { repositoryError, transaction } from '../db/postgres-runtime.mjs'
 import {
   BOOK_IDENTITY_VERSION,
   bookIdentityTargetVersion,
@@ -165,6 +165,9 @@ async function requireLeasedJob(client, job) {
 export function createPostgresBookMarkupRepository(pool, {
   idFactory = randomUUID,
   privateMaterialTtlDays = 7,
+  privateBookReimportReuseWindowSeconds = 0,
+  analysisPipelineForEdition = () => null,
+  afterPrivateBookReplacement = async () => {},
   beforeCreateReaderScene = async () => {},
   /**
    * Ставить ли портрет и приветствие сразу за публикацией карточки.
@@ -183,6 +186,15 @@ export function createPostgresBookMarkupRepository(pool, {
   if (!Number.isSafeInteger(privateMaterialTtlDays) || privateMaterialTtlDays < 1 || privateMaterialTtlDays > 365) {
     throw new RangeError('privateMaterialTtlDays must be between 1 and 365')
   }
+  if (!Number.isSafeInteger(privateBookReimportReuseWindowSeconds) || privateBookReimportReuseWindowSeconds < 0) {
+    throw new RangeError('privateBookReimportReuseWindowSeconds must be a non-negative safe integer')
+  }
+  if (typeof analysisPipelineForEdition !== 'function') {
+    throw new TypeError('analysisPipelineForEdition must be a function')
+  }
+  if (typeof afterPrivateBookReplacement !== 'function') {
+    throw new TypeError('afterPrivateBookReplacement must be a function')
+  }
   if (typeof beforeCreateReaderScene !== 'function') {
     throw new TypeError('beforeCreateReaderScene must be a function')
   }
@@ -190,11 +202,12 @@ export function createPostgresBookMarkupRepository(pool, {
     throw new TypeError('cardMediaEnqueueEnabled must be a boolean')
   }
 
-  async function touchPrivateRetention(client, bookEditionId) {
+  async function touchPrivateRetention(client, bookEditionId, decisionTime = null) {
     await client.query(
       `WITH touched AS (
          UPDATE book_editions
-         SET expires_at = now() + make_interval(days => $2), updated_at = now()
+         SET expires_at = COALESCE($3::timestamptz, clock_timestamp()) + make_interval(days => $2),
+             updated_at = COALESCE($3::timestamptz, clock_timestamp())
          WHERE id = $1 AND scope = 'private'
          RETURNING id, expires_at
        ), markup AS (
@@ -209,7 +222,7 @@ export function createPostgresBookMarkupRepository(pool, {
        UPDATE media_assets AS value
        SET expires_at = touched.expires_at
        FROM touched WHERE value.book_edition_id = touched.id`,
-      [bookEditionId, privateMaterialTtlDays]
+      [bookEditionId, privateMaterialTtlDays, decisionTime]
     )
   }
 
@@ -1011,9 +1024,72 @@ export function createPostgresBookMarkupRepository(pool, {
       title,
       author,
       format,
-      language = null
+      language = null,
+      intent,
+      requestId,
+      requestFingerprint
     }) {
       return transaction(pool, async (client) => {
+        const explicitImport = intent === 'explicit_import'
+        const normalizedRequestId = explicitImport && typeof requestId === 'string'
+          ? requestId.toLowerCase()
+          : requestId
+        if (explicitImport) {
+          if (!UUID.test(normalizedRequestId) || !/^[0-9a-f]{64}$/.test(requestFingerprint || '')) {
+            throw repositoryError('VALIDATION', 'explicit import identity is invalid', 400)
+          }
+          await client.query(
+            'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+            [`book-import-request:${subjectId}:${normalizedRequestId}`]
+          )
+          const replay = await client.query(
+            `SELECT request_fingerprint, book_edition_id, resolution
+             FROM book_import_requests
+             WHERE owner_subject_id = $1::uuid AND request_id = $2::uuid`,
+            [subjectId, normalizedRequestId]
+          )
+          if (replay.rows[0]) {
+            if (replay.rows[0].request_fingerprint !== requestFingerprint) {
+              throw repositoryError(
+                'IMPORT_IDEMPOTENCY_CONFLICT',
+                'Idempotency-Key уже использован с другим импортом',
+                409
+              )
+            }
+            const target = await client.query(
+              `SELECT id, scope, catalog_key, content_sha256, title, author,
+                      display_title, display_author, language, format, status,
+                      source_storage, expires_at, created_at
+               FROM book_editions
+               WHERE id = $1 AND scope = $2
+                 AND (
+                   (scope = 'catalog' AND status IN ('base_ready', 'published')) OR
+                   (scope = 'private' AND owner_subject_id = $3::uuid
+                     AND expires_at > clock_timestamp())
+                 )
+               FOR UPDATE`,
+              [replay.rows[0].book_edition_id, replay.rows[0].resolution, subjectId]
+            )
+            if (!target.rows[0]) {
+              throw repositoryError(
+                'IMPORT_OPERATION_EXPIRED',
+                'Результат операции импорта больше недоступен',
+                410
+              )
+            }
+            if (target.rows[0].scope === 'private') {
+              await touchPrivateRetention(client, target.rows[0].id)
+            }
+            return { ...editionRow(target.rows[0]), importOutcome: 'idempotent_replay' }
+          }
+        }
+
+        await client.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          [`private-book:${subjectId}:${contentSha256}`]
+        )
+        const decision = await client.query('SELECT clock_timestamp() AS decision_time')
+        const decisionTime = decision.rows[0].decision_time
         const catalog = await client.query(
           `SELECT id, scope, catalog_key, content_sha256, title, author,
                   display_title, display_author, language, format, status,
@@ -1021,31 +1097,71 @@ export function createPostgresBookMarkupRepository(pool, {
            FROM book_editions
            WHERE scope = 'catalog' AND content_sha256 = $1
              AND status IN ('base_ready', 'published')
-           LIMIT 1`,
+          LIMIT 1`,
           [contentSha256]
         )
-        if (catalog.rows[0]) return editionRow(catalog.rows[0])
+        if (catalog.rows[0]) {
+          if (explicitImport) {
+            await client.query(
+              `INSERT INTO book_import_requests (
+                 owner_subject_id, request_id, request_fingerprint,
+                 book_edition_id, resolution
+               ) VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'catalog')`,
+              [subjectId, normalizedRequestId, requestFingerprint, catalog.rows[0].id]
+            )
+          }
+          return { ...editionRow(catalog.rows[0]), importOutcome: 'catalog' }
+        }
 
         const existing = await client.query(
-          `SELECT id, expires_at
-           FROM book_editions
-           WHERE scope = 'private' AND owner_subject_id = $1::uuid
-             AND content_sha256 = $2
-           FOR UPDATE`,
+          `SELECT edition.id, edition.expires_at, edition.created_at
+           FROM book_editions AS edition
+           WHERE edition.scope = 'private' AND edition.owner_subject_id = $1::uuid
+             AND edition.content_sha256 = $2
+           FOR UPDATE OF edition`,
           [subjectId, contentSha256]
         )
-        if (existing.rows[0]?.expires_at && new Date(existing.rows[0].expires_at) <= new Date()) {
-          await queueBookObjectDeletions(client, [existing.rows[0].id])
-          await client.query('DELETE FROM book_editions WHERE id = $1', [existing.rows[0].id])
+        const current = existing.rows[0]
+        let reimportAnchor = current?.created_at
+        if (current) {
+          const canonicalPipelineId = analysisPipelineForEdition(current.id, 'private')
+          const canonicalRun = await client.query(
+            `SELECT started_at
+             FROM book_analysis_runs
+             WHERE book_edition_id = $1 AND input_hash = $2
+               AND ($3::text IS NULL OR pipeline_id = $3)
+             ORDER BY run_sequence DESC, created_at DESC, id DESC
+             LIMIT 1`,
+            [current.id, contentSha256, canonicalPipelineId]
+          )
+          reimportAnchor = canonicalRun.rows[0]?.started_at ?? current.created_at
+        }
+        const expired = current?.expires_at &&
+          new Date(current.expires_at) <= new Date(decisionTime)
+        const replaceAfterWindow = explicitImport &&
+          privateBookReimportReuseWindowSeconds > 0 &&
+          reimportAnchor &&
+          new Date(decisionTime).getTime() >= new Date(reimportAnchor).getTime() +
+            privateBookReimportReuseWindowSeconds * 1_000
+        const replacing = Boolean(current && (expired || replaceAfterWindow))
+        if (replacing) {
+          await queueBookObjectDeletions(client, [current.id])
+          await client.query('DELETE FROM book_editions WHERE id = $1', [current.id])
+          await afterPrivateBookReplacement({
+            client,
+            bookEditionId: current.id,
+            reason: expired ? 'expired' : 'window'
+          })
         }
 
         await client.query(
           `INSERT INTO book_editions (
              id, scope, owner_subject_id, content_sha256, title, author, format, language,
-             status, source_storage, expires_at
+             status, source_storage, expires_at, created_at, updated_at
            ) VALUES (
              $1, 'private', $2::uuid, $3, $4, $5, $6, $7,
-             'marking_up', 'local_only', now() + make_interval(days => $8)
+             'marking_up', 'local_only',
+             $9::timestamptz + make_interval(days => $8), $9::timestamptz, $9::timestamptz
            )
            ON CONFLICT (owner_subject_id, content_sha256) WHERE scope = 'private'
            DO UPDATE SET
@@ -1073,11 +1189,11 @@ export function createPostgresBookMarkupRepository(pool, {
              author = EXCLUDED.author,
              format = EXCLUDED.format,
              language = COALESCE(EXCLUDED.language, book_editions.language),
-             expires_at = now() + make_interval(days => $8),
-             updated_at = now()`,
+             expires_at = $9::timestamptz + make_interval(days => $8),
+             updated_at = $9::timestamptz`,
           [
             proposedBookEditionId, subjectId, contentSha256, title, author, format, language,
-            privateMaterialTtlDays
+            privateMaterialTtlDays, decisionTime
           ]
         )
         const result = await client.query(
@@ -1089,8 +1205,24 @@ export function createPostgresBookMarkupRepository(pool, {
              AND content_sha256 = $2`,
           [subjectId, contentSha256]
         )
-        await touchPrivateRetention(client, result.rows[0].id)
-        return editionRow(result.rows[0])
+        await touchPrivateRetention(client, result.rows[0].id, decisionTime)
+        if (explicitImport) {
+          await client.query(
+            `INSERT INTO book_import_requests (
+               owner_subject_id, request_id, request_fingerprint,
+               book_edition_id, resolution
+             ) VALUES ($1::uuid, $2::uuid, $3, $4::uuid, 'private')`,
+            [subjectId, normalizedRequestId, requestFingerprint, result.rows[0].id]
+          )
+        }
+        const importOutcome = replacing
+          ? 'replaced'
+          : current
+            ? explicitImport && privateBookReimportReuseWindowSeconds > 0
+              ? 'window_reuse'
+              : 'legacy_reuse'
+            : 'created'
+        return { ...editionRow(result.rows[0]), importOutcome }
       })
     },
 
@@ -1130,9 +1262,11 @@ export function createPostgresBookMarkupRepository(pool, {
           [bookEditionId]
         )
         const existing = existingResult.rows[0]
+        // Once a source row exists, its address is authoritative. In particular,
+        // keep reading legacy owner/hash keys instead of moving them during retry.
+        const effectiveObjectKey = existing?.object_key || objectKey
         if (
           existing?.status === 'ready' &&
-          existing.object_key === objectKey &&
           existing.content_hash === contentSha256 &&
           existing.mime_type === mimeType &&
           Number(existing.byte_size) === byteSize
@@ -1141,15 +1275,8 @@ export function createPostgresBookMarkupRepository(pool, {
           return {
             edition: editionRow({ ...current, source_storage: 'temporary' }),
             uploadRequired: false,
-            file: { objectKey, contentSha256, mimeType, byteSize }
+            file: { objectKey: effectiveObjectKey, contentSha256, mimeType, byteSize }
           }
-        }
-        if (existing?.object_key && existing.object_key !== objectKey) {
-          await client.query(
-            `INSERT INTO book_object_deletions (object_key)
-             VALUES ($1) ON CONFLICT (object_key) DO NOTHING`,
-            [existing.object_key]
-          )
         }
         await client.query(
           `INSERT INTO book_files (
@@ -1161,7 +1288,7 @@ export function createPostgresBookMarkupRepository(pool, {
              byte_size = EXCLUDED.byte_size,
              content_hash = EXCLUDED.content_hash,
              status = 'staging'`,
-          [bookEditionId, objectKey, mimeType, byteSize, contentSha256]
+          [bookEditionId, effectiveObjectKey, mimeType, byteSize, contentSha256]
         )
         await client.query(
           `UPDATE book_editions
@@ -1178,8 +1305,25 @@ export function createPostgresBookMarkupRepository(pool, {
             expires_at: new Date(Date.now() + privateMaterialTtlDays * 86_400_000)
           }),
           uploadRequired: true,
-          file: { objectKey, contentSha256, mimeType, byteSize }
+          file: { objectKey: effectiveObjectKey, contentSha256, mimeType, byteSize }
         }
+      })
+    },
+
+    async abandonPrivateBookUpload({ subjectId, bookEditionId, objectKey }) {
+      return transaction(pool, async (client) => {
+        const live = await client.query(
+          `SELECT 1 FROM book_editions
+           WHERE id = $1 AND scope = 'private' AND owner_subject_id = $2::uuid`,
+          [bookEditionId, subjectId]
+        )
+        if (live.rows[0]) return false
+        await client.query(
+          `INSERT INTO book_object_deletions (object_key)
+           VALUES ($1) ON CONFLICT (object_key) DO NOTHING`,
+          [objectKey]
+        )
+        return true
       })
     },
 

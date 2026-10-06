@@ -12,9 +12,11 @@ import {
 import { createBookCatalogService } from '../catalog/book-catalog-service.mjs'
 import { createBookObjectStorage } from '../books/book-object-storage.mjs'
 import { REQUIRED_CHARACTER_MEDIA } from '../books/book-markup.mjs'
+import { createPostgresBookAnalysisRepository } from '../analysis/book-analysis-repository.mjs'
 import { createGenerationWorker } from '../generation/generation-worker.mjs'
 import { createPostgresBookMarkupRepository } from '../books/postgres-book-markup-repository.mjs'
 import { runBookMarkupMigrations } from '../db/postgres-runtime.mjs'
+import { createPrivateMaterialCleanup } from '../platform/private-material-cleanup.mjs'
 
 const databaseUrl = process.env.BOOK_MARKUP_E2E_DATABASE_URL
 const s3Endpoint = process.env.BOOK_MARKUP_E2E_S3_ENDPOINT
@@ -146,6 +148,140 @@ test('local-only book flows through derived markup, warmup and temporary media d
     if (bookEditionId) {
       await pool.query('DELETE FROM book_editions WHERE id = $1', [bookEditionId]).catch(() => {})
     }
+    const objects = await client.send(new ListObjectsV2Command({ Bucket: bucket })).catch(() => null)
+    if (objects?.Contents?.length) {
+      await client.send(new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: { Objects: objects.Contents.map(({ Key }) => ({ Key })) }
+      })).catch(() => {})
+    }
+    await client.send(new DeleteBucketCommand({ Bucket: bucket })).catch(() => {})
+    client.destroy()
+    await pool.end()
+  }
+})
+
+test('explicit reimport keeps edition-scoped sources and cleanup deletes only the replaced object', {
+  skip: !enabled
+}, async () => {
+  const { default: pg } = await import('pg')
+  const pool = new pg.Pool({ connectionString: databaseUrl, ssl: false, max: 8 })
+  const client = new S3Client({
+    region: 'us-east-1',
+    endpoint: s3Endpoint,
+    forcePathStyle: true,
+    credentials: { accessKeyId: s3AccessKey, secretAccessKey: s3SecretKey }
+  })
+  const bucket = `readany-reimport-${randomUUID()}`
+  const subjectId = randomUUID()
+  const bytes = Buffer.from('Deterministic source bytes for explicit private reimport.')
+  const contentSha256 = sha256(bytes)
+  let firstEditionId
+  let secondEditionId
+  try {
+    await client.send(new CreateBucketCommand({ Bucket: bucket }))
+    await runBookMarkupMigrations(pool, { logger: { info() {} } })
+    const repository = createPostgresBookMarkupRepository(pool, {
+      privateBookReimportReuseWindowSeconds: 1,
+      analysisPipelineForEdition: () => 'cards'
+    })
+    const analysisRepository = createPostgresBookAnalysisRepository(pool, {
+      defaultPipelineId: 'cards',
+      pipelineForEdition: () => 'cards',
+      mediaGenerationEnabled: false
+    })
+    const storage = createBookObjectStorage({
+      client,
+      bucket,
+      uploadExpiresSeconds: 60,
+      downloadExpiresSeconds: 60
+    })
+    const service = createBookCatalogService({ repository, analysisRepository, storage })
+    const firstKey = randomUUID()
+    const first = await service.registerLocalBook(subjectId, {
+      contentSha256,
+      title: 'Reimport E2E',
+      author: 'ReadAny',
+      format: 'epub',
+      intent: 'explicit_import',
+      requestId: firstKey
+    })
+    firstEditionId = first.bookEditionId
+    await service.uploadLocalSource(
+      subjectId,
+      firstEditionId,
+      bytes,
+      'application/epub+zip'
+    )
+    await service.uploadLocalSource(
+      subjectId,
+      firstEditionId,
+      bytes,
+      'application/epub+zip'
+    )
+    assert.equal((await pool.query(
+      'SELECT count(*)::int AS count FROM book_analysis_runs WHERE book_edition_id = $1',
+      [firstEditionId]
+    )).rows[0].count, 1)
+
+    await pool.query(
+      `UPDATE book_editions
+       SET created_at = clock_timestamp() - interval '2 minutes'
+       WHERE id = $1`,
+      [firstEditionId]
+    )
+    const second = await service.registerLocalBook(subjectId, {
+      contentSha256,
+      title: 'Reimport E2E',
+      author: 'ReadAny',
+      format: 'epub',
+      intent: 'explicit_import',
+      requestId: randomUUID()
+    })
+    secondEditionId = second.bookEditionId
+    assert.notEqual(secondEditionId, firstEditionId)
+    await service.uploadLocalSource(
+      subjectId,
+      secondEditionId,
+      bytes,
+      'application/epub+zip'
+    )
+    const firstObjectKey = `books/private/${subjectId}/${firstEditionId}/source`
+    const secondObjectKey = `books/private/${subjectId}/${secondEditionId}/source`
+    const beforeCleanup = await client.send(new ListObjectsV2Command({ Bucket: bucket }))
+    assert.deepEqual(
+      new Set(beforeCleanup.Contents?.map(({ Key }) => Key)),
+      new Set([firstObjectKey, secondObjectKey])
+    )
+
+    const cleanup = createPrivateMaterialCleanup({
+      repository,
+      storage,
+      logger: { info() {}, error() {} }
+    })
+    assert.equal((await cleanup.runOnce()).status, 'completed')
+    const afterCleanup = await client.send(new ListObjectsV2Command({ Bucket: bucket }))
+    assert.deepEqual(afterCleanup.Contents?.map(({ Key }) => Key), [secondObjectKey])
+    assert.equal((await pool.query(
+      'SELECT count(*)::int AS count FROM book_analysis_runs WHERE book_edition_id = $1',
+      [secondEditionId]
+    )).rows[0].count, 1)
+    await assert.rejects(
+      service.registerLocalBook(subjectId, {
+        contentSha256,
+        title: 'Reimport E2E',
+        author: 'ReadAny',
+        format: 'epub',
+        intent: 'explicit_import',
+        requestId: firstKey
+      }),
+      { code: 'IMPORT_OPERATION_EXPIRED', status: 410 }
+    )
+  } finally {
+    await pool.query('DELETE FROM book_import_requests WHERE owner_subject_id = $1', [subjectId])
+      .catch(() => {})
+    await pool.query('DELETE FROM book_editions WHERE owner_subject_id = $1', [subjectId])
+      .catch(() => {})
     const objects = await client.send(new ListObjectsV2Command({ Bucket: bucket })).catch(() => null)
     if (objects?.Contents?.length) {
       await client.send(new DeleteObjectsCommand({

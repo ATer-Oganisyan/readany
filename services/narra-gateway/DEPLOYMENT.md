@@ -45,6 +45,13 @@ Dockerfile, tests, or package files. Runtime code and migrations come from the
 selected Docker image. Secrets stay in the environment-specific `compose.env`
 on the target host.
 
+`PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS` is a gateway-only, non-negative
+integer. Missing, empty, or `0` preserves legacy private-edition reuse;
+positive values enable age-based replacement only for authenticated
+`explicit_import` requests. It is independent from
+`PRIVATE_MATERIAL_TTL_DAYS`. Keep production at `0` until a product threshold
+is explicitly approved; local QA may set a short documented value.
+
 The files are uploaded into `releases/<bundle-version>`, checked by SHA-256,
 and executed under a host-level deployment lock. After a successful operation,
 the `current` symlink is switched to that bundle. Existing release directories

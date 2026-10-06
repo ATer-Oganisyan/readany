@@ -2,7 +2,7 @@
 type: current-state
 status: current
 scope: Narra monorepo and narra-gateway runtime
-last-reviewed: 2026-09-07
+last-reviewed: 2026-10-06
 ---
 
 # Текущее состояние архитектуры
@@ -117,6 +117,16 @@ flowchart TB
    изолирован по installation subject и имеет ограниченный срок хранения
    (по умолчанию семь дней).
 
+Опциональный локальный build-time флаг мобильного приложения
+`EXPO_PUBLIC_PRIVATE_BOOK_REIMPORT_ENABLED=true` меняет только повторное явное
+действие импорта из Files. Клиент сохраняет UUID операции и исходный payload,
+затем вызывает `/v2/books/local` с `intent=explicit_import` и
+`Idempotency-Key`, не выполняя предварительный `/resolve`. Gateway всегда
+сначала сохраняет/повторяет решение этой операции. Положительный
+`PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS` разрешает заменить живой private
+edition после отсечки от начала текущего canonical analysis; `0` сохраняет
+legacy reuse. UI и обычные open/recovery/resolve-пути от флагов не меняются.
+
 ### 4.2 Книга каталога
 
 1. Оператор выполняет begin/upload/complete ingest; gateway проверяет размер,
@@ -162,6 +172,7 @@ reading agent и инструменты, которые получают live re
 | Локальная библиотека, позиции, аннотации, chat UI state, скачанные media | SQLite/файлы устройства | local-first; удаление и sync контролирует пользователь |
 | Installation credentials | защищённое хранилище устройства | публичные `/v2` требуют installation bearer token |
 | Editions, jobs, runs, публикации, progress, media metadata | PostgreSQL | durable lease/retry/idempotency |
+| Результаты явных private-import операций | PostgreSQL `book_import_requests` | owner-scoped ключ и выбранный edition сохраняются независимо от TTL edition |
 | Исходники, normalized text, immutable markup/media assets | MinIO/S3 | content hashes и signed downloads |
 | Catalog books/media | backend shared scope | доступны установкам через catalog binding |
 | Private book source/artifacts | subject-isolated backend scope | не должны пересекать установки; source TTL ограничен |

@@ -2,16 +2,20 @@ import type { Book } from "@readany/core/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateCreator } from "zustand";
 
-const runtime = vi.hoisted(() => ({
-  books: [] as Book[],
-  request: vi.fn(),
-  hash: vi.fn(async () => "a".repeat(64)),
-  media: vi.fn(async () => {}),
-  reads: [] as string[],
-  copy: vi.fn(async () => {}),
-  mkdir: vi.fn(async () => {}),
-  sourceBytes: new Uint8Array([60, 63, 120, 109, 108, 62]),
-}));
+const runtime = vi.hoisted(() => {
+  process.env.EXPO_PUBLIC_PRIVATE_BOOK_REIMPORT_ENABLED = "true";
+  return {
+    books: [] as Book[],
+    request: vi.fn(),
+    hash: vi.fn(async () => "a".repeat(64)),
+    media: vi.fn(async () => {}),
+    reads: [] as string[],
+    copy: vi.fn(async () => {}),
+    mkdir: vi.fn(async () => {}),
+    flush: vi.fn(async () => {}),
+    sourceBytes: new Uint8Array([60, 63, 120, 109, 108, 62]),
+  };
+});
 vi.mock("@/stores/library-store", () => ({
   useLibraryStore: {
     getState: () => ({
@@ -26,6 +30,7 @@ vi.mock("@/stores/library-store", () => ({
 }));
 vi.mock("@/stores/persist", () => ({
   withPersist: <T extends object>(_key: string, creator: StateCreator<T>) => creator,
+  flushAllWrites: runtime.flush,
 }));
 vi.mock("expo-file-system", () => ({
   File: class {
@@ -115,11 +120,13 @@ const releases: (() => void)[] = [];
 const initial = useNarraStore.getState();
 beforeEach(() => {
   vi.useFakeTimers();
+  process.env.EXPO_PUBLIC_PRIVATE_BOOK_REIMPORT_ENABLED = "true";
   runtime.books = [book()];
   runtime.hash.mockClear();
   runtime.reads = [];
   runtime.copy.mockClear();
   runtime.mkdir.mockClear();
+  runtime.flush.mockClear();
   runtime.request.mockReset();
   runtime.media.mockClear();
   useNarraStore.setState({ ...initial, books: {} });
@@ -133,6 +140,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const release of releases.splice(0)) release();
+  stopBackendBookSync("local");
   vi.useRealTimers();
 });
 async function open(value: Book) {
@@ -470,6 +478,178 @@ describe("backend book import and persistence integration", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(manifestAttempts).toBe(2);
     await vi.advanceTimersByTimeAsync(5 * 60_000);
+  });
+
+  it("persists one explicit operation, bypasses resolve and accepts revision one on a new edition", async () => {
+    const store = useNarraStore.getState();
+    store.setBackendBinding("local", {
+      resolution: "private",
+      bookEditionId: "old-edition",
+      contentSha256: "a".repeat(64),
+      sourceUploaded: true,
+    });
+    store.applyBackendManifest(
+      "local",
+      parseBackendManifest({ ...ready, markup: { revision: 9, text_length: 1000 } }),
+      0.3,
+    );
+    const oldSceneIntent = {
+      bookEditionId: "old-edition",
+      markupIdentity: "old-markup",
+      requestedProgress: 0.3,
+      sceneKey: "old-scene",
+    };
+    store.setBackendScene(
+      "local",
+      "epubcfi(/6/2)",
+      {
+        sourceKey: "page:epubcfi(/6/2)",
+        chapter: "Old chapter",
+        excerpt: "Old excerpt",
+        imageUri: "file:///old-scene.png",
+        generatedAt: 1,
+      },
+      oldSceneIntent,
+    );
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path === "/v2/books/local")
+        return { resolution: "private", book_edition_id: "new-edition" };
+      if (path === "/v2/books/new-edition/source") return {};
+      if (path.endsWith("/manifest")) return ready;
+      if (path.endsWith("/identity")) return { status: "ready", title: "Book", author: "Author" };
+      return {};
+    });
+
+    startImportedBackendBook(book(), { explicitImport: true });
+    startImportedBackendBook(book(), { explicitImport: true });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const registrationCalls = runtime.request.mock.calls.filter(
+      ([path]) => path === "/v2/books/local",
+    );
+    expect(registrationCalls).toHaveLength(1);
+    expect(JSON.parse(registrationCalls[0][1].body)).toMatchObject({
+      content_sha256: "a".repeat(64),
+      intent: "explicit_import",
+    });
+    expect(registrationCalls[0][1].headers["idempotency-key"]).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
+    expect(runtime.request.mock.calls.some(([path]) => path === "/v2/books/resolve")).toBe(false);
+    expect(useNarraStore.getState().books.local).toMatchObject({
+      backendBinding: { bookEditionId: "new-edition", sourceUploaded: true },
+      backendImportOperation: {
+        requestId: "22222222-2222-4222-8222-222222222222",
+        phase: "completed",
+      },
+      backendManifest: { revision: 1 },
+      sceneRequests: {},
+      scenesByBackendId: {},
+      sceneAnchorBindings: {},
+    });
+    expect(runtime.flush.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("retries a persisted lost registration response with the same key and payload", async () => {
+    const operation = {
+      requestId: "22222222-2222-4222-8222-222222222222",
+      phase: "registration_pending" as const,
+      payload: {
+        content_sha256: "a".repeat(64),
+        title: "Original title",
+        author: "Original author",
+        format: "epub",
+        intent: "explicit_import" as const,
+      },
+    };
+    useNarraStore.getState().setBackendImportOperation("local", operation);
+    let attempts = 0;
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path === "/v2/books/local") {
+        attempts++;
+        if (attempts === 1) throw new TypeError("lost response");
+        return { resolution: "catalog", book_edition_id: "catalog-id" };
+      }
+      if (path.endsWith("/manifest")) return ready;
+      return {};
+    });
+
+    startImportedBackendBook({
+      ...book(),
+      meta: { title: "Changed later", author: "Changed later" },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    const registrations = runtime.request.mock.calls.filter(([path]) => path === "/v2/books/local");
+    expect(registrations).toHaveLength(2);
+    expect(registrations.map(([, init]) => init.headers["idempotency-key"])).toEqual([
+      operation.requestId,
+      operation.requestId,
+    ]);
+    expect(registrations.map(([, init]) => init.body)).toEqual([
+      JSON.stringify(operation.payload),
+      JSON.stringify(operation.payload),
+    ]);
+    expect(useNarraStore.getState().books.local.backendImportOperation?.phase).toBe("completed");
+  });
+
+  it("keeps the legacy resolve path and creates no operation when the local flag is off", async () => {
+    process.env.EXPO_PUBLIC_PRIVATE_BOOK_REIMPORT_ENABLED = "false";
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path === "/v2/books/resolve") return { resolution: "local_registration_required" };
+      if (path === "/v2/books/local")
+        return { resolution: "private", book_edition_id: "legacy-private" };
+      if (path === "/v2/books/legacy-private/source") return {};
+      if (path.endsWith("/manifest")) return ready;
+      if (path.endsWith("/identity")) return { status: "ready", title: "Book", author: "Author" };
+      return {};
+    });
+
+    startImportedBackendBook(book(), { explicitImport: true });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+
+    const registration = runtime.request.mock.calls.find(([path]) => path === "/v2/books/local");
+    expect(runtime.request.mock.calls.some(([path]) => path === "/v2/books/resolve")).toBe(true);
+    expect(JSON.parse(registration?.[1].body)).not.toHaveProperty("intent");
+    expect(registration?.[1].headers).not.toHaveProperty("idempotency-key");
+    expect(useNarraStore.getState().books.local.backendImportOperation).toBeUndefined();
+    expect(runtime.flush).not.toHaveBeenCalled();
+  });
+
+  it("treats an expired operation as terminal without falling back to resolve", async () => {
+    useNarraStore.getState().setBackendImportOperation("local", {
+      requestId: "22222222-2222-4222-8222-222222222222",
+      phase: "registration_pending",
+      payload: {
+        content_sha256: "a".repeat(64),
+        title: "Book",
+        author: "Author",
+        format: "epub",
+        intent: "explicit_import",
+      },
+    });
+    runtime.request.mockImplementation(async (path: string) => {
+      if (path === "/v2/books/local")
+        throw new BackendBookError(410, {
+          code: "IMPORT_OPERATION_EXPIRED",
+          error: "expired",
+        });
+      return {};
+    });
+
+    startImportedBackendBook(book());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useNarraStore.getState().books.local.backendImportOperation?.phase).toBe("expired");
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(runtime.request.mock.calls.filter(([path]) => path === "/v2/books/local")).toHaveLength(
+      1,
+    );
+    expect(runtime.request.mock.calls.some(([path]) => path === "/v2/books/resolve")).toBe(false);
+    expect(useBackendBookStatus.getState().books.local.error).toBe("IMPORT_OPERATION_EXPIRED");
   });
 
   it("retains the last confirmed profiles through processing and ignores older revisions", async () => {

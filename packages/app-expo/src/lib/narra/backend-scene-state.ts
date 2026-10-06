@@ -143,3 +143,27 @@ export function invalidateBackendScenes(
   );
   return { ...book, sceneRequests: requests, scenesByBackendId, sceneAnchorBindings };
 }
+
+/** A new backend edition must not retain assets or retry intents owned by the old one. */
+export function clearBackendEditionScenes(book: NarraBookState): NarraBookState {
+  const removedSourceKeys = new Set([
+    ...Object.values(book.scenes ?? {})
+      .filter((scene) => scene.backendScene)
+      .map((scene) => scene.sourceKey),
+    ...Object.values(book.scenesByBackendId ?? {}).map((scene) => scene.sourceKey),
+  ]);
+  return {
+    ...book,
+    scenes: Object.fromEntries(
+      Object.entries(book.scenes ?? {}).filter(([, scene]) => !scene.backendScene),
+    ),
+    sceneAudios: Object.fromEntries(
+      Object.entries(book.sceneAudios ?? {}).filter(
+        ([sourceKey]) => !removedSourceKeys.has(sourceKey),
+      ),
+    ),
+    sceneRequests: {},
+    scenesByBackendId: {},
+    sceneAnchorBindings: {},
+  };
+}

@@ -1,5 +1,6 @@
 import { useLibraryStore } from "@/stores/library-store";
 import { useNarraStore } from "@/stores/narra-store";
+import { flushAllWrites } from "@/stores/persist";
 import { getPlatformService } from "@readany/core/services";
 import type { Book } from "@readany/core/types";
 import * as Crypto from "expo-crypto";
@@ -25,6 +26,7 @@ import { BackendBookSession } from "./backend-book-session";
 import { loadBackendCharacterMedia } from "./backend-character-media";
 import { sha256BackendFile } from "./backend-file-hash";
 import { normalizeBookLanguage } from "./book-language";
+import type { BackendExplicitImportPayload, BackendImportOperation } from "./types";
 
 interface SyncStatus {
   manifest?: BackendBookManifest;
@@ -45,10 +47,16 @@ function status(bookId: string, update: Partial<SyncStatus>) {
 
 const sessions = new Map<string, { session: BackendBookSession; consumers: number }>();
 const expiredEditions = new Set<string>();
+const explicitImportStarts = new Map<string, Promise<void>>();
 const bindings = new Map<
   string,
   Promise<NonNullable<ReturnType<typeof useNarraStore.getState>["books"][string]["backendBinding"]>>
 >();
+
+/** Kept as a direct Expo env access so the build can eliminate the disabled path. */
+export function privateBookReimportEnabled(): boolean {
+  return process.env.EXPO_PUBLIC_PRIVATE_BOOK_REIMPORT_ENABLED === "true";
+}
 
 async function sourcePath(book: Book) {
   const original = useNarraStore.getState().books[book.id]?.backendOriginalSource;
@@ -87,8 +95,148 @@ const mimeTypes: Record<string, string> = {
   umd: "application/octet-stream",
 };
 
+function backendSourceFormat(book: Book): string {
+  const preserved = useNarraStore.getState().books[book.id]?.backendOriginalSource;
+  return preserved?.format === "umd" ? "epub" : (preserved?.format ?? book.format);
+}
+
+async function explicitImportPayload(book: Book): Promise<BackendExplicitImportPayload> {
+  const path = await sourcePath(book);
+  const contentSha256 = await sha256BackendFile(path);
+  const language = normalizeBookLanguage(book.meta.language);
+  if (book.contentHash !== contentSha256) {
+    await useLibraryStore.getState().updateBook(book.id, { contentHash: contentSha256 });
+  }
+  return {
+    content_sha256: contentSha256,
+    title: book.meta.title,
+    author: book.meta.author,
+    format: backendSourceFormat(book),
+    ...(language ? { language } : {}),
+    intent: "explicit_import",
+  };
+}
+
+async function ensureExplicitImportOperation(book: Book): Promise<BackendImportOperation> {
+  const current = useNarraStore.getState().books[book.id]?.backendImportOperation;
+  if (current && current.phase !== "completed" && current.phase !== "expired") return current;
+  const operation: BackendImportOperation = {
+    requestId: Crypto.randomUUID(),
+    phase: "registration_pending",
+    payload: await explicitImportPayload(book),
+  };
+  useNarraStore.getState().setBackendImportOperation(book.id, operation);
+  // The operation identity must survive a process death after the request leaves the device.
+  await flushAllWrites();
+  return operation;
+}
+
+function resetBackendStatus(bookId: string) {
+  useBackendBookStatus.setState((state) => {
+    const books = { ...state.books };
+    delete books[bookId];
+    return { books };
+  });
+}
+
+async function bindExplicitImport(
+  book: Book,
+  initialOperation: BackendImportOperation,
+  signal: AbortSignal,
+) {
+  const store = useNarraStore.getState();
+  let operation = initialOperation;
+  let binding = operation.binding;
+  if (operation.phase === "registration_pending") {
+    try {
+      const response = await backendBookRequest("/v2/books/local", {
+        ...backendJsonPost(operation.payload, signal),
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": operation.requestId,
+        },
+      });
+      if (signal.aborted) throw new Error("Book binding cancelled");
+      binding = parseBackendBinding(response, operation.payload.content_sha256);
+      store.setBackendBinding(book.id, binding);
+      resetBackendStatus(book.id);
+      operation = {
+        ...operation,
+        phase: binding.resolution === "catalog" ? "completed" : "source_pending",
+        binding,
+      };
+      store.setBackendImportOperation(book.id, operation);
+      await flushAllWrites();
+    } catch (error) {
+      if (
+        error instanceof BackendBookError &&
+        error.status === 410 &&
+        error.backendCode === "IMPORT_OPERATION_EXPIRED"
+      ) {
+        store.setBackendImportOperation(book.id, { ...operation, phase: "expired" });
+        await flushAllWrites();
+      }
+      throw error;
+    }
+  }
+  if (!binding) throw new Error("Explicit import has no backend binding");
+  await applyBookLanguage(book.id, binding.language);
+  if (binding.resolution === "catalog") {
+    if (book.sourceKind !== "catalog" || book.bookEditionId !== binding.bookEditionId) {
+      await useLibraryStore.getState().updateBook(book.id, {
+        sourceKind: "catalog",
+        bookEditionId: binding.bookEditionId,
+        catalogKey: binding.catalogKey,
+        contentHash: binding.contentSha256,
+        revisionId: binding.contentSha256,
+      });
+    }
+    return binding;
+  }
+  if (operation.phase === "source_pending") {
+    const sourceFile = new File(await sourcePath(book));
+    const sourceBytes = await sourceFile.bytes();
+    if (sourceBytes.byteLength === 0) throw new Error("Book source is empty");
+    const response = await backendBookRequest(backendBookPath(binding.bookEditionId, "source"), {
+      method: "PUT",
+      headers: {
+        "content-type": mimeTypes[operation.payload.format] ?? "application/octet-stream",
+      },
+      body: sourceBytes,
+      signal,
+    });
+    if (signal.aborted) throw new Error("Source upload cancelled");
+    binding = {
+      ...binding,
+      sourceUploaded: true,
+      expiresAt: typeof response.expires_at === "string" ? response.expires_at : binding.expiresAt,
+    };
+    store.setBackendBinding(book.id, binding);
+    store.setBackendImportOperation(book.id, {
+      ...operation,
+      phase: "completed",
+      binding,
+    });
+    await flushAllWrites();
+  }
+  return binding;
+}
+
 async function bindBook(book: Book, signal: AbortSignal) {
   const store = useNarraStore.getState();
+  const importOperation = store.books[book.id]?.backendImportOperation;
+  if (importOperation?.phase === "expired") {
+    throw new BackendBookError(410, {
+      code: "IMPORT_OPERATION_EXPIRED",
+      error: "Import operation is no longer available",
+    });
+  }
+  if (
+    importOperation &&
+    (importOperation.phase === "registration_pending" || importOperation.phase === "source_pending")
+  ) {
+    return bindExplicitImport(book, importOperation, signal);
+  }
   const preserved = store.books[book.id]?.backendOriginalSource;
   // UMD is converted locally; the backend accepts the resulting EPUB.
   const original = preserved?.format === "umd" ? undefined : preserved;
@@ -131,7 +279,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
             content_sha256: hash,
             title: book.meta.title,
             author: book.meta.author,
-            format: original?.format ?? book.format,
+            format: backendSourceFormat(book),
             ...(normalizeBookLanguage(book.meta.language)
               ? { language: normalizeBookLanguage(book.meta.language) }
               : {}),
@@ -156,7 +304,7 @@ async function bindBook(book: Book, signal: AbortSignal) {
     const response = await backendBookRequest(backendBookPath(binding.bookEditionId, "source"), {
       method: "PUT",
       headers: {
-        "content-type": mimeTypes[original?.format ?? book.format] ?? "application/octet-stream",
+        "content-type": mimeTypes[backendSourceFormat(book)] ?? "application/octet-stream",
       },
       body: sourceBytes,
       signal,
@@ -362,7 +510,31 @@ export async function retryBackendBookAnalysis(bookId: string): Promise<void> {
 const IMPORTED_BOOK_SYNC_DEADLINE_MS = 5 * 60_000;
 
 /** Start server work for an explicitly imported file without blocking its local reader. */
-export function startImportedBackendBook(book: Book): void {
+export function startImportedBackendBook(
+  book: Book,
+  { explicitImport = false }: { explicitImport?: boolean } = {},
+): void {
+  if (explicitImport && privateBookReimportEnabled()) {
+    if (explicitImportStarts.has(book.id)) return;
+    // An open reader may still own the old edition. Stop it before the persisted
+    // operation can replace the binding so late callbacks cannot republish old data.
+    stopBackendBookSync(book.id);
+    const start = ensureExplicitImportOperation(book)
+      .then(() => startImportedBackendBook(book))
+      .catch((error) => {
+        status(book.id, {
+          error:
+            error instanceof BackendBookError
+              ? (error.backendCode ?? `HTTP_${error.status}`)
+              : "CONNECTION",
+        });
+      })
+      .finally(() => {
+        if (explicitImportStarts.get(book.id) === start) explicitImportStarts.delete(book.id);
+      });
+    explicitImportStarts.set(book.id, start);
+    return;
+  }
   const stop = () => {
     clearTimeout(deadline);
     unsubscribe?.();

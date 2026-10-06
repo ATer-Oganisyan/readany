@@ -576,7 +576,17 @@ function resumeInterruptedBackendImports(books: Book[]): void {
     const resumedSources = new Set<string>();
     for (const book of [...books].sort((a, b) => b.addedAt - a.addedAt)) {
       const backendBook = narra.books[book.id];
+      const operation = backendBook?.backendImportOperation;
       const binding = backendBook?.backendBinding;
+      if (
+        operation &&
+        (operation.phase === "registration_pending" || operation.phase === "source_pending")
+      ) {
+        if (resumedSources.has(operation.requestId)) continue;
+        resumedSources.add(operation.requestId);
+        startImportedBackendBook(book);
+        continue;
+      }
       if (binding?.resolution !== "private") continue;
       // A source upload and the markup job are separate stages. Keep polling
       // after a relaunch when the bytes are already stored but the manifest
@@ -1381,7 +1391,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               }
               result.imported.push(book);
               if (!knownBook) {
-                startImportedBackendBook(book);
+                startImportedBackendBook(book, { explicitImport: true });
                 void queueGeneratedBookCover(book);
               }
 
@@ -1521,7 +1531,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
               }
               result.imported.push(book);
               if (!knownBook) {
-                startImportedBackendBook(book);
+                startImportedBackendBook(book, { explicitImport: true });
                 void queueGeneratedBookCover(book);
               }
               if (fileHash) {
@@ -1678,7 +1688,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
           }
           result.imported.push(book);
           if (!knownBook) {
-            startImportedBackendBook(book);
+            startImportedBackendBook(book, { explicitImport: true });
             void queueGeneratedBookCover(book, coverContext);
           }
 

@@ -161,6 +161,25 @@ test('an out-of-range numeric knob fails at startup, not at the first request', 
   )
 })
 
+test('private reimport window is disabled by default and rejects unsafe values', () => {
+  assert.equal(load().PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS, 0)
+  assert.equal(load({
+    PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS: ''
+  }).PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS, 0)
+  assert.equal(load({
+    PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS: '0'
+  }).PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS, 0)
+  assert.equal(load({
+    PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS: '120'
+  }).PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS, 120)
+  for (const value of ['-1', '1.5', 'not-a-number', '9007199254740992']) {
+    assert.throws(
+      () => load({ PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS: value }),
+      /PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS/
+    )
+  }
+})
+
 test('loading twice with the same environment yields the same values', () => {
   const first = load()
   const second = load()

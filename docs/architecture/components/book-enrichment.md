@@ -2,7 +2,7 @@
 type: component
 status: current
 scope: catalog/private ingest, canonical book markup and TTS sidecar
-last-reviewed: 2026-09-07
+last-reviewed: 2026-10-06
 ---
 
 # Разметка книг и TTS
@@ -46,10 +46,23 @@ last-reviewed: 2026-09-07
 | Server RAG | никакое из перечисленных | ничего | отдельная operator-команда; см. [AI и RAG](./ai-and-retrieval.md) |
 | Inline scenes | progress/manifest/publish | ничего | tap пользователя либо operator backfill |
 
-Private object key включает subject и SHA-256:
-`books/private/{subjectId}/{contentSha256}/source`; catalog source — общий
-content-addressed object. Upload и analysis — разные стадии: сохранённый source
-может быть готов, пока manifest ещё `processing`.
+Новый private object key включает subject и edition UUID:
+`books/private/{subjectId}/{bookEditionId}/source`; это не позволяет отложенной
+очистке прежней редакции удалить source новой с тем же SHA-256. Уже записанный
+legacy key `books/private/{subjectId}/{contentSha256}/source` остаётся
+авторитетным для своей edition и не переносится при повторном PUT. Catalog
+source остаётся общим content-addressed object. Upload и analysis — разные
+стадии: сохранённый source может быть готов, пока manifest ещё `processing`.
+
+`POST /v2/books/local` сохраняет legacy-семантику без `intent`. Для
+`intent=explicit_import` обязательны owner-scoped `Idempotency-Key` и запись в
+`book_import_requests`. Проверка replay выполняется до нового выбора каталога
+или private edition. Положительный
+`PRIVATE_BOOK_REIMPORT_REUSE_WINDOW_SECONDS` заменяет живую private edition при
+достижении отсечки; база использует момент после сериализующей advisory lock и
+anchor `started_at` текущего run либо `book_editions.created_at`. Нулевое
+значение отключает замену по возрасту, но не idempotent replay и безопасные
+edition-scoped source keys.
 
 Public create-private-edition contract принимает `epub`, `fb2`, `txt`, `pdf`;
 mobile также распаковывает `fbz` до FB2 и передаёт конвертированный UMD как
