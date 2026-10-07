@@ -57,6 +57,17 @@ struct ReadAnyMenuSection: Record {
   @Field var items: [ReadAnyMenuChoice] = []
 }
 
+private final class ReadAnyAccessibilityButton: UIButton {
+  override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+    false
+  }
+
+  override func accessibilityActivate() -> Bool {
+    sendActions(for: .touchUpInside)
+    return true
+  }
+}
+
 public final class ReadAnyNativeControlsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ReadAnyNativeControls")
@@ -502,6 +513,12 @@ final class ReadAnyReaderToolbar: ExpoView {
   private lazy var charactersButton = makeToolbarButton(action: #selector(handleCharactersPress))
   private lazy var speechItem = makeToolbarItem(button: speechButton)
   private lazy var charactersItem = makeToolbarItem(button: charactersButton)
+  private lazy var speechAccessibilityButton = makeAccessibilityButton(
+    action: #selector(handleSpeechPress)
+  )
+  private lazy var charactersAccessibilityButton = makeAccessibilityButton(
+    action: #selector(handleCharactersPress)
+  )
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
@@ -509,8 +526,12 @@ final class ReadAnyReaderToolbar: ExpoView {
     toolbar.translatesAutoresizingMaskIntoConstraints = false
     toolbar.isTranslucent = true
     toolbar.clipsToBounds = false
+    toolbar.isAccessibilityElement = false
+    toolbar.shouldGroupAccessibilityChildren = false
     addSubview(toolbar)
     clipsToBounds = false
+    isAccessibilityElement = false
+    shouldGroupAccessibilityChildren = false
 
     NSLayoutConstraint.activate([
       toolbar.topAnchor.constraint(equalTo: topAnchor),
@@ -523,6 +544,20 @@ final class ReadAnyReaderToolbar: ExpoView {
       [speechItem, UIBarButtonItem(systemItem: .flexibleSpace), charactersItem],
       animated: false
     )
+    addSubview(speechAccessibilityButton)
+    addSubview(charactersAccessibilityButton)
+    accessibilityElements = [speechAccessibilityButton, charactersAccessibilityButton]
+
+    NSLayoutConstraint.activate([
+      speechAccessibilityButton.topAnchor.constraint(equalTo: topAnchor),
+      speechAccessibilityButton.bottomAnchor.constraint(equalTo: bottomAnchor),
+      speechAccessibilityButton.leadingAnchor.constraint(equalTo: leadingAnchor),
+      speechAccessibilityButton.trailingAnchor.constraint(equalTo: centerXAnchor),
+      charactersAccessibilityButton.topAnchor.constraint(equalTo: topAnchor),
+      charactersAccessibilityButton.bottomAnchor.constraint(equalTo: bottomAnchor),
+      charactersAccessibilityButton.leadingAnchor.constraint(equalTo: centerXAnchor),
+      charactersAccessibilityButton.trailingAnchor.constraint(equalTo: trailingAnchor)
+    ])
   }
 
   deinit {
@@ -575,7 +610,10 @@ final class ReadAnyReaderToolbar: ExpoView {
     )
     speechItem.isEnabled = !speechLoading
     speechButton.isEnabled = !speechLoading
+    speechAccessibilityButton.isEnabled = !speechLoading
     speechItem.accessibilityLabel = currentSpeechLabel
+    speechButton.accessibilityLabel = currentSpeechLabel
+    speechAccessibilityButton.accessibilityLabel = currentSpeechLabel
 
     updateToolbarButton(
       charactersButton,
@@ -583,6 +621,8 @@ final class ReadAnyReaderToolbar: ExpoView {
       image: MishanaerIconAssets.image("person-filled")
     )
     charactersItem.accessibilityLabel = charactersLabel
+    charactersButton.accessibilityLabel = charactersLabel
+    charactersAccessibilityButton.accessibilityLabel = charactersLabel
 
     updateSheetSourceRegistrations()
   }
@@ -603,11 +643,22 @@ final class ReadAnyReaderToolbar: ExpoView {
   private func makeToolbarButton(action: Selector) -> UIButton {
     let button = UIButton(type: .system)
     button.addTarget(self, action: action, for: .touchUpInside)
+    button.isAccessibilityElement = false
     button.clipsToBounds = false
     button.titleLabel?.numberOfLines = 1
     button.titleLabel?.adjustsFontSizeToFitWidth = true
     button.titleLabel?.minimumScaleFactor = 0.85
     button.titleLabel?.lineBreakMode = .byClipping
+    return button
+  }
+
+  private func makeAccessibilityButton(action: Selector) -> UIButton {
+    let button = ReadAnyAccessibilityButton(type: .custom)
+    button.addTarget(self, action: action, for: .touchUpInside)
+    button.translatesAutoresizingMaskIntoConstraints = false
+    button.backgroundColor = .clear
+    button.isAccessibilityElement = true
+    button.accessibilityTraits = .button
     return button
   }
 

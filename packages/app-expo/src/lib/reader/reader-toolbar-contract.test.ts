@@ -28,7 +28,31 @@ describe("iOS reader toolbar contract", () => {
       "button.setContentCompressionResistancePriority(.required, for: .horizontal)",
     );
     expect(readerToolbar).toContain("button.accessibilityLabel = title");
+    expect(readerToolbar).toContain("button.isAccessibilityElement = false");
+    expect(readerToolbar).toContain("button.accessibilityTraits = .button");
+    expect(readerToolbar).toContain("toolbar.isAccessibilityElement = false");
+    expect(readerToolbar).toContain("toolbar.shouldGroupAccessibilityChildren = false");
+    expect(readerToolbar).toContain("isAccessibilityElement = false");
+    expect(readerToolbar).toContain("shouldGroupAccessibilityChildren = false");
+    expect(readerToolbar).toContain(
+      "accessibilityElements = [speechAccessibilityButton, charactersAccessibilityButton]",
+    );
+    expect(nativeControls).toContain(
+      "private final class ReadAnyAccessibilityButton: UIButton",
+    );
+    expect(nativeControls).toContain(
+      "override func point(inside point: CGPoint, with event: UIEvent?) -> Bool",
+    );
+    expect(nativeControls).toContain("override func accessibilityActivate() -> Bool");
+    expect(readerToolbar).toContain(
+      "speechAccessibilityButton.trailingAnchor.constraint(equalTo: centerXAnchor)",
+    );
+    expect(readerToolbar).toContain(
+      "charactersAccessibilityButton.leadingAnchor.constraint(equalTo: centerXAnchor)",
+    );
     expect(readerToolbar).toContain("speechItem.accessibilityLabel = currentSpeechLabel");
+    expect(readerToolbar).toContain("speechButton.accessibilityLabel = currentSpeechLabel");
+    expect(readerToolbar).toContain("charactersButton.accessibilityLabel = charactersLabel");
   });
 
   it("shows only a content-sized system spinner while loading", () => {
